@@ -116,7 +116,7 @@ DESIRED_ORDER = [
     "Product Code", "Machine", "Sales Rep", "Category", "Status", "Open or closed", 
     "Completion date", "Material", "Product Material Colour (tube,jar etc.)", 
     "Artwork Required", "Artwork Received", "Order Qty x1000", "Unit Order No", 
-    "Length", "Cap_Lid Style", "Cap_Lid Material", "Orifice", "Other Cap_Lid Info", 
+    "Length", "Cap_Lid Style", "Cap_Lid Material", "Cap_Lid Diameter", "Orifice", "Other Cap_Lid Info", 
     "Tube Shoulder colour", "Dust Controlled Area", "Date Sent on Proof", "Size of Eyemark", 
     "Proof Approved (Conventional)", "Proof Approved (Digital)", "Ordered Plates", 
     "Plates Arrived", "Sent on Trial", "Digital trial received", 
