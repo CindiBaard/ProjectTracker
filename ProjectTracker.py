@@ -180,7 +180,9 @@ with tab1:
     st.header("Register New Project")
     
     # --- TUBE AND CAP COMBINATION LOOKUP ---
-    selected_combo = {}
+    if "selected_combo" not in st.session_state:
+        st.session_state.selected_combo = {}
+
     if os.path.exists(COMBINATIONS_FILE):
         with st.expander("🔍 Tube & Cap Combination Lookup"):
             try:
@@ -189,19 +191,19 @@ with tab1:
                 if search_combo:
                     combo_df = combo_df[combo_df.apply(lambda row: row.astype(str).str.contains(search_combo, case=False).any(), axis=1)]
                 
-                # Selection logic using dataframe row selection
                 event = st.dataframe(
                     combo_df, 
                     use_container_width=True, 
                     hide_index=True, 
                     on_select="rerun", 
-                    selection_mode="single-row"
+                    selection_mode="single-row",
+                    key="combo_selector"
                 )
                 
                 if len(event.selection.rows) > 0:
                     selected_row_idx = event.selection.rows[0]
-                    selected_combo = combo_df.iloc[selected_row_idx].to_dict()
-                    st.success(f"Selected: {selected_combo.get('Diameter', '')} - {selected_combo.get('Cap_Lid Style', '')}")
+                    st.session_state.selected_combo = combo_df.iloc[selected_row_idx].to_dict()
+                    st.success(f"Selected: {st.session_state.selected_combo.get('Diameter', '')} - {st.session_state.selected_combo.get('Cap_Lid Style', '')}")
             except Exception as e:
                 st.error(f"Error loading combinations: {e}")
 
@@ -212,16 +214,16 @@ with tab1:
         new_data = {'Pre-Prod No.': next_no}
         cols = st.columns(3)
         
-        # Specific fields we want to auto-fill from the combo lookup
+        # Specific fields we want to auto-fill
         auto_fill_fields = ["Diameter", "Cap_Lid Diameter", "Cap_Lid Style", "Cap_Lid Material"]
 
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
             
-            # Check if this field should be pre-filled from the combination lookup
+            # Pull from session state if available
             default_val = ""
             if col_name in auto_fill_fields:
-                default_val = selected_combo.get(col_name, "")
+                default_val = st.session_state.selected_combo.get(col_name, "")
             
             with cols[i % 3]:
                 if col_name == 'Date':
@@ -244,9 +246,9 @@ with tab1:
                 elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                     opts = [""] + DROPDOWN_DATA[col_name]
                     idx = 0
-                    if str(default_val) in opts:
-                        idx = opts.index(str(default_val))
-                    new_data[col_name] = st.selectbox(col_name, options=opts, index=idx)
+                    if str(default_val).strip() in opts:
+                        idx = opts.index(str(default_val).strip())
+                    new_data[col_name] = st.selectbox(col_name, options=opts, index=idx, key=f"new_dd_{col_name}")
                 else:
                     if col_name == "Order Qty x1000":
                         new_data[col_name] = st.number_input(col_name, min_value=0, step=1, key="new_qty_num")
@@ -254,7 +256,7 @@ with tab1:
                         p_code = st.text_input(col_name, key="new_pcode_entry")
                         new_data[col_name] = p_code.upper().strip()
                     else:
-                        new_data[col_name] = st.text_input(col_name, value=str(default_val))
+                        new_data[col_name] = st.text_input(col_name, value=str(default_val), key=f"new_txt_{col_name}")
         
         if st.form_submit_button("✅ Save New Project"):
             new_row = pd.DataFrame([new_data])
@@ -264,6 +266,7 @@ with tab1:
             
             df = pd.concat([df, new_row], ignore_index=True)
             save_db(df)
+            st.session_state.selected_combo = {} # Clear selection
             st.success(f"Project #{next_no} saved!")
             st.rerun()
 
