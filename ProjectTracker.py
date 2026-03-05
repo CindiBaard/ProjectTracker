@@ -99,8 +99,9 @@ DROPDOWN_CONFIG = {
     "Cap_Lid Style": "Cap_Lid Style.csv", "Machine": "Machine.csv", "Sales Rep": "Sales Rep.csv",
     "Cap_Lid Material": "CapMaterial.csv", "Cap_Lid Diameter": "Cap_Lid Diameter.csv"
 }
-DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
+
 df = load_db()
+DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
 
 def get_combined_options(col_name, csv_list):
     db_vals = df[col_name].dropna().unique().tolist() if not df.empty and col_name in df.columns else []
@@ -207,7 +208,7 @@ with tab1:
                     opts = [""] + DROPDOWN_DATA[col_name]
                     new_data[col_name] = st.selectbox(col_name, options=opts)
                 else:
-                    # UPDATED: FORCE NUMERIC FOR ORDER QTY, UPPERCASE FOR PRODUCT CODE
+                    # FIX: FORCE NUMERIC FOR QTY, UPPERCASE FOR PRODUCT CODE
                     if col_name == "Order Qty x1000":
                         new_data[col_name] = st.number_input(col_name, min_value=0, step=1, key="new_qty_num")
                     elif col_name == "Product Code":
@@ -277,7 +278,7 @@ with tab2:
                         updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=opts.index(val) if val in opts else 0)
                     else:
                         val = str(row.get(col_name, ""))
-                        # UPDATED: FORCE NUMERIC FOR ORDER QTY, UPPERCASE FOR PRODUCT CODE
+                        # FIX: FORCE NUMERIC FOR QTY, UPPERCASE FOR PRODUCT CODE
                         if col_name == "Order Qty x1000":
                             try:
                                 current_qty = int(float(val)) if val and val != "nan" else 0
@@ -314,13 +315,16 @@ with tab2:
 st.divider()
 
 # --- 9. TABLE LOGIC ---
+if "table_filter" not in st.session_state: st.session_state.table_filter = ""
+if "sort_latest" not in st.session_state: st.session_state.sort_latest = False
+
 def reset_view():
     st.session_state.table_filter = ""
     st.session_state.sort_latest = False
 
 if st.checkbox("Show Project Data Table", value=True):
     c1, c2, c3, c4 = st.columns([3,1,1,1])
-    search_query = c1.text_input("🔍 Global Table Search", key="table_filter").lower()
+    search_query = c1.text_input("🔍 Global Table Search", key="table_filter_input").lower()
     c2.button("🔄 Reset View", on_click=reset_view)
     if c3.button("🆕 View Latest"): st.session_state.sort_latest = True
 
