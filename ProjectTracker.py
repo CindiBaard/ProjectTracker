@@ -208,7 +208,7 @@ with tab1:
                     opts = [""] + DROPDOWN_DATA[col_name]
                     new_data[col_name] = st.selectbox(col_name, options=opts)
                 else:
-                    # FIX: FORCE NUMERIC FOR QTY, UPPERCASE FOR PRODUCT CODE
+                    # LOGIC: Force uppercase for Product Code and numeric for Order Qty
                     if col_name == "Order Qty x1000":
                         new_data[col_name] = st.number_input(col_name, min_value=0, step=1, key="new_qty_num")
                     elif col_name == "Product Code":
@@ -278,7 +278,7 @@ with tab2:
                         updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=opts.index(val) if val in opts else 0)
                     else:
                         val = str(row.get(col_name, ""))
-                        # FIX: FORCE NUMERIC FOR QTY, UPPERCASE FOR PRODUCT CODE
+                        # LOGIC: Force uppercase for Product Code and numeric for Order Qty
                         if col_name == "Order Qty x1000":
                             try:
                                 current_qty = int(float(val)) if val and val != "nan" else 0
