@@ -114,7 +114,7 @@ DYNAMIC_SALES = get_combined_options('Sales Rep', DROPDOWN_DATA.get('Sales Rep',
 
 # --- 6. FIELD LAYOUT ORDER ---
 DESIRED_ORDER = [
-    "Date", "Age Category", "Client", "Description", "Project Description", "New Mould_Client or Product", 
+    "Date", "Age Category", "Client", "Description", "Diameter", "Project Description", "New Mould_Client or Product", 
     "Product Code", "Machine", "Sales Rep", "Category", "Status", "Open or closed", 
     "Completion date", "Material", "Product Material Colour (tube,jar etc.)", 
     "Artwork Required", "Artwork Received", "Order Qty x1000", "Unit Order No", 
