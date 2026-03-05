@@ -212,11 +212,16 @@ with tab1:
         new_data = {'Pre-Prod No.': next_no}
         cols = st.columns(3)
         
+        # Specific fields we want to auto-fill from the combo lookup
+        auto_fill_fields = ["Diameter", "Cap_Lid Diameter", "Cap_Lid Style", "Cap_Lid Material"]
+
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
             
             # Check if this field should be pre-filled from the combination lookup
-            default_val = selected_combo.get(col_name, "")
+            default_val = ""
+            if col_name in auto_fill_fields:
+                default_val = selected_combo.get(col_name, "")
             
             with cols[i % 3]:
                 if col_name == 'Date':
@@ -238,7 +243,6 @@ with tab1:
                     new_data[col_name] = st.text_input(col_name, value="Open")
                 elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                     opts = [""] + DROPDOWN_DATA[col_name]
-                    # Logic: If lookup has a value, try to select it in the dropdown
                     idx = 0
                     if str(default_val) in opts:
                         idx = opts.index(str(default_val))
