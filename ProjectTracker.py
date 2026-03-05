@@ -16,11 +16,12 @@ st.set_page_config(page_title="Project Master Pro", layout="wide")
 pd.set_option("styler.render.max_elements", 1000000)
 
 # --- 2. FILE PATH LOGIC ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Updated for GitHub/Cloud environments
+BASE_DIR = os.getcwd() 
+
 FILENAME = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
 ARTWORK_FILE = os.path.join(BASE_DIR, "Artwork Status.csv")
 DIGITAL_ARTWORK_FILE = os.path.join(BASE_DIR, "Digital Artwork Status.csv")
-
 def get_local_path(filename):
     return os.path.join(BASE_DIR, filename)
 
