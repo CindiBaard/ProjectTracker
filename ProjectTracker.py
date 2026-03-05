@@ -27,8 +27,8 @@ def get_local_path(filename):
     return os.path.join(BASE_DIR, filename)
 
 def clean_column_names(df):
-    # Removes quotes, BOM characters, and leading/trailing whitespace
-    df.columns = [str(c).strip().replace('"', '').replace('\ufeff', '').replace('/', '_') for c in df.columns]
+    # Fixed to explicitly remove BOM characters like ï»¿ or \ufeff
+    df.columns = [str(c).strip().replace('\ufeff', '').replace('ï»¿', '').replace('"', '').replace('/', '_') for c in df.columns]
     return df
 
 # --- 3. AGE CALCULATION LOGIC ---
@@ -51,6 +51,7 @@ def calculate_age_category(row):
 def load_db():
     if not os.path.exists(FILENAME): return pd.DataFrame()
     try:
+        # Use utf-8-sig to handle potential BOMs in the main database
         df = pd.read_csv(FILENAME, sep=';', encoding='utf-8-sig', quoting=3, on_bad_lines='warn')
         df = clean_column_names(df)
         df = df.map(lambda x: str(x).strip().replace('"', '') if isinstance(x, str) else x)
@@ -180,43 +181,41 @@ tab1, tab2 = st.tabs(["➕ Add New Job", "🔍 Search & Edit Existing"])
 with tab1:
     st.header("Register New Project")
     
-    if "autofill_data" not in st.session_state:
-        st.session_state.autofill_data = {}
+    # Persistent storage for selection
+    if 'selected_combo' not in st.session_state:
+        st.session_state.selected_combo = {}
 
     # --- TUBE AND CAP COMBINATION LOOKUP ---
     if os.path.exists(COMBINATIONS_FILE):
         with st.expander("🔍 Tube & Cap Combination Lookup"):
             try:
-                # Load and Clean Headers immediately
-                combo_df = pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='latin1')
+                # Use utf-8-sig to automatically strip BOM
+                combo_df = pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig')
                 combo_df = clean_column_names(combo_df)
                 
-                # These must match exactly the column names in your CSV file
-                required_cols = ["Diameter", "Cap_Lid Style", "Cap_Lid Material", "Cap_Lid Diameter"]
+                # Validation: check for the specific columns requested
+                required_cols = ["Diameter", "Cap_Lid Diameter", "Cap_Lid Style", "Cap_Lid Material"]
                 missing = [c for c in required_cols if c not in combo_df.columns]
-                
                 if missing:
-                    st.error(f"Column Name Mismatch! Found columns: {list(combo_df.columns)}")
-                    st.warning(f"Missing required: {missing}")
-                else:
-                    search_combo = st.text_input("Search (e.g. 35mm, Flip Top)")
-                    if search_combo:
-                        combo_df = combo_df[combo_df.apply(lambda row: row.astype(str).str.contains(search_combo, case=False).any(), axis=1)]
-                    
-                    event = st.dataframe(
-                        combo_df, 
-                        use_container_width=True, 
-                        hide_index=True, 
-                        on_select="rerun", 
-                        selection_mode="single-row",
-                        key="combo_table"
-                    )
-                    
-                    if len(event.selection.rows) > 0:
-                        selected_row_idx = event.selection.rows[0]
-                        row_data = combo_df.iloc[selected_row_idx].to_dict()
-                        st.session_state.autofill_data = {k: str(v).strip() for k, v in row_data.items() if k in required_cols}
-                        st.success("Combination selected!")
+                    st.error(f"Validation Error: Columns {missing} not found in {COMBINATIONS_FILE}")
+                    st.info(f"Available columns: {list(combo_df.columns)}")
+                
+                search_combo = st.text_input("Search Combinations (e.g. 35mm, Flip Top)")
+                if search_combo:
+                    combo_df = combo_df[combo_df.apply(lambda row: row.astype(str).str.contains(search_combo, case=False).any(), axis=1)]
+                
+                event = st.dataframe(
+                    combo_df, 
+                    use_container_width=True, 
+                    hide_index=True, 
+                    on_select="rerun", 
+                    selection_mode="single-row"
+                )
+                
+                if len(event.selection.rows) > 0:
+                    selected_row_idx = event.selection.rows[0]
+                    st.session_state.selected_combo = combo_df.iloc[selected_row_idx].to_dict()
+                    st.success(f"Selected: {st.session_state.selected_combo.get('Diameter', '')}mm - {st.session_state.selected_combo.get('Cap_Lid Style', '')}")
             except Exception as e:
                 st.error(f"Error loading combinations: {e}")
 
@@ -227,13 +226,14 @@ with tab1:
         new_data = {'Pre-Prod No.': next_no}
         cols = st.columns(3)
         
+        # Fields to auto-fill
         auto_fill_fields = ["Diameter", "Cap_Lid Diameter", "Cap_Lid Style", "Cap_Lid Material"]
 
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
             
-            # Match current field to session state data
-            default_val = st.session_state.autofill_data.get(col_name, "")
+            # Fetch from session state if available
+            default_val = str(st.session_state.selected_combo.get(col_name, "")).strip()
             
             with cols[i % 3]:
                 if col_name == 'Date':
@@ -256,8 +256,9 @@ with tab1:
                 elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                     opts = [""] + DROPDOWN_DATA[col_name]
                     idx = 0
-                    if default_val in opts:
+                    if default_val and default_val in opts:
                         idx = opts.index(default_val)
+                    # Unique key ensures refresh when selection changes
                     new_data[col_name] = st.selectbox(col_name, options=opts, index=idx, key=f"new_dd_{col_name}")
                 else:
                     if col_name == "Order Qty x1000":
@@ -276,11 +277,12 @@ with tab1:
             
             df = pd.concat([df, new_row], ignore_index=True)
             save_db(df)
-            st.session_state.autofill_data = {} 
+            st.session_state.selected_combo = {} # Clear selection
             st.success(f"Project #{next_no} saved!")
             st.rerun()
 
 # --- TAB 2: SEARCH & EDIT ---
+# (Rest of code remains unchanged as requested)
 with tab2:
     st.header("Search & Edit Project")
     search_no = st.number_input("Enter Pre-Prod No.", min_value=1, step=1, key="search_input")
@@ -365,7 +367,6 @@ with tab2:
 
 st.divider()
 
-# --- 9. TABLE LOGIC ---
 if "table_filter" not in st.session_state: st.session_state.table_filter = ""
 if "sort_latest" not in st.session_state: st.session_state.sort_latest = False
 
