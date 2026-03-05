@@ -21,6 +21,7 @@ BASE_DIR = os.getcwd()
 FILENAME = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
 ARTWORK_FILE = os.path.join(BASE_DIR, "Artwork Status.csv")
 DIGITAL_ARTWORK_FILE = os.path.join(BASE_DIR, "Digital Artwork Status.csv")
+COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 
 def get_local_path(filename):
     return os.path.join(BASE_DIR, filename)
@@ -129,7 +130,7 @@ DESIRED_ORDER = [
 # --- 7. SIDEBAR ---
 with st.sidebar:
     st.header("📁 System Check")
-    for f, label in [(FILENAME, "Main DB"), (ARTWORK_FILE, "Artwork"), (DIGITAL_ARTWORK_FILE, "Digital")]:
+    for f, label in [(FILENAME, "Main DB"), (ARTWORK_FILE, "Artwork"), (DIGITAL_ARTWORK_FILE, "Digital"), (COMBINATIONS_FILE, "Combinations")]:
         if os.path.exists(f): st.success(f"✅ {label} Found")
         else: st.warning(f"⚠️ {label} Missing")
 
@@ -177,6 +178,33 @@ tab1, tab2 = st.tabs(["➕ Add New Job", "🔍 Search & Edit Existing"])
 # --- TAB 1: ADD NEW JOB ---
 with tab1:
     st.header("Register New Project")
+    
+    # --- TUBE AND CAP COMBINATION LOOKUP ---
+    selected_combo = {}
+    if os.path.exists(COMBINATIONS_FILE):
+        with st.expander("🔍 Tube & Cap Combination Lookup"):
+            try:
+                combo_df = pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='latin1')
+                search_combo = st.text_input("Search Combinations (e.g. 35mm, Flip Top)")
+                if search_combo:
+                    combo_df = combo_df[combo_df.apply(lambda row: row.astype(str).str.contains(search_combo, case=False).any(), axis=1)]
+                
+                # Selection logic using dataframe row selection
+                event = st.dataframe(
+                    combo_df, 
+                    use_container_width=True, 
+                    hide_index=True, 
+                    on_select="rerun", 
+                    selection_mode="single-row"
+                )
+                
+                if len(event.selection.rows) > 0:
+                    selected_row_idx = event.selection.rows[0]
+                    selected_combo = combo_df.iloc[selected_row_idx].to_dict()
+                    st.success(f"Selected: {selected_combo.get('Diameter', '')} - {selected_combo.get('Cap_Lid Style', '')}")
+            except Exception as e:
+                st.error(f"Error loading combinations: {e}")
+
     next_no = int(df['Pre-Prod No.'].max() + 1) if not df.empty else 1
     st.info(f"🆕 **Next Project Number: {next_no}**")
     
@@ -186,6 +214,10 @@ with tab1:
         
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
+            
+            # Check if this field should be pre-filled from the combination lookup
+            default_val = selected_combo.get(col_name, "")
+            
             with cols[i % 3]:
                 if col_name == 'Date':
                     new_data[col_name] = st.date_input(col_name, value=datetime.now()).strftime('%d/%m/%Y')
@@ -206,16 +238,19 @@ with tab1:
                     new_data[col_name] = st.text_input(col_name, value="Open")
                 elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                     opts = [""] + DROPDOWN_DATA[col_name]
-                    new_data[col_name] = st.selectbox(col_name, options=opts)
+                    # Logic: If lookup has a value, try to select it in the dropdown
+                    idx = 0
+                    if str(default_val) in opts:
+                        idx = opts.index(str(default_val))
+                    new_data[col_name] = st.selectbox(col_name, options=opts, index=idx)
                 else:
                     if col_name == "Order Qty x1000":
                         new_data[col_name] = st.number_input(col_name, min_value=0, step=1, key="new_qty_num")
                     elif col_name == "Product Code":
-                        # UPDATED: Force Uppercase and Strip spaces
                         p_code = st.text_input(col_name, key="new_pcode_entry")
                         new_data[col_name] = p_code.upper().strip()
                     else:
-                        new_data[col_name] = st.text_input(col_name)
+                        new_data[col_name] = st.text_input(col_name, value=str(default_val))
         
         if st.form_submit_button("✅ Save New Project"):
             new_row = pd.DataFrame([new_data])
@@ -285,7 +320,6 @@ with tab2:
                                 current_qty = 0
                             updated_vals[col_name] = st.number_input(f"Edit {col_name}", min_value=0, step=1, value=current_qty, key=f"edit_qty_{i}")
                         elif col_name == "Product Code":
-                            # UPDATED: Force Uppercase and Strip spaces
                             e_pcode = st.text_input(f"Edit {col_name}", value=val)
                             updated_vals[col_name] = e_pcode.upper().strip()
                         else:
