@@ -16,12 +16,12 @@ st.set_page_config(page_title="Project Master Pro", layout="wide")
 pd.set_option("styler.render.max_elements", 1000000)
 
 # --- 2. FILE PATH LOGIC ---
-# Updated for GitHub/Cloud environments
 BASE_DIR = os.getcwd() 
 
 FILENAME = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
 ARTWORK_FILE = os.path.join(BASE_DIR, "Artwork Status.csv")
 DIGITAL_ARTWORK_FILE = os.path.join(BASE_DIR, "Digital Artwork Status.csv")
+
 def get_local_path(filename):
     return os.path.join(BASE_DIR, filename)
 
@@ -102,7 +102,6 @@ DROPDOWN_CONFIG = {
 DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
 df = load_db()
 
-# Helper to merge CSV options with unique values found in the main database
 def get_combined_options(col_name, csv_list):
     db_vals = df[col_name].dropna().unique().tolist() if not df.empty and col_name in df.columns else []
     return sorted(list(set(db_vals + csv_list)))
@@ -190,7 +189,6 @@ with tab1:
                 if col_name == 'Date':
                     new_data[col_name] = st.date_input(col_name, value=datetime.now()).strftime('%d/%m/%Y')
                 
-                # Dynamic Dropdown Logic for New Job
                 elif col_name in ['Client', 'Machine', 'Sales Rep']:
                     opts_map = {'Client': DYNAMIC_CLIENTS, 'Machine': DYNAMIC_MACHINES, 'Sales Rep': DYNAMIC_SALES}
                     current_opts = ["", "Add New " + col_name + "..."] + opts_map[col_name]
@@ -209,7 +207,14 @@ with tab1:
                     opts = [""] + DROPDOWN_DATA[col_name]
                     new_data[col_name] = st.selectbox(col_name, options=opts)
                 else:
-                    new_data[col_name] = st.text_input(col_name)
+                    # UPDATED: FORCE NUMERIC FOR ORDER QTY, UPPERCASE FOR PRODUCT CODE
+                    if col_name == "Order Qty x1000":
+                        new_data[col_name] = st.number_input(col_name, min_value=0, step=1, key="new_qty_num")
+                    elif col_name == "Product Code":
+                        p_code = st.text_input(col_name, key="new_pcode_entry")
+                        new_data[col_name] = p_code.upper().strip()
+                    else:
+                        new_data[col_name] = st.text_input(col_name)
         
         if st.form_submit_button("✅ Save New Project"):
             new_row = pd.DataFrame([new_data])
@@ -251,7 +256,6 @@ with tab2:
                         updated_vals[col_name] = auto_status
                         st.text_input(f"Edit {col_name}", value=auto_status, disabled=True)
                     
-                    # Dynamic Dropdown Logic for Editing
                     elif col_name in ['Client', 'Machine', 'Sales Rep']:
                         current_val = str(row.get(col_name, ""))
                         opts_map = {'Client': DYNAMIC_CLIENTS, 'Machine': DYNAMIC_MACHINES, 'Sales Rep': DYNAMIC_SALES}
@@ -273,7 +277,18 @@ with tab2:
                         updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=opts.index(val) if val in opts else 0)
                     else:
                         val = str(row.get(col_name, ""))
-                        updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=val)
+                        # UPDATED: FORCE NUMERIC FOR ORDER QTY, UPPERCASE FOR PRODUCT CODE
+                        if col_name == "Order Qty x1000":
+                            try:
+                                current_qty = int(float(val)) if val and val != "nan" else 0
+                            except:
+                                current_qty = 0
+                            updated_vals[col_name] = st.number_input(f"Edit {col_name}", min_value=0, step=1, value=current_qty, key=f"edit_qty_{i}")
+                        elif col_name == "Product Code":
+                            e_pcode = st.text_input(f"Edit {col_name}", value=val)
+                            updated_vals[col_name] = e_pcode.upper().strip()
+                        else:
+                            updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=val)
             
             col_save, col_delete = st.columns([1, 1])
             with col_save:
