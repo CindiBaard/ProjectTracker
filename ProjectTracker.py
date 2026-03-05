@@ -179,31 +179,41 @@ tab1, tab2 = st.tabs(["➕ Add New Job", "🔍 Search & Edit Existing"])
 with tab1:
     st.header("Register New Project")
     
-    # --- TUBE AND CAP COMBINATION LOOKUP ---
-    if "selected_combo" not in st.session_state:
-        st.session_state.selected_combo = {}
+    # Initialize session state for the selected combination
+    if "autofill_data" not in st.session_state:
+        st.session_state.autofill_data = {}
 
+    # --- TUBE AND CAP COMBINATION LOOKUP ---
     if os.path.exists(COMBINATIONS_FILE):
         with st.expander("🔍 Tube & Cap Combination Lookup"):
             try:
+                # Validation check on CSV columns
                 combo_df = pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='latin1')
-                search_combo = st.text_input("Search Combinations (e.g. 35mm, Flip Top)")
-                if search_combo:
-                    combo_df = combo_df[combo_df.apply(lambda row: row.astype(str).str.contains(search_combo, case=False).any(), axis=1)]
+                required_cols = ["Diameter", "Cap_Lid Style", "Cap_Lid Material", "Cap_Lid Diameter"]
+                missing = [c for c in required_cols if c not in combo_df.columns]
                 
-                event = st.dataframe(
-                    combo_df, 
-                    use_container_width=True, 
-                    hide_index=True, 
-                    on_select="rerun", 
-                    selection_mode="single-row",
-                    key="combo_selector"
-                )
-                
-                if len(event.selection.rows) > 0:
-                    selected_row_idx = event.selection.rows[0]
-                    st.session_state.selected_combo = combo_df.iloc[selected_row_idx].to_dict()
-                    st.success(f"Selected: {st.session_state.selected_combo.get('Diameter', '')} - {st.session_state.selected_combo.get('Cap_Lid Style', '')}")
+                if missing:
+                    st.error(f"Validation Failed: {COMBINATIONS_FILE} is missing columns: {', '.join(missing)}")
+                else:
+                    search_combo = st.text_input("Search Combinations (e.g. 35mm, Flip Top)")
+                    if search_combo:
+                        combo_df = combo_df[combo_df.apply(lambda row: row.astype(str).str.contains(search_combo, case=False).any(), axis=1)]
+                    
+                    event = st.dataframe(
+                        combo_df, 
+                        use_container_width=True, 
+                        hide_index=True, 
+                        on_select="rerun", 
+                        selection_mode="single-row",
+                        key="combo_table"
+                    )
+                    
+                    if len(event.selection.rows) > 0:
+                        selected_row_idx = event.selection.rows[0]
+                        row_data = combo_df.iloc[selected_row_idx].to_dict()
+                        # Update session state with validated data
+                        st.session_state.autofill_data = {k: str(v).strip() for k, v in row_data.items() if k in required_cols}
+                        st.success(f"Loaded: {st.session_state.autofill_data}")
             except Exception as e:
                 st.error(f"Error loading combinations: {e}")
 
@@ -214,16 +224,14 @@ with tab1:
         new_data = {'Pre-Prod No.': next_no}
         cols = st.columns(3)
         
-        # Specific fields we want to auto-fill
+        # Fields that should be auto-filled
         auto_fill_fields = ["Diameter", "Cap_Lid Diameter", "Cap_Lid Style", "Cap_Lid Material"]
 
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
             
-            # Pull from session state if available
-            default_val = ""
-            if col_name in auto_fill_fields:
-                default_val = st.session_state.selected_combo.get(col_name, "")
+            # Use session state if it exists for this field, otherwise empty
+            default_val = st.session_state.autofill_data.get(col_name, "")
             
             with cols[i % 3]:
                 if col_name == 'Date':
@@ -245,9 +253,10 @@ with tab1:
                     new_data[col_name] = st.text_input(col_name, value="Open")
                 elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                     opts = [""] + DROPDOWN_DATA[col_name]
+                    # Dynamically calculate the index if autofilled value exists in dropdown
                     idx = 0
-                    if str(default_val).strip() in opts:
-                        idx = opts.index(str(default_val).strip())
+                    if default_val in opts:
+                        idx = opts.index(default_val)
                     new_data[col_name] = st.selectbox(col_name, options=opts, index=idx, key=f"new_dd_{col_name}")
                 else:
                     if col_name == "Order Qty x1000":
@@ -256,7 +265,8 @@ with tab1:
                         p_code = st.text_input(col_name, key="new_pcode_entry")
                         new_data[col_name] = p_code.upper().strip()
                     else:
-                        new_data[col_name] = st.text_input(col_name, value=str(default_val), key=f"new_txt_{col_name}")
+                        # Use session state value for text inputs
+                        new_data[col_name] = st.text_input(col_name, value=default_val, key=f"new_txt_{col_name}")
         
         if st.form_submit_button("✅ Save New Project"):
             new_row = pd.DataFrame([new_data])
@@ -266,7 +276,7 @@ with tab1:
             
             df = pd.concat([df, new_row], ignore_index=True)
             save_db(df)
-            st.session_state.selected_combo = {} # Clear selection
+            st.session_state.autofill_data = {} # Clear state after save
             st.success(f"Project #{next_no} saved!")
             st.rerun()
 
