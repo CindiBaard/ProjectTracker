@@ -138,7 +138,7 @@ if df.empty:
     st.stop()
 
 # --- 8. PROJECT SUMMARY & CHARTS ---
-st.title("🚀 Project Master Pro")
+st.title("🚀 Project Tracker")
 
 client_list_summary = ["All Clients"] + DYNAMIC_CLIENTS
 selected_summary_client = st.selectbox("📊 Filter Summary by Client", options=client_list_summary)
