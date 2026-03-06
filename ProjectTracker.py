@@ -185,6 +185,9 @@ with tab1:
             with cols[i % 3]:
                 if col_name == 'Date':
                     new_data[col_name] = st.date_input(col_name, value=datetime.now()).strftime('%d/%m/%Y')
+                elif col_name == 'Completion date':
+                    # Calendar for Completion Date in New Job form
+                    new_data[col_name] = st.date_input(col_name, value=None).strftime('%d/%m/%Y') if st.date_input(col_name, value=None) else ""
                 elif col_name == 'Status':
                     st.text_input(col_name, value="Open", disabled=True)
                     new_data[col_name] = "Open"
@@ -245,6 +248,14 @@ with tab2:
                     if col_name == "Status":
                         st.text_input(col_name, value=cur_val, disabled=True)
                         updated_vals[col_name] = cur_val
+                    elif col_name == 'Completion date':
+                        # Calendar for Completion Date in Edit form
+                        try:
+                            default_date = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else datetime.now().date()
+                        except:
+                            default_date = datetime.now().date()
+                        selected_date = st.date_input(f"Edit {col_name}", value=default_date)
+                        updated_vals[col_name] = selected_date.strftime('%d/%m/%Y')
                     elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                         opts = [""] + sorted(list(set(DROPDOWN_DATA[col_name] + [cur_val])))
                         updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=opts.index(cur_val) if cur_val in opts else 0)
