@@ -112,7 +112,7 @@ st.title("🚀 Project Tracker")
 
 tab1, tab2 = st.tabs(["➕ Add New Job", "🔍 Search & Edit"])
 
-# --- TAB 1: ADD NEW JOB (UNCHANGED) ---
+# --- TAB 1: ADD NEW JOB ---
 with tab1:
     if 'selected_combo' not in st.session_state:
         st.session_state.selected_combo = {}
@@ -180,7 +180,7 @@ with tab1:
                 st.success("Project Saved!")
                 st.rerun()
 
-# --- TAB 2: SEARCH & EDIT (RESTORED AGE ANALYSIS) ---
+# --- TAB 2: SEARCH & EDIT ---
 with tab2:
     search_no = st.number_input("Enter Pre-Prod No.", min_value=1, step=1)
     match = df[df['Pre-Prod No.'] == search_no]
@@ -188,17 +188,14 @@ with tab2:
     if not match.empty:
         idx, row = match.index[0], match.iloc[0]
 
-        # --- RESTORED: INDIVIDUAL PRE-PROD AGE ANALYSIS ---
         st.subheader(f"📊 Age Analysis for Pre-Prod #{search_no}")
         age_days = row.get('Project Age (Open and Closed)', 0)
         age_cat = row.get('Age Category', "N/A")
-        status_color = "green" if row.get('Open or closed') == "Closed" else "orange"
         
         m1, m2, m3 = st.columns(3)
         m1.metric("Current Project Age", f"{age_days} Days")
         m2.metric("Age Category", age_cat)
         m3.metric("Project Status", row.get('Open or closed', 'Open'))
-        # --------------------------------------------------
 
         with st.expander(f"Editing Project #{search_no}", expanded=True):
             updated_vals = {}
@@ -206,7 +203,7 @@ with tab2:
             comp_date_str = ""
             
             for i, col_name in enumerate(DESIRED_ORDER):
-                if col_name == "Age Category": continue # Handled by calculation
+                if col_name == "Age Category": continue 
                 
                 cur_val = str(row.get(col_name, ""))
                 if cur_val.lower() == 'nan': cur_val = ""
@@ -222,7 +219,7 @@ with tab2:
                         updated_vals[col_name] = comp_date_str
                     
                     elif col_name in ["Status", "Open or closed"]:
-                        updated_vals[col_name] = cur_val # Calculation placeholder
+                        updated_vals[col_name] = cur_val 
                     
                     elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                         opts = [""] + sorted(list(set(DROPDOWN_DATA[col_name] + [cur_val])))
@@ -243,7 +240,6 @@ with tab2:
             if st.button("💾 Save Changes"):
                 for k, v in updated_vals.items(): 
                     df.at[idx, k] = v
-                # Recalculate age immediately on save
                 cat, days = calculate_age_category(df.loc[idx])
                 df.at[idx, 'Age Category'], df.at[idx, 'Project Age (Open and Closed)'] = cat, days
                 save_db(df)
@@ -252,7 +248,7 @@ with tab2:
     else:
         st.info("Enter a valid Pre-Prod number to see the analysis and edit.")
 
-# --- 6. DATA TABLE & 7. CLIENT AGE ANALYSIS (UNCHANGED) ---
+# --- 6. DATA TABLE & 7. CLIENT AGE ANALYSIS ---
 st.divider()
 if st.checkbox("Show Project Data Table", value=True):
     search_query = st.text_input("🔍 Global Search").lower()
