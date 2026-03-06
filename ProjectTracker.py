@@ -187,8 +187,12 @@ with tab1:
                     new_data[col_name] = st.date_input(col_name, value=datetime.now()).strftime('%d/%m/%Y')
                 elif col_name == 'Completion date':
                     # Calendar for Completion Date in New Job form
-                    new_data[col_name] = st.date_input(col_name, value=None).strftime('%d/%m/%Y') if st.date_input(col_name, value=None) else ""
+                    res_date = st.date_input(col_name, value=None)
+                    new_data[col_name] = res_date.strftime('%d/%m/%Y') if res_date else ""
                 elif col_name == 'Status':
+                    st.text_input(col_name, value="Open", disabled=True)
+                    new_data[col_name] = "Open"
+                elif col_name == 'Open or closed':
                     st.text_input(col_name, value="Open", disabled=True)
                     new_data[col_name] = "Open"
                 elif col_name in ['Client', 'Sales Rep']:
@@ -201,6 +205,8 @@ with tab1:
                     new_data[col_name] = st.selectbox(col_name, options=opts, index=idx)
                 elif col_name == "Order Qty x1000":
                     new_data[col_name] = st.number_input(col_name, min_value=0, step=1)
+                elif col_name == "Product Code":
+                    new_data[col_name] = st.text_input(col_name, value=val).upper()
                 else:
                     new_data[col_name] = st.text_input(col_name, value=val)
 
@@ -248,20 +254,34 @@ with tab2:
                     if col_name == "Status":
                         st.text_input(col_name, value=cur_val, disabled=True)
                         updated_vals[col_name] = cur_val
+                    elif col_name == "Open or closed":
+                        # This will be updated automatically based on Completion date
+                        updated_vals[col_name] = cur_val # Placeholder
                     elif col_name == 'Completion date':
-                        # Calendar for Completion Date in Edit form
                         try:
-                            default_date = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else datetime.now().date()
+                            default_date = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
                         except:
-                            default_date = datetime.now().date()
+                            default_date = None
                         selected_date = st.date_input(f"Edit {col_name}", value=default_date)
-                        updated_vals[col_name] = selected_date.strftime('%d/%m/%Y')
+                        updated_vals[col_name] = selected_date.strftime('%d/%m/%Y') if selected_date else ""
+                        
+                        # Logic: If date is entered, set 'Open or closed' to Closed
+                        if updated_vals[col_name]:
+                            updated_vals['Open or closed'] = "Closed"
+                        else:
+                            updated_vals['Open or closed'] = "Open"
+                            
                     elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                         opts = [""] + sorted(list(set(DROPDOWN_DATA[col_name] + [cur_val])))
                         updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=opts.index(cur_val) if cur_val in opts else 0)
+                    elif col_name == "Product Code":
+                        updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val).upper()
                     else:
                         updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val)
             
+            # Display status feedback in the UI for clarity
+            st.info(f"Project Status will be saved as: **{updated_vals.get('Open or closed')}**")
+
             if st.button("💾 Save Changes"):
                 for k, v in updated_vals.items(): df.at[idx, k] = v
                 cat, days = calculate_age_category(df.loc[idx])
