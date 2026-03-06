@@ -10,7 +10,7 @@ try:
 except ImportError:
     st.error("Missing dependency: Please run 'pip install xlsxwriter' in your terminal to enable Excel exports.")
 
-st.set_page_config(page_title="Project Master Pro", layout="wide")
+st.set_page_config(page_title="Project Tracker", layout="wide")
 pd.set_option("styler.render.max_elements", 1000000)
 
 # --- 2. FILE PATHS ---
