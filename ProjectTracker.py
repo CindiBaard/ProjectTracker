@@ -221,6 +221,18 @@ with tab2:
     
     if not match.empty:
         idx, row = match.index[0], match.iloc[0]
+
+        # --- NEW: INDIVIDUAL PRE-PROD AGE ANALYSIS ---
+        st.subheader(f"📊 Age Analysis for Pre-Prod #{search_no}")
+        age_days = row.get('Project Age (Open and Closed)', 0)
+        age_cat = row.get('Age Category', "N/A")
+        
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Current Age", f"{age_days} Days")
+        m2.metric("Category", age_cat)
+        m3.metric("Status", row.get('Open or closed', 'Unknown'))
+        # ---------------------------------------------
+
         with st.expander(f"Editing Project #{search_no}", expanded=True):
             updated_vals = {}
             edit_cols = st.columns(3)
@@ -263,12 +275,11 @@ if st.checkbox("Show Project Data Table", value=True):
         display_df.to_excel(writer, index=False)
     st.download_button("📥 Export Current View to Excel", data=buffer.getvalue(), file_name="Project_Export.xlsx")
 
-    # --- 7. CLIENT AGE ANALYSIS ---
+# --- 7. CLIENT AGE ANALYSIS ---
 st.header("📊 Client Age Analysis (Open Projects)")
 
 if not df.empty:
     # 1. Filter for only Open projects
-    # Note: Ensure your 'Open or closed' column name matches exactly what's in your CSV
     open_projects = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
 
     if not open_projects.empty:
