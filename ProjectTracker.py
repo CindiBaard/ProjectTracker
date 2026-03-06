@@ -237,14 +237,27 @@ with tab2:
             
             st.info(f"Saving as: **{determined_status}**")
 
-            if st.button("💾 Save Changes"):
-                for k, v in updated_vals.items(): 
-                    df.at[idx, k] = v
-                cat, days = calculate_age_category(df.loc[idx])
-                df.at[idx, 'Age Category'], df.at[idx, 'Project Age (Open and Closed)'] = cat, days
-                save_db(df)
-                st.success("Changes Applied!")
-                st.rerun()
+            col_save, col_del = st.columns([1, 1])
+            with col_save:
+                if st.button("💾 Save Changes", use_container_width=True):
+                    for k, v in updated_vals.items(): 
+                        df.at[idx, k] = v
+                    cat, days = calculate_age_category(df.loc[idx])
+                    df.at[idx, 'Age Category'], df.at[idx, 'Project Age (Open and Closed)'] = cat, days
+                    save_db(df)
+                    st.success("Changes Applied!")
+                    st.rerun()
+
+            # --- DELETE FUNCTIONALITY ---
+            with col_del:
+                st.markdown("---")
+                st.warning("🗑️ Danger Zone")
+                confirm_delete = st.checkbox(f"Confirm deletion of Project #{search_no}")
+                if st.button("❌ Permanent Delete", disabled=not confirm_delete, use_container_width=True):
+                    df = df.drop(idx)
+                    save_db(df)
+                    st.success(f"Project #{search_no} has been deleted.")
+                    st.rerun()
     else:
         st.info("Enter a valid Pre-Prod number to see the analysis and edit.")
 
