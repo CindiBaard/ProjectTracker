@@ -101,7 +101,7 @@ df = load_db()
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
     "Orifice": "Orifice.csv", "Diameter": "TubeDia.csv", "Foiling": "Foiling.csv",
-    "Cap_Lid Style": "Cap_Lid style.csv", "Machine": "Machine.csv", "Sales Rep": "Sales Rep.csv",
+    "Cap_Lid Style": "Cap_Lid Style.csv", "Machine": "Machine.csv", "Sales Rep": "Sales Rep.csv",
     "Cap_Lid Material": "Cap_Material.csv", "Cap_Lid Diameter": "Cap_Lid Diameter.csv"
 }
 
