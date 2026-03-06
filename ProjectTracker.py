@@ -262,3 +262,34 @@ if st.checkbox("Show Project Data Table", value=True):
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
         display_df.to_excel(writer, index=False)
     st.download_button("📥 Export Current View to Excel", data=buffer.getvalue(), file_name="Project_Export.xlsx")
+
+    # --- 7. CLIENT AGE ANALYSIS ---
+st.header("📊 Client Age Analysis (Open Projects)")
+
+if not df.empty:
+    # 1. Filter for only Open projects
+    # Note: Ensure your 'Open or closed' column name matches exactly what's in your CSV
+    open_projects = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
+
+    if not open_projects.empty:
+        # 2. Create the Pivot Table
+        age_analysis = open_projects.groupby(['Client', 'Age Category']).size().unstack(fill_value=0)
+
+        # 3. Ensure all categories exist even if count is 0
+        for cat in ["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"]:
+            if cat not in age_analysis.columns:
+                age_analysis[cat] = 0
+
+        # 4. Reorder columns for logical reading
+        age_analysis = age_analysis[["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"]]
+        
+        # 5. Add a Total Column
+        age_analysis['Total Open'] = age_analysis.sum(axis=1)
+        age_analysis = age_analysis.sort_values('Total Open', ascending=False)
+
+        # 6. Display
+        st.dataframe(age_analysis, use_container_width=True)
+    else:
+        st.info("No 'Open' projects found to analyze.")
+else:
+    st.warning("Database is empty.")
