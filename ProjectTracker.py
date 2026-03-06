@@ -160,7 +160,8 @@ with tab1:
                     opts = [""] + DROPDOWN_DATA[col_name]
                     new_data[col_name] = st.selectbox(col_name, options=opts, index=opts.index(val) if val in opts else 0)
                 elif col_name == "Product Code":
-                    new_data[col_name] = st.text_input(col_name, value=val).upper()
+                    temp_code = st.text_input(col_name, value=val)
+                    new_data[col_name] = temp_code.upper() # FORCED UPPERCASE
                 else:
                     new_data[col_name] = st.text_input(col_name, value=val)
 
@@ -226,7 +227,8 @@ with tab2:
                         updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=opts.index(cur_val) if cur_val in opts else 0)
                     
                     elif col_name == "Product Code":
-                        updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val).upper()
+                        edit_code = st.text_input(f"Edit {col_name}", value=cur_val)
+                        updated_vals[col_name] = edit_code.upper() # FORCED UPPERCASE
                     
                     else:
                         updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val)
@@ -264,10 +266,22 @@ with tab2:
 # --- 6. DATA TABLE & 7. CLIENT AGE ANALYSIS ---
 st.divider()
 if st.checkbox("Show Project Data Table", value=True):
-    search_query = st.text_input("🔍 Global Search").lower()
+    # SPECIFIC FILTER ADDED HERE
+    f1, f2 = st.columns(2)
+    with f1:
+        search_query = st.text_input("🔍 Global Search").lower()
+    with f2:
+        prod_filter = st.text_input("📦 Filter by Product Code").upper()
+
     display_df = df.copy()
+    
     if search_query:
         display_df = display_df[display_df.apply(lambda r: r.astype(str).str.contains(search_query, case=False).any(), axis=1)]
+    
+    if prod_filter:
+        if 'Product Code' in display_df.columns:
+            display_df = display_df[display_df['Product Code'].astype(str).str.contains(prod_filter, na=False)]
+
     st.dataframe(display_df, use_container_width=True)
     
     buffer = io.BytesIO()
