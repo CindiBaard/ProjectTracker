@@ -126,7 +126,7 @@ DESIRED_ORDER = [
 ]
 
 # --- 5. INTERFACE ---
-st.title("🚀 Project Master Pro")
+st.title("🚀 Project Tracker")
 
 with st.sidebar:
     st.header("📁 System Check")
