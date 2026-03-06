@@ -48,7 +48,6 @@ def calculate_age_category(row):
         return "Error", 0
 
 def load_db():
-    """Loads the main tracking database and merges artwork status."""
     if not os.path.exists(FILENAME): return pd.DataFrame()
     try:
         df = pd.read_csv(FILENAME, sep=';', encoding='utf-8-sig', quoting=3, on_bad_lines='warn')
@@ -58,19 +57,6 @@ def load_db():
         if 'Pre-Prod No.' in df.columns:
             df['Pre-Prod No.'] = pd.to_numeric(df['Pre-Prod No.'], errors='coerce')
             df = df.dropna(subset=['Pre-Prod No.'])
-
-        # Merge Artwork files if they exist
-        for art_file in [ARTWORK_FILE, DIGITAL_ARTWORK_FILE]:
-            if os.path.exists(art_file):
-                try:
-                    art_df = pd.read_csv(art_file, sep=';', encoding='utf-8-sig', on_bad_lines='skip')
-                    art_df = clean_column_names(art_df)
-                    if 'Pre-Prod No.' in art_df.columns:
-                        art_df['Pre-Prod No.'] = pd.to_numeric(art_df['Pre-Prod No.'], errors='coerce')
-                        df.set_index('Pre-Prod No.', inplace=True)
-                        art_df.set_index('Pre-Prod No.', inplace=True)
-                        df = art_df.combine_first(df).reset_index()
-                except: pass
 
         if 'Date' in df.columns:
             results = df.apply(calculate_age_category, axis=1)
@@ -85,7 +71,6 @@ def save_db(df_to_save):
     df_to_save.to_csv(FILENAME, index=False, sep=';', encoding='utf-8-sig')
 
 def get_options(filename):
-    """Reads individual .csv files for dropdown menus."""
     path = os.path.join(BASE_DIR, filename)
     if os.path.exists(path):
         try:
@@ -95,7 +80,7 @@ def get_options(filename):
         except: return []
     return []
 
-# --- 4. LOAD DATA ---
+# --- 4. DATA LOADING ---
 df = load_db()
 
 DROPDOWN_CONFIG = {
@@ -104,10 +89,7 @@ DROPDOWN_CONFIG = {
     "Cap_Lid Style": "Cap_Lid Style.csv", "Machine": "Machine.csv", "Sales Rep": "Sales Rep.csv",
     "Cap_Lid Material": "Cap_Material.csv", "Cap_Lid Diameter": "Cap_Lid Diameter.csv"
 }
-
 DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
-
-# Dynamic Lists from DB
 DYNAMIC_CLIENTS = sorted(df['Client'].dropna().unique().tolist()) if not df.empty and 'Client' in df.columns else []
 DYNAMIC_SALES = sorted(list(set(df['Sales Rep'].dropna().unique().tolist() + DROPDOWN_DATA.get('Sales Rep', [])))) if not df.empty else []
 
@@ -130,7 +112,7 @@ st.title("🚀 Project Tracker")
 
 tab1, tab2 = st.tabs(["➕ Add New Job", "🔍 Search & Edit"])
 
-# --- TAB 1: ADD NEW JOB ---
+# --- TAB 1: ADD NEW JOB (UNCHANGED) ---
 with tab1:
     if 'selected_combo' not in st.session_state:
         st.session_state.selected_combo = {}
@@ -160,7 +142,6 @@ with tab1:
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
             val = st.session_state.selected_combo.get(col_name, "")
-            
             with cols[i % 3]:
                 if col_name == 'Date':
                     new_data[col_name] = st.date_input(col_name, value=datetime.now()).strftime('%d/%m/%Y')
@@ -168,7 +149,6 @@ with tab1:
                     res_date = st.date_input(col_name, value=None)
                     new_data[col_name] = res_date.strftime('%d/%m/%Y') if res_date else ""
                 elif col_name in ['Status', 'Open or closed']:
-                    # Auto-set based on completion date
                     status_val = "Open" if not new_data.get('Completion date') else "Closed"
                     st.text_input(col_name, value=status_val, disabled=True, key=f"new_{col_name}")
                     new_data[col_name] = status_val
@@ -188,11 +168,9 @@ with tab1:
             if not new_data.get("Client") or not new_data.get("Description"):
                 st.error("Client and Description are required.")
             else:
-                # Final check on status before saving
                 final_status = "Closed" if new_data.get('Completion date') else "Open"
                 new_data['Status'] = final_status
                 new_data['Open or closed'] = final_status
-                
                 new_row = pd.DataFrame([new_data])
                 cat, days = calculate_age_category(new_data)
                 new_row['Age Category'], new_row['Project Age (Open and Closed)'] = cat, days
@@ -202,22 +180,34 @@ with tab1:
                 st.success("Project Saved!")
                 st.rerun()
 
-# --- TAB 2: SEARCH & EDIT ---
+# --- TAB 2: SEARCH & EDIT (RESTORED AGE ANALYSIS) ---
 with tab2:
     search_no = st.number_input("Enter Pre-Prod No.", min_value=1, step=1)
     match = df[df['Pre-Prod No.'] == search_no]
     
     if not match.empty:
         idx, row = match.index[0], match.iloc[0]
+
+        # --- RESTORED: INDIVIDUAL PRE-PROD AGE ANALYSIS ---
+        st.subheader(f"📊 Age Analysis for Pre-Prod #{search_no}")
+        age_days = row.get('Project Age (Open and Closed)', 0)
+        age_cat = row.get('Age Category', "N/A")
+        status_color = "green" if row.get('Open or closed') == "Closed" else "orange"
         
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Current Project Age", f"{age_days} Days")
+        m2.metric("Age Category", age_cat)
+        m3.metric("Project Status", row.get('Open or closed', 'Open'))
+        # --------------------------------------------------
+
         with st.expander(f"Editing Project #{search_no}", expanded=True):
             updated_vals = {}
             edit_cols = st.columns(3)
-            
-            # Temporary storage to handle cross-field logic
             comp_date_str = ""
             
             for i, col_name in enumerate(DESIRED_ORDER):
+                if col_name == "Age Category": continue # Handled by calculation
+                
                 cur_val = str(row.get(col_name, ""))
                 if cur_val.lower() == 'nan': cur_val = ""
                 
@@ -232,8 +222,7 @@ with tab2:
                         updated_vals[col_name] = comp_date_str
                     
                     elif col_name in ["Status", "Open or closed"]:
-                        # We will calculate this after the loop or based on current comp_date_str
-                        updated_vals[col_name] = cur_val # Placeholder
+                        updated_vals[col_name] = cur_val # Calculation placeholder
                     
                     elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                         opts = [""] + sorted(list(set(DROPDOWN_DATA[col_name] + [cur_val])))
@@ -245,23 +234,25 @@ with tab2:
                     else:
                         updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val)
 
-            # --- Apply Automated Status Logic ---
             determined_status = "Closed" if comp_date_str != "" else "Open"
             updated_vals["Status"] = determined_status
             updated_vals["Open or closed"] = determined_status
             
-            st.write(f"**Current Auto-Status:** :blue[{determined_status}] (based on Completion Date)")
+            st.info(f"Saving as: **{determined_status}**")
 
             if st.button("💾 Save Changes"):
                 for k, v in updated_vals.items(): 
                     df.at[idx, k] = v
+                # Recalculate age immediately on save
                 cat, days = calculate_age_category(df.loc[idx])
                 df.at[idx, 'Age Category'], df.at[idx, 'Project Age (Open and Closed)'] = cat, days
                 save_db(df)
                 st.success("Changes Applied!")
                 st.rerun()
+    else:
+        st.info("Enter a valid Pre-Prod number to see the analysis and edit.")
 
-# --- 6. DATA TABLE ---
+# --- 6. DATA TABLE & 7. CLIENT AGE ANALYSIS (UNCHANGED) ---
 st.divider()
 if st.checkbox("Show Project Data Table", value=True):
     search_query = st.text_input("🔍 Global Search").lower()
@@ -275,7 +266,6 @@ if st.checkbox("Show Project Data Table", value=True):
         display_df.to_excel(writer, index=False)
     st.download_button("📥 Export Current View to Excel", data=buffer.getvalue(), file_name="Project_Export.xlsx")
 
-# --- 7. CLIENT AGE ANALYSIS ---
 st.header("📊 Client Age Analysis (Open Projects)")
 if not df.empty:
     open_projects = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
