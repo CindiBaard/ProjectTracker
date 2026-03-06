@@ -128,12 +128,6 @@ DESIRED_ORDER = [
 # --- 5. INTERFACE ---
 st.title("🚀 Project Tracker")
 
-with st.sidebar:
-    st.header("📁 System Check")
-    for f, lbl in [(FILENAME, "Main DB"), (COMBINATIONS_FILE, "Tube/Cap DB")]:
-        if os.path.exists(f): st.success(f"✅ {lbl} Found")
-        else: st.error(f"❌ {lbl} Missing")
-
 tab1, tab2 = st.tabs(["➕ Add New Job", "🔍 Search & Edit"])
 
 # --- TAB 1: ADD NEW JOB ---
@@ -146,28 +140,15 @@ with tab1:
             try:
                 combo_df = pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig')
                 combo_df = clean_column_names(combo_df)
-                
                 search = st.text_input("Filter Combinations (e.g. 35mm Flip Top)")
                 if search:
                     mask = combo_df.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)
                     combo_df = combo_df[mask]
-                
-                event = st.dataframe(
-                    combo_df, 
-                    use_container_width=True, 
-                    hide_index=True, 
-                    on_select="rerun", 
-                    selection_mode="single-row",
-                    key="combo_table"
-                )
-                
+                event = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key="combo_table")
                 if event.selection.rows:
                     selected_row = combo_df.iloc[event.selection.rows[0]].to_dict()
-                    # Clean the data (convert NaNs to empty strings)
                     st.session_state.selected_combo = {k: (str(v) if str(v).lower() != 'nan' else "") for k, v in selected_row.items()}
-                    st.success(f"Loaded: {st.session_state.selected_combo.get('Diameter')}mm combination")
-            except Exception as e:
-                st.error(f"Lookup Error: {e}")
+            except: pass
 
     next_no = int(df['Pre-Prod No.'].max() + 1) if not df.empty else 1
     
@@ -178,33 +159,26 @@ with tab1:
         
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
-            
-            # Check for autofill value from lookup
             val = st.session_state.selected_combo.get(col_name, "")
             
             with cols[i % 3]:
                 if col_name == 'Date':
                     new_data[col_name] = st.date_input(col_name, value=datetime.now()).strftime('%d/%m/%Y')
                 elif col_name == 'Completion date':
-                    # Calendar for Completion Date in New Job form
                     res_date = st.date_input(col_name, value=None)
                     new_data[col_name] = res_date.strftime('%d/%m/%Y') if res_date else ""
-                elif col_name == 'Status':
-                    st.text_input(col_name, value="Open", disabled=True)
-                    new_data[col_name] = "Open"
-                elif col_name == 'Open or closed':
-                    st.text_input(col_name, value="Open", disabled=True)
-                    new_data[col_name] = "Open"
+                elif col_name in ['Status', 'Open or closed']:
+                    # Auto-set based on completion date
+                    status_val = "Open" if not new_data.get('Completion date') else "Closed"
+                    st.text_input(col_name, value=status_val, disabled=True, key=f"new_{col_name}")
+                    new_data[col_name] = status_val
                 elif col_name in ['Client', 'Sales Rep']:
                     opts = ["", "Add New..."] + (DYNAMIC_CLIENTS if col_name == 'Client' else DYNAMIC_SALES)
                     sel = st.selectbox(col_name, options=opts)
                     new_data[col_name] = st.text_input(f"New {col_name}") if sel == "Add New..." else sel
                 elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                     opts = [""] + DROPDOWN_DATA[col_name]
-                    idx = opts.index(val) if val in opts else 0
-                    new_data[col_name] = st.selectbox(col_name, options=opts, index=idx)
-                elif col_name == "Order Qty x1000":
-                    new_data[col_name] = st.number_input(col_name, min_value=0, step=1)
+                    new_data[col_name] = st.selectbox(col_name, options=opts, index=opts.index(val) if val in opts else 0)
                 elif col_name == "Product Code":
                     new_data[col_name] = st.text_input(col_name, value=val).upper()
                 else:
@@ -214,12 +188,17 @@ with tab1:
             if not new_data.get("Client") or not new_data.get("Description"):
                 st.error("Client and Description are required.")
             else:
+                # Final check on status before saving
+                final_status = "Closed" if new_data.get('Completion date') else "Open"
+                new_data['Status'] = final_status
+                new_data['Open or closed'] = final_status
+                
                 new_row = pd.DataFrame([new_data])
                 cat, days = calculate_age_category(new_data)
                 new_row['Age Category'], new_row['Project Age (Open and Closed)'] = cat, days
                 df = pd.concat([df, new_row], ignore_index=True)
                 save_db(df)
-                st.session_state.selected_combo = {} # Clear for next entry
+                st.session_state.selected_combo = {}
                 st.success("Project Saved!")
                 st.rerun()
 
@@ -230,60 +209,52 @@ with tab2:
     
     if not match.empty:
         idx, row = match.index[0], match.iloc[0]
-
-        # --- NEW: INDIVIDUAL PRE-PROD AGE ANALYSIS ---
-        st.subheader(f"📊 Age Analysis for Pre-Prod #{search_no}")
-        age_days = row.get('Project Age (Open and Closed)', 0)
-        age_cat = row.get('Age Category', "N/A")
         
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Current Age", f"{age_days} Days")
-        m2.metric("Category", age_cat)
-        m3.metric("Status", row.get('Open or closed', 'Unknown'))
-        # ---------------------------------------------
-
         with st.expander(f"Editing Project #{search_no}", expanded=True):
             updated_vals = {}
             edit_cols = st.columns(3)
+            
+            # Temporary storage to handle cross-field logic
+            comp_date_str = ""
             
             for i, col_name in enumerate(DESIRED_ORDER):
                 cur_val = str(row.get(col_name, ""))
                 if cur_val.lower() == 'nan': cur_val = ""
                 
                 with edit_cols[i % 3]:
-                    if col_name == "Status":
-                        st.text_input(col_name, value=cur_val, disabled=True)
-                        updated_vals[col_name] = cur_val
-                    elif col_name == "Open or closed":
-                        # This will be updated automatically based on Completion date
-                        updated_vals[col_name] = cur_val # Placeholder
-                    elif col_name == 'Completion date':
+                    if col_name == 'Completion date':
                         try:
                             default_date = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
                         except:
                             default_date = None
                         selected_date = st.date_input(f"Edit {col_name}", value=default_date)
-                        updated_vals[col_name] = selected_date.strftime('%d/%m/%Y') if selected_date else ""
-                        
-                        # Logic: If date is entered, set 'Open or closed' to Closed
-                        if updated_vals[col_name]:
-                            updated_vals['Open or closed'] = "Closed"
-                        else:
-                            updated_vals['Open or closed'] = "Open"
-                            
+                        comp_date_str = selected_date.strftime('%d/%m/%Y') if selected_date else ""
+                        updated_vals[col_name] = comp_date_str
+                    
+                    elif col_name in ["Status", "Open or closed"]:
+                        # We will calculate this after the loop or based on current comp_date_str
+                        updated_vals[col_name] = cur_val # Placeholder
+                    
                     elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                         opts = [""] + sorted(list(set(DROPDOWN_DATA[col_name] + [cur_val])))
                         updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=opts.index(cur_val) if cur_val in opts else 0)
+                    
                     elif col_name == "Product Code":
                         updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val).upper()
+                    
                     else:
                         updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val)
+
+            # --- Apply Automated Status Logic ---
+            determined_status = "Closed" if comp_date_str != "" else "Open"
+            updated_vals["Status"] = determined_status
+            updated_vals["Open or closed"] = determined_status
             
-            # Display status feedback in the UI for clarity
-            st.info(f"Project Status will be saved as: **{updated_vals.get('Open or closed')}**")
+            st.write(f"**Current Auto-Status:** :blue[{determined_status}] (based on Completion Date)")
 
             if st.button("💾 Save Changes"):
-                for k, v in updated_vals.items(): df.at[idx, k] = v
+                for k, v in updated_vals.items(): 
+                    df.at[idx, k] = v
                 cat, days = calculate_age_category(df.loc[idx])
                 df.at[idx, 'Age Category'], df.at[idx, 'Project Age (Open and Closed)'] = cat, days
                 save_db(df)
@@ -297,10 +268,8 @@ if st.checkbox("Show Project Data Table", value=True):
     display_df = df.copy()
     if search_query:
         display_df = display_df[display_df.apply(lambda r: r.astype(str).str.contains(search_query, case=False).any(), axis=1)]
-    
     st.dataframe(display_df, use_container_width=True)
     
-    # Export
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
         display_df.to_excel(writer, index=False)
@@ -308,30 +277,12 @@ if st.checkbox("Show Project Data Table", value=True):
 
 # --- 7. CLIENT AGE ANALYSIS ---
 st.header("📊 Client Age Analysis (Open Projects)")
-
 if not df.empty:
-    # 1. Filter for only Open projects
     open_projects = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
-
     if not open_projects.empty:
-        # 2. Create the Pivot Table
         age_analysis = open_projects.groupby(['Client', 'Age Category']).size().unstack(fill_value=0)
-
-        # 3. Ensure all categories exist even if count is 0
         for cat in ["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"]:
-            if cat not in age_analysis.columns:
-                age_analysis[cat] = 0
-
-        # 4. Reorder columns for logical reading
+            if cat not in age_analysis.columns: age_analysis[cat] = 0
         age_analysis = age_analysis[["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"]]
-        
-        # 5. Add a Total Column
         age_analysis['Total Open'] = age_analysis.sum(axis=1)
-        age_analysis = age_analysis.sort_values('Total Open', ascending=False)
-
-        # 6. Display
-        st.dataframe(age_analysis, use_container_width=True)
-    else:
-        st.info("No 'Open' projects found to analyze.")
-else:
-    st.warning("Database is empty.")
+        st.dataframe(age_analysis.sort_values('Total Open', ascending=False), use_container_width=True)
