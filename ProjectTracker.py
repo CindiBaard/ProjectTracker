@@ -134,7 +134,7 @@ def get_combination_options():
     if os.path.exists(COMBINATIONS_FILE):
         try:
             comb_df = pd.read_csv(COMBINATIONS_FILE, encoding='latin1', on_bad_lines='skip')
-            return sorted(comb_df.apply(lambda x: ' | '.join(x.astype(str)), axis=1).tolist())
+            return sorted(comb_df.apply(lambda x: ' | '.join(x.astype(str).str.strip()), axis=1).tolist())
         except: return []
     return []
 
@@ -262,8 +262,8 @@ if tab_nav == "🔍 Search & Edit":
 
 # --- TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
-    # Quick select outside the form to trigger re-renders for auto-fill
-    selected_comb = st.selectbox("Quick Select: Tube & Cap Combination", options=[""] + COMBINATION_LIST)
+    # Selection outside form triggers a rerun, allowing the form logic to catch the new 'val'
+    selected_comb = st.selectbox("Quick Select: Tube & Cap Combination", options=[""] + COMBINATION_LIST, key="new_job_comb_select")
     
     with st.form("new_job_form", clear_on_submit=True):
         st.subheader("Register Project")
@@ -277,7 +277,7 @@ elif tab_nav == "➕ Add New Job":
             if col_name == "Age Category": continue
             val = st.session_state.form_data.get(col_name, "")
             
-            # Apply Combination Auto-fill
+            # Apply Combination Auto-fill logic before creating widgets
             if selected_comb:
                 parts = [p.strip() for p in selected_comb.split('|')]
                 if col_name == "Diameter" and len(parts) > 0: val = parts[0]
@@ -292,11 +292,12 @@ elif tab_nav == "➕ Add New Job":
                     new_data[col_name] = res.strftime('%d/%m/%Y') if res else ""
                 elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                     opts = [""] + DROPDOWN_DATA[col_name]
-                    # Ensure auto-filled value is in options list
+                    # Dynamically add the auto-filled value to options if not present
                     if val and val not in opts: opts.append(val)
                     new_data[col_name] = st.selectbox(col_name, options=opts, index=opts.index(val) if val in opts else 0)
                 elif col_name in ['Status', 'Open or closed']:
-                    status = "Open" if not new_data.get('Completion date') else "Closed"
+                    # Auto-calculate status based on Completion date presence
+                    status = "Open"
                     new_data[col_name] = status
                     st.text_input(col_name, value=status, disabled=True)
                 else:
@@ -306,6 +307,12 @@ elif tab_nav == "➕ Add New Job":
             existing_ids = df['Pre-Prod No.'].tolist()
             final_id = get_next_available_id(new_id_input, existing_ids)
             new_data['Pre-Prod No.'] = final_id
+            
+            # Recalculate status one last time for the final save
+            final_status = "Closed" if new_data.get('Completion date') else "Open"
+            new_data['Status'] = final_status
+            new_data['Open or closed'] = final_status
+            
             cat, days = calculate_age_category(new_data)
             new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
             df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
