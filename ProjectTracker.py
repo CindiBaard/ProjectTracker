@@ -5,11 +5,11 @@ from datetime import datetime
 import io
 import re
 
-# --- 1. INITIAL SETUP & DEPENDENCIES ---
+# --- 1. INITIAL SETUP ---
 try:
     import xlsxwriter
 except ImportError:
-    st.error("Missing dependency: Please run 'pip install xlsxwriter' in your terminal to enable Excel exports.")
+    st.error("Missing dependency: Please run 'pip install xlsxwriter' to enable Excel exports.")
 
 st.set_page_config(page_title="Project Tracker", layout="wide")
 pd.set_option("styler.render.max_elements", 1000000)
@@ -92,13 +92,11 @@ def get_options(filename):
         except: return []
     return []
 
-# --- 4. DATA LOADING & INITIALIZATION ---
+# --- 4. DATA LOADING ---
 df = load_db()
 
 if 'form_data' not in st.session_state:
     st.session_state.form_data = {}
-if 'active_tab' not in st.session_state:
-    st.session_state.active_tab = "🔍 Search & Edit"
 
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
@@ -113,7 +111,7 @@ DYNAMIC_SALES = sorted(list(set(df['Sales Rep'].dropna().unique().tolist() + DRO
 DESIRED_ORDER = [
     "Date", "Age Category", "Client", "Description", "Diameter", "Project Description", "New Mould_Client or Product", 
     "Product Code", "Machine", "Sales Rep", "Category", "Status", "Open or closed", 
-    "Completion date", "Material", "Product Material Colour (tube,jar etc.)", 
+    "Completion date", "Material", "Product Material Colour (tube, jar etc.)", 
     "Artwork Required", "Artwork Received", "Order Qty x1000", "Unit Order No", 
     "Length", "Cap_Lid Style", "Cap_Lid Material", "Cap_Lid Diameter", "Orifice", "Other Cap_Lid Info", 
     "Tube Shoulder colour", "Dust Controlled Area", "Date Sent on Proof", "Size of Eyemark", 
@@ -125,42 +123,33 @@ DESIRED_ORDER = [
 ]
 
 # --- 5. INTERFACE ---
-st.title("🚀 Project Tracker (Smart Cloning Enabled)")
+st.title("🚀 Project Tracker")
 
-tab_labels = ["🔍 Search & Edit", "➕ Add New Job"]
-active_tab = st.radio("Navigation", tab_labels, horizontal=True, label_visibility="collapsed")
+tab_nav = st.radio("Navigation", ["🔍 Search & Edit", "➕ Add New Job"], horizontal=True)
 
-# --- TAB: SEARCH & EDIT (Handled first for Cloning logic) ---
-if active_tab == "🔍 Search & Edit":
+# --- TAB: SEARCH & EDIT ---
+if tab_nav == "🔍 Search & Edit":
     search_no = st.text_input("Enter Pre-Prod No. (e.g., 9143 or 9143_1)").strip()
     match = df[df['Pre-Prod No.'] == search_no]
     
     if search_no and not match.empty:
         idx, row = match.index[0], match.iloc[0]
         
-        # --- CLONING LOGIC ---
+        # Cloning Logic
         if st.button("👯 Clone as Repeat Order", use_container_width=True):
             base_no = search_no.split('_')[0]
-            existing_repeats = df[df['Pre-Prod No.'].str.startswith(f"{base_no}_")]
-            next_suffix = 1
-            if not existing_repeats.empty:
-                suffixes = [int(s.split('_')[1]) for s in existing_repeats['Pre-Prod No.'] if '_' in s]
-                if suffixes: next_suffix = max(suffixes) + 1
+            existing = df[df['Pre-Prod No.'].str.startswith(f"{base_no}_")]
+            suffixes = [int(s.split('_')[1]) for s in existing['Pre-Prod No.'] if '_' in s]
+            next_s = max(suffixes) + 1 if suffixes else 1
             
-            # Prepare data for Add New Job tab
             new_clone = row.to_dict()
-            new_clone['Pre-Prod No.'] = f"{base_no}_{next_suffix}"
+            new_clone['Pre-Prod No.'] = f"{base_no}_{next_s}"
             new_clone['Date'] = datetime.now().strftime('%d/%m/%Y')
             new_clone['Completion date'] = ""
             st.session_state.form_data = new_clone
-            st.success(f"Ready to clone as {base_no}_{next_suffix}! Switch to 'Add New Job' tab.")
+            st.success(f"Clone {base_no}_{next_s} ready in 'Add New Job' tab!")
 
-        st.subheader(f"📊 Analysis for #{search_no}")
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Project Age", f"{row.get('Project Age (Open and Closed)', 0)} Days")
-        m2.metric("Category", row.get('Age Category', "N/A"))
-        m3.metric("Status", row.get('Open or closed', 'Open'))
-
+        # Edit Form
         with st.expander("Edit Details", expanded=True):
             updated_vals = {}
             edit_cols = st.columns(3)
@@ -183,23 +172,28 @@ if active_tab == "🔍 Search & Edit":
             updated_vals["Status"] = "Closed" if updated_vals.get("Completion date") else "Open"
             updated_vals["Open or closed"] = updated_vals["Status"]
 
-            if st.button("💾 Update Project", use_container_width=True):
+            if st.button("💾 Update Project"):
                 for k, v in updated_vals.items(): df.at[idx, k] = v
                 save_db(df)
                 st.success("Updated!")
                 st.rerun()
 
 # --- TAB: ADD NEW JOB ---
-elif active_tab == "➕ Add New Job":
-    # 1. COMBINATION LOOKUP
+elif tab_nav == "➕ Add New Job":
     if os.path.exists(COMBINATIONS_FILE):
         with st.expander("🔍 Tube & Cap Combination Lookup"):
             combo_df = clean_column_names(pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig'))
             s = st.text_input("Filter Combinations")
             if s: combo_df = combo_df[combo_df.apply(lambda r: r.astype(str).str.contains(s, case=False).any(), axis=1)]
+            
+            # FIXED SELECTION LOGIC HERE
             ev = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key="lookup")
-            if ev.selection.rows:
-                st.session_state.form_data = {k: (str(v) if str(v).lower() != 'nan' else "") for k, v in combo_df.iloc[ev.selection.rows[0]].to_dict()}
+            
+            # Use .selection['rows'] to get index
+            if ev.selection and ev.selection['rows']:
+                selected_idx = ev.selection['rows'][0]
+                selected_row_dict = combo_df.iloc[selected_idx].to_dict()
+                st.session_state.form_data = {k: (str(v) if str(v).lower() != 'nan' else "") for k, v in selected_row_dict.items()}
 
     def get_next_no(df):
         if df.empty: return "10001"
@@ -207,7 +201,6 @@ elif active_tab == "➕ Add New Job":
         return str(max(nums) + 1) if nums else "10001"
 
     with st.form("new_job"):
-        st.subheader("Project Registration")
         default_id = st.session_state.form_data.get('Pre-Prod No.', get_next_no(df))
         new_id = st.text_input("Pre-Prod No.", value=default_id)
         new_data = {'Pre-Prod No.': new_id}
@@ -222,27 +215,24 @@ elif active_tab == "➕ Add New Job":
                 elif col_name == 'Completion date':
                     res = st.date_input(col_name, value=None)
                     new_data[col_name] = res.strftime('%d/%m/%Y') if res else ""
-                elif col_name in ['Status', 'Open or closed']:
-                    new_data[col_name] = "Open" if not new_data.get('Completion date') else "Closed"
-                    st.text_input(col_name, value=new_data[col_name], disabled=True)
                 elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                     opts = [""] + DROPDOWN_DATA[col_name]
                     if val and val not in opts: opts.append(val)
                     new_data[col_name] = st.selectbox(col_name, options=opts, index=opts.index(val) if val in opts else 0)
+                elif col_name in ['Status', 'Open or closed']:
+                    new_data[col_name] = "Open" if not new_data.get('Completion date') else "Closed"
+                    st.text_input(col_name, value=new_data[col_name], disabled=True)
                 else:
                     new_data[col_name] = st.text_input(col_name, value=val)
 
         if st.form_submit_button("✅ Save Project"):
-            if not new_data.get("Client") or not new_data.get("Description"):
-                st.error("Client/Description required.")
-            else:
-                cat, days = calculate_age_category(new_data)
-                new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
-                df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
-                save_db(df)
-                st.session_state.form_data = {}
-                st.success("Saved!")
-                st.rerun()
+            cat, days = calculate_age_category(new_data)
+            new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
+            df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
+            save_db(df)
+            st.session_state.form_data = {}
+            st.success("Saved!")
+            st.rerun()
 
 # --- 6. DATA TABLE ---
 st.divider()
