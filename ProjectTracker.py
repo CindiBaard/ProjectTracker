@@ -17,7 +17,7 @@ pd.set_option("styler.render.max_elements", 1000000)
 # --- 2. FILE PATHS ---
 BASE_DIR = os.getcwd() 
 FILENAME = os.path.join(BASE_DIR, "ProjectTracker_Combined.csv")
-TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
+TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTracker_adj.csv")
 DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
 COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 
