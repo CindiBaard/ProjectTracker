@@ -46,6 +46,29 @@ def clean_key(val):
     s_val = str(val).strip()
     return s_val[:-2] if s_val.endswith('.0') else s_val
 
+def get_next_available_id(requested_id, existing_ids):
+    """Checks if an ID exists and returns the next available underscore version."""
+    requested_id = str(requested_id).strip()
+    if requested_id not in existing_ids:
+        return requested_id
+    
+    # Extract base (e.g., '9143' from '9143_1')
+    base_id = requested_id.split('_')[0]
+    
+    # Look for all variations of this base ID
+    pattern = re.compile(rf"^{re.escape(base_id)}(_(\d+))?$")
+    suffixes = []
+    for eid in existing_ids:
+        m = pattern.match(str(eid))
+        if m:
+            if m.group(2):
+                suffixes.append(int(m.group(2)))
+            else:
+                suffixes.append(0) # The original base ID (no underscore)
+    
+    next_s = max(suffixes) + 1 if suffixes else 1
+    return f"{base_id}_{next_s}"
+
 def combine_digital_and_tracker(digital_path, tracker_path, output_path):
     if not os.path.exists(digital_path) or not os.path.exists(tracker_path): return None
     try:
@@ -127,7 +150,7 @@ DESIRED_ORDER = [
     "Blowmould trial requested", "Blowmould trial received", "Comments"
 ]
 
-# --- 5. INTERFACE: STATUS DASHBOARD ---
+# --- 5. INTERFACE ---
 st.title("🚀 Project Management Dashboard")
 
 if not df.empty:
@@ -144,7 +167,6 @@ if not df.empty:
 
 st.divider()
 
-# Navigation logic fix: Added key and manual trigger
 tab_nav = st.radio("Navigation", ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis"], 
                    index=["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis"].index(st.session_state.active_tab),
                    key="nav_radio", horizontal=True)
@@ -161,27 +183,17 @@ if tab_nav == "🔍 Search & Edit":
         c1, c2 = st.columns(2)
         with c1:
             if st.button("👯 Clone as Repeat Order", use_container_width=True):
-                # 1. Calculate next suffix
-                base_no = search_no.split('_')[0]
-                existing = df[df['Pre-Prod No.'].str.startswith(f"{base_no}_")]
+                # Using the unique ID helper for cloning
+                existing_ids = df['Pre-Prod No.'].tolist()
+                new_id = get_next_available_id(search_no, existing_ids)
                 
-                suffixes = []
-                for s in existing['Pre-Prod No.']:
-                    if '_' in s:
-                        try: suffixes.append(int(s.split('_')[1]))
-                        except: pass
-                
-                next_s = max(suffixes) + 1 if suffixes else 1
-                
-                # 2. Prep clone data
                 new_clone = row.to_dict()
-                new_clone['Pre-Prod No.'] = f"{base_no}_{next_s}"
+                new_clone['Pre-Prod No.'] = new_id
                 new_clone['Date'] = datetime.now().strftime('%d/%m/%Y')
                 new_clone['Completion date'] = ""
                 new_clone['Status'] = "Open"
                 new_clone['Open or closed'] = "Open"
                 
-                # 3. SET STATE AND REDIRECT
                 st.session_state.form_data = new_clone
                 st.session_state.active_tab = "➕ Add New Job"
                 st.rerun()
@@ -204,108 +216,3 @@ if tab_nav == "🔍 Search & Edit":
                 with edit_cols[i % 3]:
                     if col_name == 'Completion date':
                         try: d = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
-                        except: d = None
-                        sel_d = st.date_input(f"Edit {col_name}", value=d)
-                        updated_vals[col_name] = sel_d.strftime('%d/%m/%Y') if sel_d else ""
-                    elif col_name in ["Status", "Open or closed"]: continue
-                    elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
-                        opts = [""] + sorted(list(set(DROPDOWN_DATA[col_name] + [cur_val])))
-                        updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=opts.index(cur_val))
-                    else:
-                        updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val)
-            
-            updated_vals["Status"] = "Closed" if updated_vals.get("Completion date") else "Open"
-            updated_vals["Open or closed"] = updated_vals["Status"]
-
-            if st.button("💾 Save Changes"):
-                for k, v in updated_vals.items(): df.at[idx, k] = v
-                save_db(df)
-                st.success("Updated!")
-                st.rerun()
-
-# --- TAB: ADD NEW JOB ---
-elif tab_nav == "➕ Add New Job":
-    # Form initialization
-    with st.expander("🔍 Tube & Cap Combination Lookup"):
-        if os.path.exists(COMBINATIONS_FILE):
-            combo_df = clean_column_names(pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig'))
-            s = st.text_input("Filter Combinations")
-            if s: combo_df = combo_df[combo_df.apply(lambda r: r.astype(str).str.contains(s, case=False).any(), axis=1)]
-            ev = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key="lookup")
-            if ev.selection and ev.selection['rows']:
-                selected_row = combo_df.iloc[ev.selection['rows'][0]].to_dict()
-                st.session_state.form_data = {k: (str(v) if str(v).lower() != 'nan' else "") for k, v in selected_row.items()}
-
-    def get_next_no(df):
-        if df.empty: return "10001"
-        nums = [int(re.match(r"(\d+)", str(i)).group(1)) for i in df['Pre-Prod No.'].tolist() if re.match(r"(\d+)", str(i))]
-        return str(max(nums) + 1) if nums else "10001"
-
-    with st.form("new_job_form", clear_on_submit=True):
-        st.subheader("Register New / Cloned Project")
-        default_id = st.session_state.form_data.get('Pre-Prod No.', get_next_no(df))
-        new_id = st.text_input("Pre-Prod No.", value=default_id)
-        
-        new_data = {'Pre-Prod No.': new_id}
-        cols = st.columns(3)
-        for i, col_name in enumerate(DESIRED_ORDER):
-            if col_name == "Age Category": continue
-            val = st.session_state.form_data.get(col_name, "")
-            
-            with cols[i % 3]:
-                if col_name == 'Date':
-                    # If cloned, use current date
-                    new_data[col_name] = st.date_input(col_name, value=datetime.now()).strftime('%d/%m/%Y')
-                elif col_name == 'Completion date':
-                    res = st.date_input(col_name, value=None)
-                    new_data[col_name] = res.strftime('%d/%m/%Y') if res else ""
-                elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
-                    opts = [""] + DROPDOWN_DATA[col_name]
-                    if val and val not in opts: opts.append(val)
-                    idx = opts.index(val) if val in opts else 0
-                    new_data[col_name] = st.selectbox(col_name, options=opts, index=idx)
-                elif col_name in ['Status', 'Open or closed']:
-                    status = "Open" if not new_data.get('Completion date') else "Closed"
-                    new_data[col_name] = status
-                    st.text_input(col_name, value=status, disabled=True)
-                else:
-                    new_data[col_name] = st.text_input(col_name, value=val)
-
-        if st.form_submit_button("✅ Save Project to Database"):
-            cat, days = calculate_age_category(new_data)
-            new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
-            df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
-            save_db(df)
-            st.session_state.form_data = {} # Clear for next entry
-            st.success("Project Saved!")
-            st.rerun()
-
-# --- TAB: DETAILED AGE ANALYSIS ---
-elif tab_nav == "📊 Detailed Age Analysis":
-    st.subheader("Project Age Breakdown")
-    if not df.empty:
-        open_only = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("**Open Projects by Age Category**")
-            age_counts = open_only['Age Category'].value_counts().reindex(["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"], fill_value=0)
-            st.bar_chart(age_counts)
-        with c2:
-            st.markdown("**Top Clients with Open Projects**")
-            st.bar_chart(open_only['Client'].value_counts().head(10))
-        st.markdown("**Detailed Age Analysis by Client**")
-        age_pivot = open_only.groupby(['Client', 'Age Category']).size().unstack(fill_value=0)
-        for cat in ["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"]:
-            if cat not in age_pivot.columns: age_pivot[cat] = 0
-        age_pivot = age_pivot[["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"]]
-        age_pivot['Total Open'] = age_pivot.sum(axis=1)
-        st.dataframe(age_pivot.sort_values('Total Open', ascending=False), use_container_width=True)
-
-# --- 6. GLOBAL DATA TABLE ---
-st.divider()
-if st.checkbox("Show Master Project Table", value=True):
-    search_q = st.text_input("🔍 Global Search").lower()
-    disp_df = df.copy()
-    if search_q:
-        disp_df = disp_df[disp_df.apply(lambda r: r.astype(str).str.contains(search_q, case=False).any(), axis=1)]
-    st.dataframe(disp_df, use_container_width=True)
