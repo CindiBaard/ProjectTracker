@@ -15,16 +15,11 @@ pd.set_option("styler.render.max_elements", 1000000)
 
 # --- 2. FILE PATHS ---
 BASE_DIR = os.getcwd() 
-# This is the final file used by the app, created by merging the two sources below
 FILENAME = os.path.join(BASE_DIR, "ProjectTracker_Combined.csv")
-
-# Source files for the merge
 TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTracker_adj.csv")
 DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
 
-# Other reference files
 ARTWORK_FILE = os.path.join(BASE_DIR, "Artwork Status.csv")
-DIGITAL_ARTWORK_FILE = os.path.join(BASE_DIR, "Digital Artwork Status.csv")
 COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 
 # --- 3. HELPER FUNCTIONS ---
@@ -56,7 +51,7 @@ def calculate_age_category(row):
         return "Error", 0
 
 def clean_key(val):
-    """Robust cleaning for Pre-Prod No. to ensure matches between strings/floats."""
+    """Robust cleaning for Pre-Prod No. for matching."""
     if pd.isna(val) or str(val).strip() == '':
         return None
     try:
@@ -65,7 +60,7 @@ def clean_key(val):
         return str(val).strip()
 
 def combine_digital_and_tracker(digital_path, tracker_path, output_path):
-    """Logic to merge DigitalPreProd with ProjectTracker_adj."""
+    """Merges DigitalPreProd with ProjectTracker and consolidates duplicate columns."""
     if not os.path.exists(digital_path) or not os.path.exists(tracker_path):
         return None
     
@@ -73,12 +68,14 @@ def combine_digital_and_tracker(digital_path, tracker_path, output_path):
         df_digital = pd.read_csv(digital_path, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
         df_tracker = pd.read_csv(tracker_path, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
         
+        # Clean merge keys
         df_digital['Pre-Prod No.'] = df_digital['Pre-Prod No.'].apply(clean_key)
         df_tracker['Pre-Prod No.'] = df_tracker['Pre-Prod No.'].apply(clean_key)
 
         df_digital_clean = df_digital.dropna(subset=['Pre-Prod No.']).copy()
         df_tracker_clean = df_tracker.dropna(subset=['Pre-Prod No.']).copy()
 
+        # Perform Merge
         combined_df = pd.merge(
             df_tracker_clean,
             df_digital_clean,
@@ -87,6 +84,16 @@ def combine_digital_and_tracker(digital_path, tracker_path, output_path):
             suffixes=('', '_digital_info')
         )
         
+        # --- CONSOLIDATION LOGIC ---
+        # Look for columns that exist in both files
+        for col in df_tracker_clean.columns:
+            suffix_col = f"{col}_digital_info"
+            if suffix_col in combined_df.columns:
+                # If Tracker cell is empty, fill it with Digital info
+                combined_df[col] = combined_df[col].fillna(combined_df[suffix_col])
+                # Remove the temporary digital info column
+                combined_df.drop(columns=[suffix_col], inplace=True)
+
         combined_df.to_csv(output_path, index=False, sep=';', encoding='utf-8-sig')
         return combined_df
     except Exception as e:
@@ -94,7 +101,6 @@ def combine_digital_and_tracker(digital_path, tracker_path, output_path):
         return None
 
 def load_db():
-    # Sync sources before loading
     combine_digital_and_tracker(DIGITALPREPROD_FILE, TRACKER_ADJ_FILE, FILENAME)
     
     if not os.path.exists(FILENAME): return pd.DataFrame()
@@ -157,7 +163,7 @@ DESIRED_ORDER = [
 ]
 
 # --- 5. INTERFACE ---
-st.title("🚀 Project Tracker (Combined Data)")
+st.title("🚀 Project Tracker (Consolidated Data)")
 
 tab1, tab2 = st.tabs(["➕ Add New Job", "🔍 Search & Edit"])
 
@@ -311,7 +317,7 @@ with tab2:
     else:
         st.info("Enter a valid Pre-Prod number to see the analysis and edit.")
 
-# --- 6. DATA TABLE ---
+# --- 6. DATA TABLE & 7. CLIENT AGE ANALYSIS ---
 st.divider()
 if st.checkbox("Show Project Data Table", value=True):
     f1, f2 = st.columns(2)
@@ -336,7 +342,6 @@ if st.checkbox("Show Project Data Table", value=True):
         display_df.to_excel(writer, index=False)
     st.download_button("📥 Export Current View to Excel", data=buffer.getvalue(), file_name="Project_Export.xlsx")
 
-# --- 7. CLIENT AGE ANALYSIS ---
 st.header("📊 Client Age Analysis (Open Projects)")
 if not df.empty:
     open_projects = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
