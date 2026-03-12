@@ -17,7 +17,7 @@ pd.set_option("styler.render.max_elements", 1000000)
 # --- 2. FILE PATHS ---
 BASE_DIR = os.getcwd() 
 FILENAME = os.path.join(BASE_DIR, "ProjectTracker_Combined.csv")
-TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
+TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTracker_adj.csv")
 DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
 COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 
@@ -29,11 +29,21 @@ def clean_column_names(df):
 
 def calculate_age_category(row):
     try:
+        # Standardizing date format to DD/MM/YYYY
         start_date = pd.to_datetime(row['Date'], dayfirst=True, errors='coerce')
-        end_date = pd.to_datetime(row['Completion date'], dayfirst=True, errors='coerce') if pd.notnull(row.get('Completion date')) and str(row['Completion date']).strip() != "" else pd.to_datetime(datetime.now().date())
+        comp_date = str(row.get('Completion date', '')).strip()
+        
+        if comp_date and comp_date.lower() != 'nan':
+            end_date = pd.to_datetime(comp_date, dayfirst=True, errors='coerce')
+        else:
+            end_date = pd.to_datetime(datetime.now().date())
+        
         if pd.isnull(start_date) or pd.isnull(end_date): return "N/A", 0
+        
         days = (end_date - start_date).days
-        cat = "< 6 Weeks" if days < 42 else "6-12 Weeks" if days < 84 else "> 12 Weeks"
+        if days < 42: cat = "< 6 Weeks"
+        elif days < 84: cat = "6-12 Weeks"
+        else: cat = "> 12 Weeks"
         return cat, days
     except: return "Error", 0
 
@@ -49,12 +59,16 @@ def combine_digital_and_tracker(digital_path, tracker_path, output_path):
         df_t = pd.read_csv(tracker_path, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
         df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].apply(clean_key)
         df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].apply(clean_key)
-        combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), df_d.dropna(subset=['Pre-Prod No.']), on='Pre-Prod No.', how='outer', suffixes=('', '_digital_info'))
+        
+        combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), df_d.dropna(subset=['Pre-Prod No.']), 
+                           on='Pre-Prod No.', how='outer', suffixes=('', '_digital_info'))
+        
         for col in df_t.columns:
             suffix = f"{col}_digital_info"
             if suffix in combined.columns:
                 combined[col] = combined[col].fillna(combined[suffix])
                 combined.drop(columns=[suffix], inplace=True)
+        
         combined.to_csv(output_path, index=False, sep=';', encoding='utf-8-sig')
         return combined
     except Exception as e:
@@ -68,12 +82,18 @@ def load_db():
         df = pd.read_csv(FILENAME, sep=';', encoding='utf-8-sig', quoting=3, on_bad_lines='warn')
         df = clean_column_names(df)
         df = df.map(lambda x: str(x).strip().replace('"', '') if isinstance(x, str) else x)
+        
         if 'Pre-Prod No.' in df.columns:
             df['Pre-Prod No.'] = df['Pre-Prod No.'].astype(str)
             df = df[df['Pre-Prod No.'] != 'nan']
+        
         if 'Date' in df.columns:
             results = df.apply(calculate_age_category, axis=1)
-            df['Age Category'], df['Project Age (Open and Closed)'] = [r[0] for r in results], [r[1] for r in results]
+            df['Age Category'] = [r[0] for r in results]
+            df['Project Age (Open and Closed)'] = [r[1] for r in results]
+        
+        # Ensure Age column is numeric for the dashboard
+        df['Project Age (Open and Closed)'] = pd.to_numeric(df['Project Age (Open and Closed)'], errors='coerce').fillna(0)
         return df
     except Exception as e:
         st.error(f"Load Error: {e}")
@@ -106,7 +126,6 @@ DROPDOWN_CONFIG = {
 }
 DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
 DYNAMIC_CLIENTS = sorted(df['Client'].dropna().unique().tolist()) if not df.empty else []
-DYNAMIC_SALES = sorted(list(set(df['Sales Rep'].dropna().unique().tolist() + DROPDOWN_DATA.get('Sales Rep', [])))) if not df.empty else []
 
 DESIRED_ORDER = [
     "Date", "Age Category", "Client", "Description", "Diameter", "Project Description", "New Mould_Client or Product", 
@@ -122,20 +141,37 @@ DESIRED_ORDER = [
     "Blowmould trial requested", "Blowmould trial received", "Comments"
 ]
 
-# --- 5. INTERFACE ---
-st.title("🚀 Project Tracker")
+# --- 5. INTERFACE: STATUS DASHBOARD ---
+st.title("🚀 Project Management Dashboard")
 
-tab_nav = st.radio("Navigation", ["🔍 Search & Edit", "➕ Add New Job"], horizontal=True)
+if not df.empty:
+    open_mask = df['Open or closed'].str.lower().str.contains('open', na=False)
+    open_df = df[open_mask]
+    closed_df = df[~open_mask]
+    
+    overdue_count = len(open_df[open_df['Age Category'] == "> 12 Weeks"])
+    avg_age = open_df['Project Age (Open and Closed)'].mean() if not open_df.empty else 0
+
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Total Projects", len(df))
+    m2.metric("Open Projects", len(open_df), delta_color="inverse")
+    m3.metric("Closed Projects", len(closed_df))
+    m4.metric("Avg. Age (Open)", f"{int(avg_age)} Days")
+    m5.metric("Critical (>12 Wks)", overdue_count, delta=f"{overdue_count} Alerts", delta_color="normal" if overdue_count == 0 else "inverse")
+
+st.divider()
+
+tab_nav = st.radio("Navigation", ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis"], horizontal=True)
 
 # --- TAB: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
-    search_no = st.text_input("Enter Pre-Prod No. (e.g., 9143 or 9143_1)").strip()
+    search_no = st.text_input("Search Pre-Prod No. (e.g. 9143 or 9143_1)").strip()
     match = df[df['Pre-Prod No.'] == search_no]
     
     if search_no and not match.empty:
         idx, row = match.index[0], match.iloc[0]
         
-        # Cloning Logic
+        # Clone Button
         if st.button("👯 Clone as Repeat Order", use_container_width=True):
             base_no = search_no.split('_')[0]
             existing = df[df['Pre-Prod No.'].str.startswith(f"{base_no}_")]
@@ -149,7 +185,6 @@ if tab_nav == "🔍 Search & Edit":
             st.session_state.form_data = new_clone
             st.success(f"Clone {base_no}_{next_s} ready in 'Add New Job' tab!")
 
-        # Edit Form
         with st.expander("Edit Details", expanded=True):
             updated_vals = {}
             edit_cols = st.columns(3)
@@ -172,10 +207,10 @@ if tab_nav == "🔍 Search & Edit":
             updated_vals["Status"] = "Closed" if updated_vals.get("Completion date") else "Open"
             updated_vals["Open or closed"] = updated_vals["Status"]
 
-            if st.button("💾 Update Project"):
+            if st.button("💾 Save Changes"):
                 for k, v in updated_vals.items(): df.at[idx, k] = v
                 save_db(df)
-                st.success("Updated!")
+                st.success("Updated successfully!")
                 st.rerun()
 
 # --- TAB: ADD NEW JOB ---
@@ -185,15 +220,10 @@ elif tab_nav == "➕ Add New Job":
             combo_df = clean_column_names(pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig'))
             s = st.text_input("Filter Combinations")
             if s: combo_df = combo_df[combo_df.apply(lambda r: r.astype(str).str.contains(s, case=False).any(), axis=1)]
-            
-            # FIXED SELECTION LOGIC HERE
             ev = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key="lookup")
-            
-            # Use .selection['rows'] to get index
             if ev.selection and ev.selection['rows']:
-                selected_idx = ev.selection['rows'][0]
-                selected_row_dict = combo_df.iloc[selected_idx].to_dict()
-                st.session_state.form_data = {k: (str(v) if str(v).lower() != 'nan' else "") for k, v in selected_row_dict.items()}
+                selected_row = combo_df.iloc[ev.selection['rows'][0]].to_dict()
+                st.session_state.form_data = {k: (str(v) if str(v).lower() != 'nan' else "") for k, v in selected_row.items()}
 
     def get_next_no(df):
         if df.empty: return "10001"
@@ -202,7 +232,7 @@ elif tab_nav == "➕ Add New Job":
 
     with st.form("new_job"):
         default_id = st.session_state.form_data.get('Pre-Prod No.', get_next_no(df))
-        new_id = st.text_input("Pre-Prod No.", value=default_id)
+        new_id = st.text_input("Pre-Prod No. (Manual Entry allowed)", value=default_id)
         new_data = {'Pre-Prod No.': new_id}
         
         cols = st.columns(3)
@@ -231,10 +261,40 @@ elif tab_nav == "➕ Add New Job":
             df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
             save_db(df)
             st.session_state.form_data = {}
-            st.success("Saved!")
+            st.success("Project Registered!")
             st.rerun()
 
-# --- 6. DATA TABLE ---
+# --- TAB: DETAILED AGE ANALYSIS ---
+elif tab_nav == "📊 Detailed Age Analysis":
+    st.subheader("Project Age Breakdown")
+    if not df.empty:
+        # Age Category Summary for Open Projects
+        open_only = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Open Projects by Age Category**")
+            age_counts = open_only['Age Category'].value_counts().reindex(["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"], fill_value=0)
+            st.bar_chart(age_counts)
+        
+        with c2:
+            st.markdown("**Top Clients with Open Projects**")
+            client_counts = open_only['Client'].value_counts().head(10)
+            st.bar_chart(client_counts)
+
+        st.markdown("**Detailed Age Analysis by Client**")
+        age_pivot = open_only.groupby(['Client', 'Age Category']).size().unstack(fill_value=0)
+        for cat in ["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"]:
+            if cat not in age_pivot.columns: age_pivot[cat] = 0
+        age_pivot = age_pivot[["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"]]
+        age_pivot['Total Open'] = age_pivot.sum(axis=1)
+        st.dataframe(age_pivot.sort_values('Total Open', ascending=False), use_container_width=True)
+
+# --- 6. GLOBAL DATA TABLE ---
 st.divider()
-if st.checkbox("Show Data Table", value=True):
-    st.dataframe(df, use_container_width=True)
+if st.checkbox("Show Master Project Table", value=True):
+    search_q = st.text_input("🔍 Global Search (Client, Description, etc.)").lower()
+    disp_df = df.copy()
+    if search_q:
+        disp_df = disp_df[disp_df.apply(lambda r: r.astype(str).str.contains(search_q, case=False).any(), axis=1)]
+    st.dataframe(disp_df, use_container_width=True)
