@@ -24,97 +24,59 @@ COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 # --- 3. HELPER FUNCTIONS ---
 
 def clean_column_names(df):
-    """Strips BOM characters and hidden whitespace from headers."""
-    df.columns = [
-        str(c).strip().replace('\ufeff', '').replace('ï»¿', '').replace('"', '').replace('/', '_') 
-        for c in df.columns
-    ]
+    df.columns = [str(c).strip().replace('\ufeff', '').replace('ï»¿', '').replace('"', '').replace('/', '_') for c in df.columns]
     return df
 
 def calculate_age_category(row):
-    """Calculates project age and categorizes it."""
     try:
         start_date = pd.to_datetime(row['Date'], dayfirst=True, errors='coerce')
-        if pd.notnull(row.get('Completion date')) and str(row['Completion date']).strip() != "":
-            end_date = pd.to_datetime(row['Completion date'], dayfirst=True, errors='coerce')
-        else:
-            end_date = pd.to_datetime(datetime.now().date())
-        
-        if pd.isnull(start_date) or pd.isnull(end_date):
-            return "N/A", 0
-            
+        end_date = pd.to_datetime(row['Completion date'], dayfirst=True, errors='coerce') if pd.notnull(row.get('Completion date')) and str(row['Completion date']).strip() != "" else pd.to_datetime(datetime.now().date())
+        if pd.isnull(start_date) or pd.isnull(end_date): return "N/A", 0
         days = (end_date - start_date).days
         cat = "< 6 Weeks" if days < 42 else "6-12 Weeks" if days < 84 else "> 12 Weeks"
         return cat, days
-    except:
-        return "Error", 0
+    except: return "Error", 0
 
 def clean_key(val):
-    """Cleaning for Pre-Prod No. allowing alphanumeric (like 10001_1)."""
-    if pd.isna(val) or str(val).strip() == '':
-        return None
+    if pd.isna(val) or str(val).strip() == '': return None
     s_val = str(val).strip()
-    # If it's a simple float like '21036.0', turn it into '21036'
-    if s_val.endswith('.0'):
-        return s_val[:-2]
-    return s_val
+    return s_val[:-2] if s_val.endswith('.0') else s_val
 
 def combine_digital_and_tracker(digital_path, tracker_path, output_path):
-    """Merges files and consolidates data."""
-    if not os.path.exists(digital_path) or not os.path.exists(tracker_path):
-        return None
-    
+    if not os.path.exists(digital_path) or not os.path.exists(tracker_path): return None
     try:
-        df_digital = pd.read_csv(digital_path, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
-        df_tracker = pd.read_csv(tracker_path, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
-        
-        df_digital['Pre-Prod No.'] = df_digital['Pre-Prod No.'].apply(clean_key)
-        df_tracker['Pre-Prod No.'] = df_tracker['Pre-Prod No.'].apply(clean_key)
-
-        df_digital_clean = df_digital.dropna(subset=['Pre-Prod No.']).copy()
-        df_tracker_clean = df_tracker.dropna(subset=['Pre-Prod No.']).copy()
-
-        combined_df = pd.merge(
-            df_tracker_clean,
-            df_digital_clean,
-            on='Pre-Prod No.',
-            how='outer',
-            suffixes=('', '_digital_info')
-        )
-        
-        for col in df_tracker_clean.columns:
-            suffix_col = f"{col}_digital_info"
-            if suffix_col in combined_df.columns:
-                combined_df[col] = combined_df[col].fillna(combined_df[suffix_col])
-                combined_df.drop(columns=[suffix_col], inplace=True)
-
-        combined_df.to_csv(output_path, index=False, sep=';', encoding='utf-8-sig')
-        return combined_df
+        df_d = pd.read_csv(digital_path, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
+        df_t = pd.read_csv(tracker_path, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
+        df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].apply(clean_key)
+        df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].apply(clean_key)
+        combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), df_d.dropna(subset=['Pre-Prod No.']), on='Pre-Prod No.', how='outer', suffixes=('', '_digital_info'))
+        for col in df_t.columns:
+            suffix = f"{col}_digital_info"
+            if suffix in combined.columns:
+                combined[col] = combined[col].fillna(combined[suffix])
+                combined.drop(columns=[suffix], inplace=True)
+        combined.to_csv(output_path, index=False, sep=';', encoding='utf-8-sig')
+        return combined
     except Exception as e:
         st.error(f"Merge Error: {e}")
         return None
 
 def load_db():
     combine_digital_and_tracker(DIGITALPREPROD_FILE, TRACKER_ADJ_FILE, FILENAME)
-    
     if not os.path.exists(FILENAME): return pd.DataFrame()
     try:
         df = pd.read_csv(FILENAME, sep=';', encoding='utf-8-sig', quoting=3, on_bad_lines='warn')
         df = clean_column_names(df)
         df = df.map(lambda x: str(x).strip().replace('"', '') if isinstance(x, str) else x)
-        
         if 'Pre-Prod No.' in df.columns:
-            # We keep them as strings to allow 10001_1
             df['Pre-Prod No.'] = df['Pre-Prod No.'].astype(str)
             df = df[df['Pre-Prod No.'] != 'nan']
-
         if 'Date' in df.columns:
             results = df.apply(calculate_age_category, axis=1)
-            df['Age Category'] = [r[0] for r in results]
-            df['Project Age (Open and Closed)'] = [r[1] for r in results]
+            df['Age Category'], df['Project Age (Open and Closed)'] = [r[0] for r in results], [r[1] for r in results]
         return df
     except Exception as e:
-        st.error(f"Error loading database: {e}")
+        st.error(f"Load Error: {e}")
         return pd.DataFrame()
 
 def save_db(df_to_save):
@@ -130,8 +92,13 @@ def get_options(filename):
         except: return []
     return []
 
-# --- 4. DATA LOADING ---
+# --- 4. DATA LOADING & INITIALIZATION ---
 df = load_db()
+
+if 'form_data' not in st.session_state:
+    st.session_state.form_data = {}
+if 'active_tab' not in st.session_state:
+    st.session_state.active_tab = "🔍 Search & Edit"
 
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
@@ -140,7 +107,7 @@ DROPDOWN_CONFIG = {
     "Cap_Lid Material": "Cap_Material.csv", "Cap_Lid Diameter": "Cap_Lid Diameter.csv"
 }
 DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
-DYNAMIC_CLIENTS = sorted(df['Client'].dropna().unique().tolist()) if not df.empty and 'Client' in df.columns else []
+DYNAMIC_CLIENTS = sorted(df['Client'].dropna().unique().tolist()) if not df.empty else []
 DYNAMIC_SALES = sorted(list(set(df['Sales Rep'].dropna().unique().tolist() + DROPDOWN_DATA.get('Sales Rep', [])))) if not df.empty else []
 
 DESIRED_ORDER = [
@@ -158,165 +125,126 @@ DESIRED_ORDER = [
 ]
 
 # --- 5. INTERFACE ---
-st.title("🚀 Project Tracker (Repeat Job Enabled)")
+st.title("🚀 Project Tracker (Smart Cloning Enabled)")
 
-tab1, tab2 = st.tabs(["➕ Add New Job", "🔍 Search & Edit"])
+tab_labels = ["🔍 Search & Edit", "➕ Add New Job"]
+active_tab = st.radio("Navigation", tab_labels, horizontal=True, label_visibility="collapsed")
 
-# --- TAB 1: ADD NEW JOB ---
-with tab1:
-    if 'selected_combo' not in st.session_state:
-        st.session_state.selected_combo = {}
-
-    # Calculate Next Number by stripping suffixes
-    def get_next_suggested_no(df):
-        if df.empty: return "10001"
-        all_ids = df['Pre-Prod No.'].tolist()
-        numeric_parts = []
-        for i in all_ids:
-            # Extract just the numbers before an underscore or non-digit
-            match = re.match(r"(\d+)", str(i))
-            if match: numeric_parts.append(int(match.group(1)))
-        return str(max(numeric_parts) + 1) if numeric_parts else "10001"
-
-    suggested_no = get_next_suggested_no(df)
+# --- TAB: SEARCH & EDIT (Handled first for Cloning logic) ---
+if active_tab == "🔍 Search & Edit":
+    search_no = st.text_input("Enter Pre-Prod No. (e.g., 9143 or 9143_1)").strip()
+    match = df[df['Pre-Prod No.'] == search_no]
     
-    with st.form("new_job_form"):
+    if search_no and not match.empty:
+        idx, row = match.index[0], match.iloc[0]
+        
+        # --- CLONING LOGIC ---
+        if st.button("👯 Clone as Repeat Order", use_container_width=True):
+            base_no = search_no.split('_')[0]
+            existing_repeats = df[df['Pre-Prod No.'].str.startswith(f"{base_no}_")]
+            next_suffix = 1
+            if not existing_repeats.empty:
+                suffixes = [int(s.split('_')[1]) for s in existing_repeats['Pre-Prod No.'] if '_' in s]
+                if suffixes: next_suffix = max(suffixes) + 1
+            
+            # Prepare data for Add New Job tab
+            new_clone = row.to_dict()
+            new_clone['Pre-Prod No.'] = f"{base_no}_{next_suffix}"
+            new_clone['Date'] = datetime.now().strftime('%d/%m/%Y')
+            new_clone['Completion date'] = ""
+            st.session_state.form_data = new_clone
+            st.success(f"Ready to clone as {base_no}_{next_suffix}! Switch to 'Add New Job' tab.")
+
+        st.subheader(f"📊 Analysis for #{search_no}")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Project Age", f"{row.get('Project Age (Open and Closed)', 0)} Days")
+        m2.metric("Category", row.get('Age Category', "N/A"))
+        m3.metric("Status", row.get('Open or closed', 'Open'))
+
+        with st.expander("Edit Details", expanded=True):
+            updated_vals = {}
+            edit_cols = st.columns(3)
+            for i, col_name in enumerate(DESIRED_ORDER):
+                if col_name == "Age Category": continue
+                cur_val = str(row.get(col_name, "")) if str(row.get(col_name, "")).lower() != 'nan' else ""
+                with edit_cols[i % 3]:
+                    if col_name == 'Completion date':
+                        try: d = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
+                        except: d = None
+                        sel_d = st.date_input(f"Edit {col_name}", value=d)
+                        updated_vals[col_name] = sel_d.strftime('%d/%m/%Y') if sel_d else ""
+                    elif col_name in ["Status", "Open or closed"]: continue
+                    elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
+                        opts = [""] + sorted(list(set(DROPDOWN_DATA[col_name] + [cur_val])))
+                        updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=opts.index(cur_val))
+                    else:
+                        updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val)
+            
+            updated_vals["Status"] = "Closed" if updated_vals.get("Completion date") else "Open"
+            updated_vals["Open or closed"] = updated_vals["Status"]
+
+            if st.button("💾 Update Project", use_container_width=True):
+                for k, v in updated_vals.items(): df.at[idx, k] = v
+                save_db(df)
+                st.success("Updated!")
+                st.rerun()
+
+# --- TAB: ADD NEW JOB ---
+elif active_tab == "➕ Add New Job":
+    # 1. COMBINATION LOOKUP
+    if os.path.exists(COMBINATIONS_FILE):
+        with st.expander("🔍 Tube & Cap Combination Lookup"):
+            combo_df = clean_column_names(pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig'))
+            s = st.text_input("Filter Combinations")
+            if s: combo_df = combo_df[combo_df.apply(lambda r: r.astype(str).str.contains(s, case=False).any(), axis=1)]
+            ev = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key="lookup")
+            if ev.selection.rows:
+                st.session_state.form_data = {k: (str(v) if str(v).lower() != 'nan' else "") for k, v in combo_df.iloc[ev.selection.rows[0]].to_dict()}
+
+    def get_next_no(df):
+        if df.empty: return "10001"
+        nums = [int(re.match(r"(\d+)", str(i)).group(1)) for i in df['Pre-Prod No.'].tolist() if re.match(r"(\d+)", str(i))]
+        return str(max(nums) + 1) if nums else "10001"
+
+    with st.form("new_job"):
         st.subheader("Project Registration")
-        # Pre-Prod No is now a text input to allow manual "_1" entries
-        new_id = st.text_input("Pre-Prod No.", value=suggested_no)
+        default_id = st.session_state.form_data.get('Pre-Prod No.', get_next_no(df))
+        new_id = st.text_input("Pre-Prod No.", value=default_id)
         new_data = {'Pre-Prod No.': new_id}
         
         cols = st.columns(3)
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
-            val = st.session_state.selected_combo.get(col_name, "")
+            val = st.session_state.form_data.get(col_name, "")
             with cols[i % 3]:
                 if col_name == 'Date':
                     new_data[col_name] = st.date_input(col_name, value=datetime.now()).strftime('%d/%m/%Y')
                 elif col_name == 'Completion date':
-                    res_date = st.date_input(col_name, value=None)
-                    new_data[col_name] = res_date.strftime('%d/%m/%Y') if res_date else ""
+                    res = st.date_input(col_name, value=None)
+                    new_data[col_name] = res.strftime('%d/%m/%Y') if res else ""
                 elif col_name in ['Status', 'Open or closed']:
-                    status_val = "Open" if not new_data.get('Completion date') else "Closed"
-                    st.text_input(col_name, value=status_val, disabled=True, key=f"new_{col_name}")
-                    new_data[col_name] = status_val
-                elif col_name in ['Client', 'Sales Rep']:
-                    opts = ["", "Add New..."] + (DYNAMIC_CLIENTS if col_name == 'Client' else DYNAMIC_SALES)
-                    sel = st.selectbox(col_name, options=opts)
-                    new_data[col_name] = st.text_input(f"New {col_name}") if sel == "Add New..." else sel
+                    new_data[col_name] = "Open" if not new_data.get('Completion date') else "Closed"
+                    st.text_input(col_name, value=new_data[col_name], disabled=True)
                 elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                     opts = [""] + DROPDOWN_DATA[col_name]
+                    if val and val not in opts: opts.append(val)
                     new_data[col_name] = st.selectbox(col_name, options=opts, index=opts.index(val) if val in opts else 0)
-                elif col_name == "Product Code":
-                    temp_code = st.text_input(col_name, value=val)
-                    new_data[col_name] = temp_code.upper()
                 else:
                     new_data[col_name] = st.text_input(col_name, value=val)
 
         if st.form_submit_button("✅ Save Project"):
             if not new_data.get("Client") or not new_data.get("Description"):
-                st.error("Client and Description are required.")
+                st.error("Client/Description required.")
             else:
-                final_status = "Closed" if new_data.get('Completion date') else "Open"
-                new_data['Status'] = final_status
-                new_data['Open or closed'] = final_status
-                new_row = pd.DataFrame([new_data])
                 cat, days = calculate_age_category(new_data)
-                new_row['Age Category'], new_row['Project Age (Open and Closed)'] = cat, days
-                df = pd.concat([df, new_row], ignore_index=True)
+                new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
+                df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
                 save_db(df)
-                st.session_state.selected_combo = {}
-                st.success(f"Project {new_id} Saved!")
+                st.session_state.form_data = {}
+                st.success("Saved!")
                 st.rerun()
-
-# --- TAB 2: SEARCH & EDIT ---
-with tab2:
-    # Changed to text_input to allow searching for "10001_1"
-    search_no = st.text_input("Enter Pre-Prod No. (Supports 10001 or 10001_1)").strip()
-    match = df[df['Pre-Prod No.'] == search_no]
-    
-    if search_no and not match.empty:
-        idx, row = match.index[0], match.iloc[0]
-
-        st.subheader(f"📊 Analysis for Pre-Prod #{search_no}")
-        age_days = row.get('Project Age (Open and Closed)', 0)
-        age_cat = row.get('Age Category', "N/A")
-        
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Current Project Age", f"{age_days} Days")
-        m2.metric("Age Category", age_cat)
-        m3.metric("Project Status", row.get('Open or closed', 'Open'))
-
-        with st.expander(f"Editing Project #{search_no}", expanded=True):
-            updated_vals = {}
-            edit_cols = st.columns(3)
-            comp_date_str = ""
-            
-            for i, col_name in enumerate(DESIRED_ORDER):
-                if col_name == "Age Category": continue 
-                cur_val = str(row.get(col_name, ""))
-                if cur_val.lower() == 'nan': cur_val = ""
-                
-                with edit_cols[i % 3]:
-                    if col_name == 'Completion date':
-                        try:
-                            default_date = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
-                        except:
-                            default_date = None
-                        selected_date = st.date_input(f"Edit {col_name}", value=default_date)
-                        comp_date_str = selected_date.strftime('%d/%m/%Y') if selected_date else ""
-                        updated_vals[col_name] = comp_date_str
-                    elif col_name in ["Status", "Open or closed"]:
-                        updated_vals[col_name] = cur_val 
-                    elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
-                        opts = [""] + sorted(list(set(DROPDOWN_DATA[col_name] + [cur_val])))
-                        updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=opts.index(cur_val) if cur_val in opts else 0)
-                    elif col_name == "Product Code":
-                        edit_code = st.text_input(f"Edit {col_name}", value=cur_val)
-                        updated_vals[col_name] = edit_code.upper()
-                    else:
-                        updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val)
-
-            determined_status = "Closed" if comp_date_str != "" else "Open"
-            updated_vals["Status"] = determined_status
-            updated_vals["Open or closed"] = determined_status
-            st.info(f"Saving as: **{determined_status}**")
-
-            if st.button("💾 Save Changes", use_container_width=True):
-                for k, v in updated_vals.items(): 
-                    df.at[idx, k] = v
-                cat, days = calculate_age_category(df.loc[idx])
-                df.at[idx, 'Age Category'], df.at[idx, 'Project Age (Open and Closed)'] = cat, days
-                save_db(df)
-                st.success("Changes Applied!")
-                st.rerun()
-
-    elif search_no:
-        st.error("No project found with that Pre-Prod number.")
 
 # --- 6. DATA TABLE ---
 st.divider()
-if st.checkbox("Show Project Data Table", value=True):
-    f1, f2 = st.columns(2)
-    with f1: search_query = st.text_input("🔍 Global Search").lower()
-    with f2: prod_filter = st.text_input("📦 Filter by Product Code").upper()
-
-    display_df = df.copy()
-    if search_query:
-        display_df = display_df[display_df.apply(lambda r: r.astype(str).str.contains(search_query, case=False).any(), axis=1)]
-    if prod_filter:
-        if 'Product Code' in display_df.columns:
-            display_df = display_df[display_df['Product Code'].astype(str).str.contains(prod_filter, na=False)]
-    st.dataframe(display_df, use_container_width=True)
-
-# --- 7. CLIENT AGE ANALYSIS ---
-st.header("📊 Client Age Analysis (Open Projects)")
-if not df.empty:
-    open_projects = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
-    if not open_projects.empty:
-        age_analysis = open_projects.groupby(['Client', 'Age Category']).size().unstack(fill_value=0)
-        for cat in ["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"]:
-            if cat not in age_analysis.columns: age_analysis[cat] = 0
-        age_analysis = age_analysis[["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"]]
-        age_analysis['Total Open'] = age_analysis.sum(axis=1)
-        st.dataframe(age_analysis.sort_values('Total Open', ascending=False), use_container_width=True)
+if st.checkbox("Show Data Table", value=True):
+    st.dataframe(df, use_container_width=True)
