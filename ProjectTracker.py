@@ -35,11 +35,15 @@ def calculate_age_category(row):
             end_date = pd.to_datetime(comp_date, dayfirst=True, errors='coerce')
         else:
             end_date = pd.to_datetime(datetime.now().date())
-        if pd.isnull(start_date) or pd.isnull(end_date): return "N/A", 0
+        
+        if pd.isnull(start_date) or pd.isnull(end_date):
+            return "N/A", 0
+            
         days = (end_date - start_date).days
         cat = "< 6 Weeks" if days < 42 else "6-12 Weeks" if days < 84 else "> 12 Weeks"
         return cat, days
-    except: return "Error", 0
+    except: 
+        return "Error", 0
 
 def clean_key(val):
     if pd.isna(val) or str(val).strip() == '': return None
@@ -47,7 +51,10 @@ def clean_key(val):
     return s_val[:-2] if s_val.endswith('.0') else s_val
 
 def get_next_available_id(requested_id, existing_ids):
-    """Checks if an ID exists and returns the next available underscore version."""
+    """
+    Checks if an ID exists and returns the next available underscore version.
+    Example: if 9143 and 9143_1 exist, returns 9143_2.
+    """
     requested_id = str(requested_id).strip()
     if requested_id not in existing_ids:
         return requested_id
@@ -64,7 +71,7 @@ def get_next_available_id(requested_id, existing_ids):
             if m.group(2):
                 suffixes.append(int(m.group(2)))
             else:
-                suffixes.append(0) # The original base ID (no underscore)
+                suffixes.append(0) # The original base ID
     
     next_s = max(suffixes) + 1 if suffixes else 1
     return f"{base_id}_{next_s}"
@@ -90,7 +97,7 @@ def combine_digital_and_tracker(digital_path, tracker_path, output_path):
         return None
 
 def load_db():
-    combine_digital_and_tracker(DIGITALPREPROD_FILE, TRACKER_ADJ_FILE, FILENAME)
+    combine_digital_and_tracker(DIGITALPREPROD_FILE, TRACKER_AD_FILE, FILENAME)
     if not os.path.exists(FILENAME): return pd.DataFrame()
     try:
         df = pd.read_csv(FILENAME, sep=';', encoding='utf-8-sig', quoting=3, on_bad_lines='warn')
@@ -101,7 +108,8 @@ def load_db():
             df = df[df['Pre-Prod No.'] != 'nan']
         if 'Date' in df.columns:
             results = df.apply(calculate_age_category, axis=1)
-            df['Age Category'], df['Project Age (Open and Closed)'] = [r[0] for r in results], [r[1] for r in results]
+            df['Age Category'] = [r[0] for r in results]
+            df['Project Age (Open and Closed)'] = [r[1] for r in results]
         df['Project Age (Open and Closed)'] = pd.to_numeric(df['Project Age (Open and Closed)'], errors='coerce').fillna(0)
         return df
     except Exception as e:
@@ -118,7 +126,8 @@ def get_options(filename):
             with open(path, 'r', encoding='latin1', errors='ignore') as f:
                 lines = [line.strip().replace('"', '') for line in f.readlines() if line.strip()]
                 return sorted(list(set([l.split(';')[0].split(',')[0].strip() for l in lines if l])))
-        except: return []
+        except: 
+            return []
     return []
 
 # --- 4. DATA LOADING ---
@@ -183,7 +192,7 @@ if tab_nav == "🔍 Search & Edit":
         c1, c2 = st.columns(2)
         with c1:
             if st.button("👯 Clone as Repeat Order", use_container_width=True):
-                # Using the unique ID helper for cloning
+                # Ensure unique ID using underscore logic
                 existing_ids = df['Pre-Prod No.'].tolist()
                 new_id = get_next_available_id(search_no, existing_ids)
                 
@@ -215,4 +224,47 @@ if tab_nav == "🔍 Search & Edit":
                 cur_val = str(row.get(col_name, "")) if str(row.get(col_name, "")).lower() != 'nan' else ""
                 with edit_cols[i % 3]:
                     if col_name == 'Completion date':
-                        try: d = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
+                        try:
+                            d = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
+                        except:
+                            d = None
+                        sel_d = st.date_input(f"Edit {col_name}", value=d)
+                        updated_vals[col_name] = sel_d.strftime('%d/%m/%Y') if sel_d else ""
+                    elif col_name in ["Status", "Open or closed"]: continue
+                    elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
+                        opts = [""] + sorted(list(set(DROPDOWN_DATA[col_name] + [cur_val])))
+                        updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=opts.index(cur_val))
+                    else:
+                        updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val)
+            
+            updated_vals["Status"] = "Closed" if updated_vals.get("Completion date") else "Open"
+            updated_vals["Open or closed"] = updated_vals["Status"]
+
+            if st.button("💾 Save Changes"):
+                for k, v in updated_vals.items(): 
+                    df.at[idx, k] = v
+                save_db(df)
+                st.success("Updated!")
+                st.rerun()
+
+# --- TAB: ADD NEW JOB ---
+elif tab_nav == "➕ Add New Job":
+    with st.expander("🔍 Tube & Cap Combination Lookup"):
+        if os.path.exists(COMBINATIONS_FILE):
+            combo_df = clean_column_names(pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig'))
+            s = st.text_input("Filter Combinations")
+            if s: 
+                combo_df = combo_df[combo_df.apply(lambda r: r.astype(str).str.contains(s, case=False).any(), axis=1)]
+            ev = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key="lookup")
+            if ev.selection and ev.selection['rows']:
+                selected_row = combo_df.iloc[ev.selection['rows'][0]].to_dict()
+                st.session_state.form_data = {k: (str(v) if str(v).lower() != 'nan' else "") for k, v in selected_row.items()}
+
+    def get_auto_next_no(df):
+        if df.empty: return "10001"
+        nums = []
+        for i in df['Pre-Prod No.'].tolist():
+            match = re.match(r"(\d+)", str(i))
+            if match:
+                nums.append(int(match.group(1)))
+        return str(
