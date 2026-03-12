@@ -191,6 +191,17 @@ if tab_nav == "🔍 Search & Edit":
     
     if search_no and not match.empty:
         idx, row = match.index[0], match.iloc[0]
+        
+        # --- ADDED: Age Analysis for selected PreProd ---
+        st.markdown(f"### 📊 Age Analysis for #{search_no}")
+        ac1, ac2 = st.columns(2)
+        with ac1:
+            st.metric("Project Age", f"{int(row['Project Age (Open and Closed)'])} Days")
+        with ac2:
+            st.metric("Category", row['Age Category'])
+        st.divider()
+        # -----------------------------------------------
+
         c1, c2 = st.columns(2)
         with c1:
             if st.button("👯 Clone as Repeat Order", use_container_width=True):
