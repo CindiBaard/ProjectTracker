@@ -3,6 +3,7 @@ import pandas as pd
 import streamlit as st
 from datetime import datetime
 import io
+import re
 
 # --- 1. INITIAL SETUP & DEPENDENCIES ---
 try:
@@ -18,8 +19,6 @@ BASE_DIR = os.getcwd()
 FILENAME = os.path.join(BASE_DIR, "ProjectTracker_Combined.csv")
 TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTracker_adj.csv")
 DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
-
-ARTWORK_FILE = os.path.join(BASE_DIR, "Artwork Status.csv")
 COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 
 # --- 3. HELPER FUNCTIONS ---
@@ -51,16 +50,17 @@ def calculate_age_category(row):
         return "Error", 0
 
 def clean_key(val):
-    """Robust cleaning for Pre-Prod No. for matching."""
+    """Cleaning for Pre-Prod No. allowing alphanumeric (like 10001_1)."""
     if pd.isna(val) or str(val).strip() == '':
         return None
-    try:
-        return str(int(float(val)))
-    except (ValueError, TypeError):
-        return str(val).strip()
+    s_val = str(val).strip()
+    # If it's a simple float like '21036.0', turn it into '21036'
+    if s_val.endswith('.0'):
+        return s_val[:-2]
+    return s_val
 
 def combine_digital_and_tracker(digital_path, tracker_path, output_path):
-    """Merges DigitalPreProd with ProjectTracker and consolidates duplicate columns."""
+    """Merges files and consolidates data."""
     if not os.path.exists(digital_path) or not os.path.exists(tracker_path):
         return None
     
@@ -68,14 +68,12 @@ def combine_digital_and_tracker(digital_path, tracker_path, output_path):
         df_digital = pd.read_csv(digital_path, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
         df_tracker = pd.read_csv(tracker_path, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
         
-        # Clean merge keys
         df_digital['Pre-Prod No.'] = df_digital['Pre-Prod No.'].apply(clean_key)
         df_tracker['Pre-Prod No.'] = df_tracker['Pre-Prod No.'].apply(clean_key)
 
         df_digital_clean = df_digital.dropna(subset=['Pre-Prod No.']).copy()
         df_tracker_clean = df_tracker.dropna(subset=['Pre-Prod No.']).copy()
 
-        # Perform Merge
         combined_df = pd.merge(
             df_tracker_clean,
             df_digital_clean,
@@ -84,14 +82,10 @@ def combine_digital_and_tracker(digital_path, tracker_path, output_path):
             suffixes=('', '_digital_info')
         )
         
-        # --- CONSOLIDATION LOGIC ---
-        # Look for columns that exist in both files
         for col in df_tracker_clean.columns:
             suffix_col = f"{col}_digital_info"
             if suffix_col in combined_df.columns:
-                # If Tracker cell is empty, fill it with Digital info
                 combined_df[col] = combined_df[col].fillna(combined_df[suffix_col])
-                # Remove the temporary digital info column
                 combined_df.drop(columns=[suffix_col], inplace=True)
 
         combined_df.to_csv(output_path, index=False, sep=';', encoding='utf-8-sig')
@@ -110,8 +104,9 @@ def load_db():
         df = df.map(lambda x: str(x).strip().replace('"', '') if isinstance(x, str) else x)
         
         if 'Pre-Prod No.' in df.columns:
-            df['Pre-Prod No.'] = pd.to_numeric(df['Pre-Prod No.'], errors='coerce')
-            df = df.dropna(subset=['Pre-Prod No.'])
+            # We keep them as strings to allow 10001_1
+            df['Pre-Prod No.'] = df['Pre-Prod No.'].astype(str)
+            df = df[df['Pre-Prod No.'] != 'nan']
 
         if 'Date' in df.columns:
             results = df.apply(calculate_age_category, axis=1)
@@ -163,7 +158,7 @@ DESIRED_ORDER = [
 ]
 
 # --- 5. INTERFACE ---
-st.title("🚀 Project Tracker (Consolidated Data)")
+st.title("🚀 Project Tracker (Repeat Job Enabled)")
 
 tab1, tab2 = st.tabs(["➕ Add New Job", "🔍 Search & Edit"])
 
@@ -172,28 +167,26 @@ with tab1:
     if 'selected_combo' not in st.session_state:
         st.session_state.selected_combo = {}
 
-    if os.path.exists(COMBINATIONS_FILE):
-        with st.expander("🔍 Tube & Cap Combination Lookup", expanded=True):
-            try:
-                combo_df = pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig')
-                combo_df = clean_column_names(combo_df)
-                search = st.text_input("Filter Combinations (e.g. 35mm Flip Top)")
-                if search:
-                    mask = combo_df.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)
-                    combo_df = combo_df[mask]
-                event = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key="combo_table")
-                if event.selection.rows:
-                    selected_row = combo_df.iloc[event.selection.rows[0]].to_dict()
-                    st.session_state.selected_combo = {k: (str(v) if str(v).lower() != 'nan' else "") for k, v in selected_row.items()}
-            except: pass
+    # Calculate Next Number by stripping suffixes
+    def get_next_suggested_no(df):
+        if df.empty: return "10001"
+        all_ids = df['Pre-Prod No.'].tolist()
+        numeric_parts = []
+        for i in all_ids:
+            # Extract just the numbers before an underscore or non-digit
+            match = re.match(r"(\d+)", str(i))
+            if match: numeric_parts.append(int(match.group(1)))
+        return str(max(numeric_parts) + 1) if numeric_parts else "10001"
 
-    next_no = int(df['Pre-Prod No.'].max() + 1) if not df.empty else 1
+    suggested_no = get_next_suggested_no(df)
     
     with st.form("new_job_form"):
-        st.subheader(f"Project Registration: #{next_no}")
-        new_data = {'Pre-Prod No.': next_no}
-        cols = st.columns(3)
+        st.subheader("Project Registration")
+        # Pre-Prod No is now a text input to allow manual "_1" entries
+        new_id = st.text_input("Pre-Prod No.", value=suggested_no)
+        new_data = {'Pre-Prod No.': new_id}
         
+        cols = st.columns(3)
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
             val = st.session_state.selected_combo.get(col_name, "")
@@ -233,18 +226,19 @@ with tab1:
                 df = pd.concat([df, new_row], ignore_index=True)
                 save_db(df)
                 st.session_state.selected_combo = {}
-                st.success("Project Saved!")
+                st.success(f"Project {new_id} Saved!")
                 st.rerun()
 
 # --- TAB 2: SEARCH & EDIT ---
 with tab2:
-    search_no = st.number_input("Enter Pre-Prod No.", min_value=1, step=1)
+    # Changed to text_input to allow searching for "10001_1"
+    search_no = st.text_input("Enter Pre-Prod No. (Supports 10001 or 10001_1)").strip()
     match = df[df['Pre-Prod No.'] == search_no]
     
-    if not match.empty:
+    if search_no and not match.empty:
         idx, row = match.index[0], match.iloc[0]
 
-        st.subheader(f"📊 Age Analysis for Pre-Prod #{search_no}")
+        st.subheader(f"📊 Analysis for Pre-Prod #{search_no}")
         age_days = row.get('Project Age (Open and Closed)', 0)
         age_cat = row.get('Age Category', "N/A")
         
@@ -260,7 +254,6 @@ with tab2:
             
             for i, col_name in enumerate(DESIRED_ORDER):
                 if col_name == "Age Category": continue 
-                
                 cur_val = str(row.get(col_name, ""))
                 if cur_val.lower() == 'nan': cur_val = ""
                 
@@ -273,75 +266,50 @@ with tab2:
                         selected_date = st.date_input(f"Edit {col_name}", value=default_date)
                         comp_date_str = selected_date.strftime('%d/%m/%Y') if selected_date else ""
                         updated_vals[col_name] = comp_date_str
-                    
                     elif col_name in ["Status", "Open or closed"]:
                         updated_vals[col_name] = cur_val 
-                    
                     elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                         opts = [""] + sorted(list(set(DROPDOWN_DATA[col_name] + [cur_val])))
                         updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=opts.index(cur_val) if cur_val in opts else 0)
-                    
                     elif col_name == "Product Code":
                         edit_code = st.text_input(f"Edit {col_name}", value=cur_val)
                         updated_vals[col_name] = edit_code.upper()
-                    
                     else:
                         updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val)
 
             determined_status = "Closed" if comp_date_str != "" else "Open"
             updated_vals["Status"] = determined_status
             updated_vals["Open or closed"] = determined_status
-            
             st.info(f"Saving as: **{determined_status}**")
 
-            col_save, col_del = st.columns([1, 1])
-            with col_save:
-                if st.button("💾 Save Changes", use_container_width=True):
-                    for k, v in updated_vals.items(): 
-                        df.at[idx, k] = v
-                    cat, days = calculate_age_category(df.loc[idx])
-                    df.at[idx, 'Age Category'], df.at[idx, 'Project Age (Open and Closed)'] = cat, days
-                    save_db(df)
-                    st.success("Changes Applied!")
-                    st.rerun()
+            if st.button("💾 Save Changes", use_container_width=True):
+                for k, v in updated_vals.items(): 
+                    df.at[idx, k] = v
+                cat, days = calculate_age_category(df.loc[idx])
+                df.at[idx, 'Age Category'], df.at[idx, 'Project Age (Open and Closed)'] = cat, days
+                save_db(df)
+                st.success("Changes Applied!")
+                st.rerun()
 
-            with col_del:
-                st.markdown("---")
-                st.warning("🗑️ Danger Zone")
-                confirm_delete = st.checkbox(f"Confirm deletion of Project #{search_no}")
-                if st.button("❌ Permanent Delete", disabled=not confirm_delete, use_container_width=True):
-                    df = df.drop(idx)
-                    save_db(df)
-                    st.success(f"Project #{search_no} has been deleted.")
-                    st.rerun()
-    else:
-        st.info("Enter a valid Pre-Prod number to see the analysis and edit.")
+    elif search_no:
+        st.error("No project found with that Pre-Prod number.")
 
-# --- 6. DATA TABLE & 7. CLIENT AGE ANALYSIS ---
+# --- 6. DATA TABLE ---
 st.divider()
 if st.checkbox("Show Project Data Table", value=True):
     f1, f2 = st.columns(2)
-    with f1:
-        search_query = st.text_input("🔍 Global Search").lower()
-    with f2:
-        prod_filter = st.text_input("📦 Filter by Product Code").upper()
+    with f1: search_query = st.text_input("🔍 Global Search").lower()
+    with f2: prod_filter = st.text_input("📦 Filter by Product Code").upper()
 
     display_df = df.copy()
-    
     if search_query:
         display_df = display_df[display_df.apply(lambda r: r.astype(str).str.contains(search_query, case=False).any(), axis=1)]
-    
     if prod_filter:
         if 'Product Code' in display_df.columns:
             display_df = display_df[display_df['Product Code'].astype(str).str.contains(prod_filter, na=False)]
-
     st.dataframe(display_df, use_container_width=True)
-    
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-        display_df.to_excel(writer, index=False)
-    st.download_button("📥 Export Current View to Excel", data=buffer.getvalue(), file_name="Project_Export.xlsx")
 
+# --- 7. CLIENT AGE ANALYSIS ---
 st.header("📊 Client Age Analysis (Open Projects)")
 if not df.empty:
     open_projects = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
