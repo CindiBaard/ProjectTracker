@@ -19,6 +19,7 @@ FILENAME = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
 ARTWORK_FILE = os.path.join(BASE_DIR, "Artwork Status.csv")
 DIGITAL_ARTWORK_FILE = os.path.join(BASE_DIR, "Digital Artwork Status.csv")
 COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
+DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
 
 # --- 3. HELPER FUNCTIONS ---
 def clean_column_names(df):
