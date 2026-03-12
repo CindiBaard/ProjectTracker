@@ -17,7 +17,6 @@ pd.set_option("styler.render.max_elements", 1000000)
 # --- 2. FILE PATHS ---
 BASE_DIR = os.getcwd() 
 FILENAME = os.path.join(BASE_DIR, "ProjectTracker_Combined.csv")
-# Updated to the specific filename you requested
 TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Clean_NA.csv") 
 DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
 COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
@@ -52,7 +51,6 @@ def clean_key(val):
     return s_val[:-2] if s_val.endswith('.0') else s_val
 
 def get_next_available_id(requested_id, existing_ids):
-    """Generates a unique ID using underscore suffixes (e.g., 9143_1)."""
     requested_id = str(requested_id).strip()
     if requested_id not in existing_ids:
         return requested_id
@@ -72,7 +70,6 @@ def get_next_available_id(requested_id, existing_ids):
     return f"{base_id}_{next_s}"
 
 def get_auto_next_no(df):
-    """Suggests the next sequential numeric ID."""
     if df.empty: return "10001"
     nums = []
     for i in df['Pre-Prod No.'].tolist():
@@ -133,6 +130,14 @@ def get_options(filename):
         except: return []
     return []
 
+def get_combination_options():
+    if os.path.exists(COMBINATIONS_FILE):
+        try:
+            comb_df = pd.read_csv(COMBINATIONS_FILE, encoding='latin1', on_bad_lines='skip')
+            return sorted(comb_df.apply(lambda x: ' | '.join(x.astype(str)), axis=1).tolist())
+        except: return []
+    return []
+
 # --- 4. DATA LOADING ---
 df = load_db()
 
@@ -144,10 +149,14 @@ if 'active_tab' not in st.session_state:
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
     "Orifice": "Orifice.csv", "Diameter": "TubeDia.csv", "Foiling": "Foiling.csv",
-    "Cap_Lid Style": "Cap_Lid Style.csv", "Machine": "Machine.csv", "Sales Rep": "Sales Rep.csv",
+    "Cap_Lid Style": "Cap_Lid Style.csv", "Machine": "Machine.csv", 
+    "Sales Rep": "Sales Rep.csv", 
     "Cap_Lid Material": "Cap_Material.csv", "Cap_Lid Diameter": "Cap_Lid Diameter.csv"
 }
+
 DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
+COMBINATION_LIST = get_combination_options()
+
 DESIRED_ORDER = [
     "Date", "Age Category", "Client", "Description", "Diameter", "Project Description", "New Mould_Client or Product", 
     "Product Code", "Machine", "Sales Rep", "Category", "Status", "Open or closed", 
@@ -191,17 +200,6 @@ if tab_nav == "🔍 Search & Edit":
     
     if search_no and not match.empty:
         idx, row = match.index[0], match.iloc[0]
-        
-        # --- ADDED: Age Analysis for selected PreProd ---
-        st.markdown(f"### 📊 Age Analysis for #{search_no}")
-        ac1, ac2 = st.columns(2)
-        with ac1:
-            st.metric("Project Age", f"{int(row['Project Age (Open and Closed)'])} Days")
-        with ac2:
-            st.metric("Category", row['Age Category'])
-        st.divider()
-        # -----------------------------------------------
-
         c1, c2 = st.columns(2)
         with c1:
             if st.button("👯 Clone as Repeat Order", use_container_width=True):
@@ -225,10 +223,22 @@ if tab_nav == "🔍 Search & Edit":
 
         with st.expander("Edit Details", expanded=True):
             updated_vals = {}
+            
+            # Logic for Combination Select in Edit
+            selected_comb = st.selectbox("Update from Tube/Cap Combinations", options=[""] + COMBINATION_LIST, key="edit_comb_select")
+            
             edit_cols = st.columns(3)
             for i, col_name in enumerate(DESIRED_ORDER):
                 if col_name == "Age Category": continue
                 cur_val = str(row.get(col_name, "")) if str(row.get(col_name, "")).lower() != 'nan' else ""
+                
+                # Auto-fill values if a combination is selected
+                if selected_comb:
+                    parts = [p.strip() for p in selected_comb.split('|')]
+                    if col_name == "Diameter" and len(parts) > 0: cur_val = parts[0]
+                    if col_name == "Cap_Lid Style" and len(parts) > 1: cur_val = parts[1]
+                    if col_name == "Cap_Lid Diameter" and len(parts) > 2: cur_val = parts[2]
+
                 with edit_cols[i % 3]:
                     if col_name == 'Completion date':
                         try: d = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
@@ -252,15 +262,28 @@ if tab_nav == "🔍 Search & Edit":
 
 # --- TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
+    # Quick select outside the form to trigger re-renders for auto-fill
+    selected_comb = st.selectbox("Quick Select: Tube & Cap Combination", options=[""] + COMBINATION_LIST)
+    
     with st.form("new_job_form", clear_on_submit=True):
         st.subheader("Register Project")
+        
         default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
         new_id_input = st.text_input("Pre-Prod No.", value=default_id)
         new_data = {}
         cols = st.columns(3)
+        
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
             val = st.session_state.form_data.get(col_name, "")
+            
+            # Apply Combination Auto-fill
+            if selected_comb:
+                parts = [p.strip() for p in selected_comb.split('|')]
+                if col_name == "Diameter" and len(parts) > 0: val = parts[0]
+                if col_name == "Cap_Lid Style" and len(parts) > 1: val = parts[1]
+                if col_name == "Cap_Lid Diameter" and len(parts) > 2: val = parts[2]
+
             with cols[i % 3]:
                 if col_name == 'Date':
                     new_data[col_name] = st.date_input(col_name, value=datetime.now()).strftime('%d/%m/%Y')
@@ -269,6 +292,8 @@ elif tab_nav == "➕ Add New Job":
                     new_data[col_name] = res.strftime('%d/%m/%Y') if res else ""
                 elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                     opts = [""] + DROPDOWN_DATA[col_name]
+                    # Ensure auto-filled value is in options list
+                    if val and val not in opts: opts.append(val)
                     new_data[col_name] = st.selectbox(col_name, options=opts, index=opts.index(val) if val in opts else 0)
                 elif col_name in ['Status', 'Open or closed']:
                     status = "Open" if not new_data.get('Completion date') else "Closed"
