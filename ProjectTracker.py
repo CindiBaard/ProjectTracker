@@ -217,7 +217,8 @@ def display_combination_table(key_prefix):
                     st.session_state.selected_combo = {
                         "Diameter": str(selected_row.get("Diameter", "")),
                         "Cap_Lid Style": str(selected_row.get("Cap_Lid_Style", selected_row.get("Cap_Lid Style", ""))),
-                        "Cap_Lid Diameter": str(selected_row.get("Cap_Lid_Diameter", selected_row.get("Cap_Lid Diameter", "")))
+                        "Cap_Lid Diameter": str(selected_row.get("Cap_Lid_Diameter", selected_row.get("Cap_Lid Diameter", ""))),
+                        "Cap_Lid Material": str(selected_row.get("Cap_Lid_Material", selected_row.get("Cap_Lid Material", "")))
                     }
                     st.success("Combination selected! Details updated below.")
             except Exception as e:
