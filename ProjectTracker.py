@@ -51,11 +51,15 @@ def clean_key(val):
     return s_val[:-2] if s_val.endswith('.0') else s_val
 
 def get_next_available_id(requested_id, existing_ids):
+    """Checks if an ID exists and returns the next available underscore version."""
     requested_id = str(requested_id).strip()
     if requested_id not in existing_ids:
         return requested_id
-    
+
+# Extract base (e.g., '9143' from '9143_1')
     base_id = requested_id.split('_')[0]
+
+# Look for all variations of this base ID
     pattern = re.compile(rf"^{re.escape(base_id)}(_(\d+))?$")
     suffixes = []
     for eid in existing_ids:
@@ -64,7 +68,7 @@ def get_next_available_id(requested_id, existing_ids):
             if m.group(2):
                 suffixes.append(int(m.group(2)))
             else:
-                suffixes.append(0)
+                suffixes.append(0) # The original base ID (no underscore)
     
     next_s = max(suffixes) + 1 if suffixes else 1
     return f"{base_id}_{next_s}"
@@ -165,7 +169,28 @@ DESIRED_ORDER = [
 ]
 
 # --- 5. INTERFACE ---
-st.title("🚀 Project Management Dashboard")
+col_title, col_export = st.columns([4, 1])
+with col_title:
+    st.title("🚀 Project Management Dashboard")
+
+# Excel Export Tool
+with col_export:
+    if not df.empty:
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Projects')
+            workbook = writer.book
+            worksheet = writer.sheets['Projects']
+            header_format = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
+            for col_num, value in enumerate(df.columns.values):
+                worksheet.write(0, col_num, value, header_format)
+        
+        st.download_button(
+            label="📥 Download Excel",
+            data=output.getvalue(),
+            file_name=f"Project_Database_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 # Metric Dashboard
 if not df.empty:
@@ -190,18 +215,24 @@ st.session_state.active_tab = tab_nav
 # --- SHARED UI COMPONENT: COMBINATION TABLE ---
 def display_combination_table(key_prefix):
     if os.path.exists(COMBINATIONS_FILE):
-        with st.expander("📂 Click to browse Tube & Cap Combinations", expanded=False):
+        with st.expander("📂 Browse Tube & Cap Combinations (Filters Master Table Automatically)", expanded=False):
             try:
-                # Use semicolon separator as per typical file structure
                 combo_df = pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig')
                 combo_df = clean_column_names(combo_df)
                 
-                search = st.text_input(f"🔍 Filter Combinations", key=f"{key_prefix}_search")
+                c1, c2 = st.columns([3, 1])
+                with c1:
+                    search = st.text_input(f"🔍 Filter List", key=f"{key_prefix}_search")
+                with c2:
+                    if st.button("🔄 Reset Selection", key=f"{key_prefix}_reset"):
+                        st.session_state.selected_combo = {}
+                        st.rerun()
+
                 if search:
                     mask = combo_df.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)
                     combo_df = combo_df[mask]
                 
-                st.info("Select a row below to auto-fill Diameter, Cap Style, and Cap Diameter.")
+                st.info("Click a row to auto-fill the form and filter existing projects in the table below.")
                 event = st.dataframe(
                     combo_df, 
                     use_container_width=True, 
@@ -213,14 +244,12 @@ def display_combination_table(key_prefix):
                 
                 if event.selection.rows:
                     selected_row = combo_df.iloc[event.selection.rows[0]].to_dict()
-                    # Map combo columns to form columns
                     st.session_state.selected_combo = {
                         "Diameter": str(selected_row.get("Diameter", "")),
                         "Cap_Lid Style": str(selected_row.get("Cap_Lid_Style", selected_row.get("Cap_Lid Style", ""))),
                         "Cap_Lid Diameter": str(selected_row.get("Cap_Lid_Diameter", selected_row.get("Cap_Lid Diameter", ""))),
                         "Cap_Lid Material": str(selected_row.get("Cap_Lid_Material", selected_row.get("Cap_Lid Material", "")))
                     }
-                    st.success("Combination selected! Details updated below.")
             except Exception as e:
                 st.error(f"Error loading combinations: {e}")
 
@@ -231,17 +260,14 @@ if tab_nav == "🔍 Search & Edit":
     
     if search_no and not match.empty:
         idx, row = match.index[0], match.iloc[0]
-        
         display_combination_table("edit")
 
         with st.expander("Edit Details", expanded=True):
             updated_vals = {}
             edit_cols = st.columns(3)
-            
             for i, col_name in enumerate(DESIRED_ORDER):
                 if col_name == "Age Category": continue
                 
-                # Check if we have a selection from the table to override the current row value
                 if col_name in st.session_state.selected_combo and st.session_state.selected_combo[col_name]:
                     cur_val = st.session_state.selected_combo[col_name]
                 else:
@@ -264,26 +290,21 @@ if tab_nav == "🔍 Search & Edit":
             if st.button("💾 Save Changes", type="primary"):
                 for k, v in updated_vals.items(): df.at[idx, k] = v
                 save_db(df)
-                st.session_state.selected_combo = {} # Clear after save
+                st.session_state.selected_combo = {}
                 st.success("Updated!")
                 st.rerun()
 
 # --- TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
-    
     with st.form("new_job_form", clear_on_submit=True):
         st.subheader("Register Project")
         default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
         new_id_input = st.text_input("Pre-Prod No.", value=default_id)
-        
         new_data = {}
         cols = st.columns(3)
-        
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
-            
-            # Form priority: 1. Manual Session state (cloning) 2. Table Selection 3. Empty
             val = st.session_state.form_data.get(col_name, "")
             if col_name in st.session_state.selected_combo and st.session_state.selected_combo[col_name]:
                 val = st.session_state.selected_combo[col_name]
@@ -298,9 +319,8 @@ elif tab_nav == "➕ Add New Job":
                     opts = sorted(list(set([""] + DROPDOWN_DATA[col_name] + ([val] if val else []))))
                     new_data[col_name] = st.selectbox(col_name, options=opts, index=opts.index(val) if val in opts else 0)
                 elif col_name in ['Status', 'Open or closed']:
-                    status = "Open"
-                    new_data[col_name] = status
-                    st.text_input(col_name, value=status, disabled=True)
+                    new_data[col_name] = "Open"
+                    st.text_input(col_name, value="Open", disabled=True)
                 else:
                     new_data[col_name] = st.text_input(col_name, value=val)
 
@@ -315,7 +335,6 @@ elif tab_nav == "➕ Add New Job":
             new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
             df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
             save_db(df)
-            st.session_state.form_data = {}
             st.session_state.selected_combo = {}
             st.success(f"Project {final_id} Saved!")
             st.rerun()
@@ -332,11 +351,29 @@ elif tab_nav == "📊 Detailed Age Analysis":
             st.markdown("**Top Clients with Open Projects**")
             st.bar_chart(open_only['Client'].value_counts().head(10))
 
-# --- 6. GLOBAL DATA TABLE ---
+# --- 6. GLOBAL DATA TABLE (WITH COMBINATION FILTERING) ---
 st.divider()
 if st.checkbox("Show Master Project Table", value=True):
     search_q = st.text_input("🔍 Global Search").lower()
     disp_df = df.copy()
+
+    # Apply Combination Selection Filter
+    if st.session_state.selected_combo:
+        dia_val = st.session_state.selected_combo.get("Diameter")
+        cap_val = st.session_state.selected_combo.get("Cap_Lid Style")
+        
+        st.markdown(f"🎯 **Filtered by Combination:** Diameter: `{dia_val}`, Cap Style: `{cap_val}`")
+        
+        if dia_val:
+            disp_df = disp_df[disp_df['Diameter'].astype(str) == dia_val]
+        if cap_val:
+            disp_df = disp_df[disp_df['Cap_Lid Style'].astype(str) == cap_val]
+        
+        if disp_df.empty:
+            st.warning("No existing projects found with this specific Tube & Cap combination.")
+
+    # Apply Text Search Filter
     if search_q:
         disp_df = disp_df[disp_df.apply(lambda r: r.astype(str).str.contains(search_q, case=False).any(), axis=1)]
+    
     st.dataframe(disp_df, use_container_width=True)
