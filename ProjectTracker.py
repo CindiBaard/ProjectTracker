@@ -196,7 +196,7 @@ st.session_state.active_tab = tab_nav
 # --- TAB: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
     search_no = st.text_input("Search Pre-Prod No. (e.g. 9143)").strip()
-    match = df[df['Pre-Prod No.'] == search_no]
+    match = df[df['Pre-Prod No.'] == search_no] if 'Pre-Prod No.' in df.columns else pd.DataFrame()
     
     if search_no and not match.empty:
         idx, row = match.index[0], match.iloc[0]
@@ -224,43 +224,37 @@ if tab_nav == "🔍 Search & Edit":
         with st.expander("Edit Details", expanded=True):
             updated_vals = {}
             
-            # Logic for Combination Select in Edit
-            selected_comb = st.selectbox("Update from Tube/Cap Combinations", options=[""] + COMBINATION_LIST, key="edit_comb_select")
-            
+            # --- COMBINATION LOOKUP UI ---
+            if os.path.exists(COMBINATIONS_FILE):
+                st.markdown("### Tube & Cap Lookup")
+                selected_comb = st.selectbox("Update from Tube/Cap Combinations", options=[""] + COMBINATION_LIST, key="edit_comb_select")
+            else:
+                selected_comb = None
+
             edit_cols = st.columns(3)
             for i, col_name in enumerate(DESIRED_ORDER):
                 if col_name == "Age Category": continue
                 cur_val = str(row.get(col_name, "")) if str(row.get(col_name, "")).lower() != 'nan' else ""
                 
-                # Auto-fill values if a combination is selected
-     if os.path.exists(COMBINATIONS_FILE):
-        with st.expander("🔍 Tube & Cap Combination Lookup", expanded=True):
-            try:
-                combo_df = pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig')
-                combo_df = clean_column_names(combo_df)
-                search = st.text_input("Filter Combinations (e.g. 35mm Flip Top)")
-                if search:
-                    mask = combo_df.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)
-                    combo_df = combo_df[mask]
-                event = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key="combo_table")
-                if event.selection.rows:
-                    selected_row = combo_df.iloc[event.selection.rows[0]].to_dict()
-                    st.session_state.selected_combo = {k: (str(v) if str(v).lower() != 'nan' else "") for k, v in selected_row.items()}
-            except: pass
-
+                # Apply combination logic
+                if selected_comb:
+                    parts = [p.strip() for p in selected_comb.split('|')]
+                    if col_name == "Diameter" and len(parts) > 0: cur_val = parts[0]
+                    if col_name == "Cap_Lid Style" and len(parts) > 1: cur_val = parts[1]
+                    if col_name == "Cap_Lid Diameter" and len(parts) > 2: cur_val = parts[2]
 
                 with edit_cols[i % 3]:
                     if col_name == 'Completion date':
                         try: d = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
                         except: d = None
-                        sel_d = st.date_input(f"Edit {col_name}", value=d)
+                        sel_d = st.date_input(f"Edit {col_name}", value=d, key=f"edit_date_{col_name}")
                         updated_vals[col_name] = sel_d.strftime('%d/%m/%Y') if sel_d else ""
                     elif col_name in ["Status", "Open or closed"]: continue
                     elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                         opts = [""] + sorted(list(set(DROPDOWN_DATA[col_name] + [cur_val])))
-                        updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=opts.index(cur_val))
+                        updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=opts.index(cur_val), key=f"edit_sel_{col_name}")
                     else:
-                        updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val)
+                        updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val, key=f"edit_text_{col_name}")
             
             updated_vals["Status"] = "Closed" if updated_vals.get("Completion date") else "Open"
             updated_vals["Open or closed"] = updated_vals["Status"]
@@ -272,7 +266,6 @@ if tab_nav == "🔍 Search & Edit":
 
 # --- TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
-    # Selection outside form triggers a rerun, allowing the form logic to catch the new 'val'
     selected_comb = st.selectbox("Quick Select: Tube & Cap Combination", options=[""] + COMBINATION_LIST, key="new_job_comb_select")
     
     with st.form("new_job_form", clear_on_submit=True):
@@ -287,7 +280,6 @@ elif tab_nav == "➕ Add New Job":
             if col_name == "Age Category": continue
             val = st.session_state.form_data.get(col_name, "")
             
-            # Apply Combination Auto-fill logic before creating widgets
             if selected_comb:
                 parts = [p.strip() for p in selected_comb.split('|')]
                 if col_name == "Diameter" and len(parts) > 0: val = parts[0]
@@ -302,11 +294,9 @@ elif tab_nav == "➕ Add New Job":
                     new_data[col_name] = res.strftime('%d/%m/%Y') if res else ""
                 elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                     opts = [""] + DROPDOWN_DATA[col_name]
-                    # Dynamically add the auto-filled value to options if not present
                     if val and val not in opts: opts.append(val)
                     new_data[col_name] = st.selectbox(col_name, options=opts, index=opts.index(val) if val in opts else 0)
                 elif col_name in ['Status', 'Open or closed']:
-                    # Auto-calculate status based on Completion date presence
                     status = "Open"
                     new_data[col_name] = status
                     st.text_input(col_name, value=status, disabled=True)
@@ -317,12 +307,9 @@ elif tab_nav == "➕ Add New Job":
             existing_ids = df['Pre-Prod No.'].tolist()
             final_id = get_next_available_id(new_id_input, existing_ids)
             new_data['Pre-Prod No.'] = final_id
-            
-            # Recalculate status one last time for the final save
             final_status = "Closed" if new_data.get('Completion date') else "Open"
             new_data['Status'] = final_status
             new_data['Open or closed'] = final_status
-            
             cat, days = calculate_age_category(new_data)
             new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
             df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
