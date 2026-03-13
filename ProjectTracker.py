@@ -233,11 +233,21 @@ if tab_nav == "🔍 Search & Edit":
                 cur_val = str(row.get(col_name, "")) if str(row.get(col_name, "")).lower() != 'nan' else ""
                 
                 # Auto-fill values if a combination is selected
-                if selected_comb:
-                    parts = [p.strip() for p in selected_comb.split('|')]
-                    if col_name == "Diameter" and len(parts) > 0: cur_val = parts[0]
-                    if col_name == "Cap_Lid Style" and len(parts) > 1: cur_val = parts[1]
-                    if col_name == "Cap_Lid Diameter" and len(parts) > 2: cur_val = parts[2]
+     if os.path.exists(COMBINATIONS_FILE):
+        with st.expander("🔍 Tube & Cap Combination Lookup", expanded=True):
+            try:
+                combo_df = pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig')
+                combo_df = clean_column_names(combo_df)
+                search = st.text_input("Filter Combinations (e.g. 35mm Flip Top)")
+                if search:
+                    mask = combo_df.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)
+                    combo_df = combo_df[mask]
+                event = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key="combo_table")
+                if event.selection.rows:
+                    selected_row = combo_df.iloc[event.selection.rows[0]].to_dict()
+                    st.session_state.selected_combo = {k: (str(v) if str(v).lower() != 'nan' else "") for k, v in selected_row.items()}
+            except: pass
+
 
                 with edit_cols[i % 3]:
                     if col_name == 'Completion date':
