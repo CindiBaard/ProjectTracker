@@ -284,7 +284,6 @@ def display_combination_table(key_prefix):
             except Exception as e:
                 st.error(f"Error loading combinations: {e}")
 
-ython
 # --- TAB: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
     search_no = st.text_input("Search Pre-Prod No. (e.g. 9143)").strip()
