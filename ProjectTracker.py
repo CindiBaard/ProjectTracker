@@ -169,9 +169,6 @@ DESIRED_ORDER = [
 ]
 
 
-
-]
-
 # --- 5. INTERFACE ---
 col_title, col_export = st.columns([4, 1])
 with col_title:
