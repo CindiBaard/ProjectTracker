@@ -11,6 +11,122 @@ try:
 except ImportError:
     st.error("Missing dependency: Please run 'pip install xlsxwriter' to enable Excel exports.")
 
+# REQUIRED FOR PARQUET: pip install pyarrow
+try:
+    import pyarrow
+except ImportError:
+    st.error("Missing dependency: Please run 'pip install pyarrow' to enable high-speed Parquet storage.")
+
+st.set_page_config(page_title="Project Tracker", layout="wide")
+pd.set_option("styler.render.max_elements", 1000000)
+
+# --- 2. FILE PATHS ---
+BASE_DIR = os.getcwd() 
+# We now prioritize .parquet files for speed
+FILENAME = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
+TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv") 
+DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
+COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
+
+# --- 3. HELPER FUNCTIONS ---
+
+def clean_column_names(df):
+    df.columns = [str(c).strip().replace('\ufeff', '').replace('ï»¿', '').replace('"', '').replace('/', '_') for c in df.columns]
+    return df
+
+def calculate_age_category(row):
+    try:
+        start_date = pd.to_datetime(row['Date'], dayfirst=True, errors='coerce')
+        comp_date = str(row.get('Completion date', '')).strip()
+        if comp_date and comp_date.lower() != 'nan' and comp_date != '':
+            end_date = pd.to_datetime(comp_date, dayfirst=True, errors='coerce')
+        else:
+            end_date = pd.to_datetime(datetime.now().date())
+        
+        if pd.isnull(start_date) or pd.isnull(end_date):
+            return "N/A", 0
+            
+        days = (end_date - start_date).days
+        cat = "< 6 Weeks" if days < 42 else "6-12 Weeks" if days < 84 else "> 12 Weeks"
+        return cat, days
+    except: 
+        return "Error", 0
+
+# --- NEW: CACHED OPTIONS LOADING ---
+@st.cache_data
+def get_options(filename):
+    path = os.path.join(BASE_DIR, filename)
+    if os.path.exists(path):
+        try:
+            # Check if it's a csv or parquet
+            if path.endswith('.csv'):
+                with open(path, 'r', encoding='latin1', errors='ignore') as f:
+                    lines = [line.strip().replace('"', '') for line in f.readlines() if line.strip()]
+                    return sorted(list(set([l.split(';')[0].split(',')[0].strip() for l in lines if l])))
+            return []
+        except: return []
+    return []
+
+# --- NEW: CACHED DATA LOADING ---
+@st.cache_data(show_spinner="Updating Database...")
+def load_db():
+    # Attempt to merge CSVs into the master Parquet if CSVs exist
+    if os.path.exists(TRACKER_ADJ_FILE) and os.path.exists(DIGITALPREPROD_FILE):
+        try:
+            df_d = pd.read_csv(DIGITALPREPROD_FILE, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
+            df_t = pd.read_csv(TRACKER_ADJ_FILE, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
+            
+            # Basic cleaning
+            df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].astype(str).str.strip().replace(r'\.0$', '', regex=True)
+            df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].astype(str).str.strip().replace(r'\.0$', '', regex=True)
+            
+            combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), 
+                               df_d.dropna(subset=['Pre-Prod No.']), 
+                               on='Pre-Prod No.', how='outer', suffixes=('', '_digital_info'))
+            
+            # Save as Parquet immediately for speed
+            combined.to_parquet(FILENAME, index=False)
+        except Exception as e:
+            st.warning(f"Note: Could not refresh from CSVs, using existing cache. {e}")
+
+    if not os.path.exists(FILENAME): return pd.DataFrame()
+
+    try:
+        # Loading from Parquet is 10x-50x faster than CSV
+        df = pd.read_parquet(FILENAME)
+        df = clean_column_names(df)
+        df = df.map(lambda x: str(x).strip().replace('"', '') if isinstance(x, str) else x)
+        
+        if 'Pre-Prod No.' in df.columns:
+            df['Pre-Prod No.'] = df['Pre-Prod No.'].astype(str)
+            df = df[df['Pre-Prod No.'] != 'nan']
+        
+        if 'Date' in df.columns:
+            results = df.apply(calculate_age_category, axis=1)
+            df['Age Category'] = [r[0] for r in results]
+            df['Project Age (Open and Closed)'] = [r[1] for r in results]
+            df['Project Age (Open and Closed)'] = pd.to_numeric(df['Project Age (Open and Closed)'], errors='coerce').fillna(0)
+        
+        return df
+    except Exception as e:
+        st.error(f"Load Error: {e}")
+        return pd.DataFrame()
+
+def save_db(df_to_save):
+    # Save as Parquet
+    df_to_save.to_parquet(FILENAME, index=False)
+    # Clear cache so the next load reflects changes
+    st.cache_data.clear()
+
+# --- 4. DATA LOADING ---
+df = load_db()
+
+# --- 1. INITIAL SETUP ---
+try:
+    import xlsxwriter
+except ImportError:
+    st.error("Missing dependency: Please run 'pip install xlsxwriter' to enable Excel exports.")
+
 st.set_page_config(page_title="Project Tracker", layout="wide")
 pd.set_option("styler.render.max_elements", 1000000)
 
