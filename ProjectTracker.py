@@ -19,7 +19,7 @@ except ImportError:
 st.set_page_config(page_title="Project Tracker Dashboard", layout="wide")
 pd.set_option("styler.render.max_elements", 1000000)
 
-# Initialize session state keys if they don't exist
+# Initialize session state keys
 if 'active_tab' not in st.session_state:
     st.session_state.active_tab = "🔍 Search & Edit"
 if 'form_data' not in st.session_state:
@@ -37,21 +37,36 @@ COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 # --- 3. HELPER FUNCTIONS ---
 
 def pad_preprod_id(val):
-    # This takes "9143" or 9143.0 and forces it to be exactly "09143"
-    # It also handles suffixes like "09143_1"
-    ...
-    return f"{base.zfill(5)}_{suffix}"
+    """Standardizes IDs: '9143' -> '09143' and '9143_1' -> '09143_1'."""
+    if pd.isna(val) or str(val).strip() == '': 
+        return ""
+    
+    # Remove .0 from Excel imports and strip whitespace
+    val_str = str(val).strip().split('.')[0]
+    
+    if '_' in val_str:
+        parts = val_str.split('_', 1)
+        base = parts[0]
+        suffix = parts[1]
+        return f"{base.zfill(5)}_{suffix}"
     else:
         return val_str.zfill(5)
 
 def get_auto_next_no(df):
+    """Generates the next logical integer ID with 5-digit padding."""
     if df.empty or 'Pre-Prod No.' not in df.columns: 
         return "00001"
+    
     nums = []
     for i in df['Pre-Prod No.'].tolist():
         match = re.match(r"(\d+)", str(i))
-        if match: nums.append(int(match.group(1)))
-    next_val = max(nums) + 1 if nums else 1
+        if match: 
+            nums.append(int(match.group(1)))
+    
+    if not nums:
+        return "00001"
+        
+    next_val = max(nums) + 1
     return str(next_val).zfill(5)
 
 def get_next_available_id(requested_id, existing_ids):
@@ -120,6 +135,7 @@ def load_db(force_refresh=False):
                                    df_d.dropna(subset=['Pre-Prod No.']), 
                                    on='Pre-Prod No.', how='outer', suffixes=('', '_digital_info'))
                 
+                # Apply padding to ensure leading zeros are saved correctly
                 if 'Pre-Prod No.' in combined.columns:
                     combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
 
@@ -135,6 +151,7 @@ def load_db(force_refresh=False):
     df = clean_column_names(df)
     
     if 'Pre-Prod No.' in df.columns:
+        df['Pre-Prod No.'] = df['Pre-Prod No.'].apply(pad_preprod_id)
         df = df.sort_values(by='Pre-Prod No.', ascending=True).reset_index(drop=True)
 
     if 'Date' in df.columns:
@@ -145,6 +162,10 @@ def load_db(force_refresh=False):
     return df
 
 def save_db(df_to_save):
+    # Ensure ID column is treated as string to preserve leading zeros
+    if 'Pre-Prod No.' in df_to_save.columns:
+        df_to_save['Pre-Prod No.'] = df_to_save['Pre-Prod No.'].apply(pad_preprod_id)
+        
     for col in df_to_save.select_dtypes(include=['object']).columns:
         df_to_save[col] = df_to_save[col].astype(str).replace('nan', '')
     df_to_save.to_parquet(FILENAME_PARQUET, index=False)
@@ -300,10 +321,13 @@ if tab_nav == "🔍 Search & Edit":
                 final_status = "Closed" if updated_vals.get("Completion date") else "Open"
                 updated_vals["Status"] = final_status
                 updated_vals["Open or closed"] = final_status
-                for k, v in updated_vals.items(): df.at[idx, k] = v
+                for k, v in updated_vals.items(): 
+                    df.at[idx, k] = v
                 save_db(df)
                 st.session_state.selected_combo = {}
                 st.rerun()
+    elif raw_search:
+        st.warning(f"No project found for ID: {search_no}")
 
 # --- TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
@@ -343,6 +367,7 @@ elif tab_nav == "➕ Add New Job":
             new_data['Open or closed'] = new_data['Status']
             cat, days = calculate_age_category(new_data)
             new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
+            
             df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
             save_db(df)
             st.session_state.selected_combo = {}
@@ -364,4 +389,8 @@ elif tab_nav == "📊 Detailed Age Analysis":
 # --- 10. GLOBAL DATA TABLE ---
 st.divider()
 if st.checkbox("Show Master Table", value=True):
-    st.dataframe(df, use_container_width=True)
+    # Ensure ID is formatted for display
+    display_df = df.copy()
+    if 'Pre-Prod No.' in display_df.columns:
+        display_df['Pre-Prod No.'] = display_df['Pre-Prod No.'].apply(pad_preprod_id)
+    st.dataframe(display_df, use_container_width=True)
