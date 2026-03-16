@@ -28,6 +28,30 @@ COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 
 # --- 3. HELPER FUNCTIONS ---
 
+def get_auto_next_no(df):
+    if df.empty or 'Pre-Prod No.' not in df.columns: 
+        return "10001"
+    nums = []
+    for i in df['Pre-Prod No.'].tolist():
+        match = re.match(r"(\d+)", str(i))
+        if match: nums.append(int(match.group(1)))
+    return str(max(nums) + 1) if nums else "10001"
+
+def get_next_available_id(requested_id, existing_ids):
+    requested_id = str(requested_id).strip()
+    if requested_id not in existing_ids:
+        return requested_id
+    base_id = requested_id.split('_')[0]
+    pattern = re.compile(rf"^{re.escape(base_id)}(_(\d+))?$")
+    suffixes = []
+    for eid in existing_ids:
+        m = pattern.match(str(eid))
+        if m:
+            if m.group(2): suffixes.append(int(m.group(2)))
+            else: suffixes.append(0)
+    next_s = max(suffixes) + 1 if suffixes else 1
+    return f"{base_id}_{next_s}"
+
 def clean_column_names(df):
     df.columns = [str(c).strip().replace('\ufeff', '').replace('ï»¿', '').replace('"', '').replace('/', '_') for c in df.columns]
     return df
@@ -40,10 +64,8 @@ def calculate_age_category(row):
             end_date = pd.to_datetime(comp_date, dayfirst=True, errors='coerce')
         else:
             end_date = pd.to_datetime(datetime.now().date())
-        
         if pd.isnull(start_date) or pd.isnull(end_date):
             return "N/A", 0
-            
         days = (end_date - start_date).days
         cat = "< 6 Weeks" if days < 42 else "6-12 Weeks" if days < 84 else "> 12 Weeks"
         return cat, days
@@ -55,7 +77,7 @@ def clean_key(val):
     s_val = str(val).strip()
     return s_val[:-2] if s_val.endswith('.0') else s_val
 
-# --- 4. DATA LOADING (WITH CACHING & PARQUET FIXES) ---
+# --- 4. DATA LOADING ---
 
 @st.cache_data
 def get_options(filename):
@@ -70,65 +92,48 @@ def get_options(filename):
 
 @st.cache_data(show_spinner="Loading High-Performance Database...")
 def load_db(force_refresh=False):
-    # Only merge CSVs if Parquet doesn't exist OR we manually refresh
     if force_refresh or not os.path.exists(FILENAME_PARQUET):
         if os.path.exists(TRACKER_ADJ_FILE) and os.path.exists(DIGITALPREPROD_FILE):
             try:
                 df_d = pd.read_csv(DIGITALPREPROD_FILE, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
                 df_t = pd.read_csv(TRACKER_ADJ_FILE, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
-                
                 df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].apply(clean_key)
                 df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].apply(clean_key)
-                
                 combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), 
                                    df_d.dropna(subset=['Pre-Prod No.']), 
                                    on='Pre-Prod No.', how='outer', suffixes=('', '_digital_info'))
-                
-                # FIX: Force problematic columns to string to prevent Parquet float errors
                 for col in combined.columns:
                     if combined[col].dtype == 'object' or col == 'Diameter':
                         combined[col] = combined[col].astype(str).replace('nan', '')
-
                 combined.to_parquet(FILENAME_PARQUET, index=False)
             except Exception as e:
-                st.error(f"Failed to convert CSV to Parquet: {e}")
-
-    if not os.path.exists(FILENAME_PARQUET):
-        return pd.DataFrame()
-
+                st.error(f"Merge Error: {e}")
+    if not os.path.exists(FILENAME_PARQUET): return pd.DataFrame()
     df = pd.read_parquet(FILENAME_PARQUET)
     df = clean_column_names(df)
-    
-    # Apply Age Logic
     if 'Date' in df.columns:
         results = df.apply(calculate_age_category, axis=1)
         df['Age Category'] = [r[0] for r in results]
         df['Project Age (Open and Closed)'] = [r[1] for r in results]
-        df['Project Age (Open and Closed)'] = pd.to_numeric(df['Project Age (Open and Closed)'], errors='coerce').fillna(0)
-    
     return df
 
 def save_db(df_to_save):
-    # Ensure all object columns are string to avoid future conversion errors
     for col in df_to_save.select_dtypes(include=['object']).columns:
         df_to_save[col] = df_to_save[col].astype(str).replace('nan', '')
-    
     df_to_save.to_parquet(FILENAME_PARQUET, index=False)
     st.cache_data.clear()
 
-# --- 5. INITIALIZE DATA ---
+# --- 5. INITIALIZE DATA & SESSION ---
 if st.sidebar.button("🔄 Force Refresh from CSVs"):
     df = load_db(force_refresh=True)
     st.sidebar.success("Database Rebuilt!")
 else:
     df = load_db()
 
-# --- 6. GLOBAL SESSION STATE ---
 if 'form_data' not in st.session_state: st.session_state.form_data = {}
 if 'active_tab' not in st.session_state: st.session_state.active_tab = "🔍 Search & Edit"
 if 'selected_combo' not in st.session_state: st.session_state.selected_combo = {}
 
-# Load Dropdowns
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
     "Orifice": "Orifice.csv", "Diameter": "TubeDia.csv", "Foiling": "Foiling.csv",
@@ -152,23 +157,16 @@ DESIRED_ORDER = [
     "Blowmould trial requested", "Blowmould trial received", "Comments"
 ]
 
-# --- 5. INTERFACE ---
+# --- 6. INTERFACE HEADER & EXPORT ---
 col_title, col_export = st.columns([4, 1])
 with col_title:
     st.title("🚀 Project Tracker Dashboard")
 
-# Excel Export Tool
 with col_export:
     if not df.empty:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False, sheet_name='Projects')
-            workbook = writer.book
-            worksheet = writer.sheets['Projects']
-            header_format = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
-            for col_num, value in enumerate(df.columns.values):
-                worksheet.write(0, col_num, value, header_format)
-        
         st.download_button(
             label="📥 Download Excel",
             data=output.getvalue(),
@@ -176,7 +174,7 @@ with col_export:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-# Metric Dashboard
+# --- 7. METRIC DASHBOARD ---
 if not df.empty:
     open_mask = df['Open or closed'].str.lower().str.contains('open', na=False)
     open_df = df[open_mask]
@@ -191,41 +189,18 @@ if not df.empty:
 
 st.divider()
 
-tab_nav = st.radio("Navigation", ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis"], 
-                   index=["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis"].index(st.session_state.active_tab),
-                   key="nav_radio", horizontal=True)
-st.session_state.active_tab = tab_nav
-
-# --- SHARED UI COMPONENT: COMBINATION TABLE ---
+# --- 8. SHARED UI COMPONENT: COMBINATION TABLE ---
 def display_combination_table(key_prefix):
     if os.path.exists(COMBINATIONS_FILE):
-        with st.expander("📂 Browse Tube & Cap Combinations (Filters Master Table Automatically)", expanded=False):
+        with st.expander("📂 Browse Tube & Cap Combinations", expanded=False):
             try:
                 combo_df = pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig')
                 combo_df = clean_column_names(combo_df)
-                
-                c1, c2 = st.columns([3, 1])
-                with c1:
-                    search = st.text_input(f"🔍 Filter List", key=f"{key_prefix}_search")
-                with c2:
-                    if st.button("🔄 Reset Selection", key=f"{key_prefix}_reset"):
-                        st.session_state.selected_combo = {}
-                        st.rerun()
-
+                search = st.text_input(f"🔍 Filter List", key=f"{key_prefix}_search")
                 if search:
                     mask = combo_df.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)
                     combo_df = combo_df[mask]
-                
-                st.info("Click a row to auto-fill the form and filter existing projects in the table below.")
-                event = st.dataframe(
-                    combo_df, 
-                    use_container_width=True, 
-                    hide_index=True, 
-                    on_select="rerun", 
-                    selection_mode="single-row",
-                    key=f"{key_prefix}_table"
-                )
-                
+                event = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table")
                 if event.selection.rows:
                     selected_row = combo_df.iloc[event.selection.rows[0]].to_dict()
                     st.session_state.selected_combo = {
@@ -234,112 +209,85 @@ def display_combination_table(key_prefix):
                         "Cap_Lid Diameter": str(selected_row.get("Cap_Lid_Diameter", selected_row.get("Cap_Lid Diameter", ""))),
                         "Cap_Lid Material": str(selected_row.get("Cap_Lid_Material", selected_row.get("Cap_Lid Material", "")))
                     }
-            except Exception as e:
-                st.error(f"Error loading combinations: {e}")
+            except Exception as e: st.error(f"Error: {e}")
+
+# --- 9. NAVIGATION ---
+tab_nav = st.radio("Navigation", ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis"], 
+                   index=["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis"].index(st.session_state.active_tab),
+                   horizontal=True)
+st.session_state.active_tab = tab_nav
 
 # --- TAB: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
-    search_no = st.text_input("Search Pre-Prod No. (e.g. 9143)").strip()
+    search_no = st.text_input("Search Pre-Prod No.").strip()
     match = df[df['Pre-Prod No.'] == search_no] if 'Pre-Prod No.' in df.columns else pd.DataFrame()
     
     if search_no and not match.empty:
         idx, row = match.index[0], match.iloc[0]
         
-        # --- 1. STATUS HEADER ---
-        current_status = str(row.get('Status', 'Open'))
-        age_days = row.get('Project Age (Open and Closed)', 0)
-        
-        if current_status.lower() == 'closed':
-            st.success(f"✅ **Status: CLOSED** (Completed: {row.get('Completion date')})")
-        else:
-            st.info(f"🔹 **Status: OPEN** | Project Age: {int(age_days)} Days")
-
-        # --- 2. ACTION BUTTONS (Clone & Delete) ---
-        col_clone, col_delete = st.columns(2)
-        
-        with col_clone:
+        col_c, col_d = st.columns(2)
+        with col_c:
             if st.button("👯 Clone as Repeat Order", use_container_width=True):
-                existing_ids = df['Pre-Prod No.'].tolist()
-                new_id = get_next_available_id(search_no, existing_ids)
+                new_id = get_next_available_id(search_no, df['Pre-Prod No.'].tolist())
                 new_clone = row.to_dict()
                 new_clone['Pre-Prod No.'] = new_id
                 new_clone['Date'] = datetime.now().strftime('%d/%m/%Y')
                 new_clone['Completion date'] = ""
-                new_clone['Status'] = "Open"
-                new_clone['Open or closed'] = "Open"
                 st.session_state.form_data = new_clone
                 st.session_state.active_tab = "➕ Add New Job"
                 st.rerun()
-
-        with col_delete:
-            # Popover acts as a "Are you sure?" safety net
-            with st.popover("🗑️ Delete Project", use_container_width=True):
-                st.warning(f"Are you sure you want to delete {search_no}?")
-                confirm_delete = st.checkbox("I confirm I want to permanently delete this.")
-                if st.button("❌ Confirm Delete", type="primary", disabled=not confirm_delete):
+        with col_d:
+            with st.popover("🗑️ Delete", use_container_width=True):
+                if st.button("Confirm Delete"):
                     df = df.drop(idx)
                     save_db(df)
-                    st.success(f"Project {search_no} deleted successfully.")
                     st.rerun()
 
-        # --- 3. EDIT FORM ---
         display_combination_table("edit")
         with st.expander("Edit Details", expanded=True):
             updated_vals = {}
             edit_cols = st.columns(3)
             for i, col_name in enumerate(DESIRED_ORDER):
                 if col_name == "Age Category": continue
+                cur_val = str(row.get(col_name, "")) if str(row.get(col_name, "")).lower() != 'nan' else ""
+                if col_name in st.session_state.selected_combo: cur_val = st.session_state.selected_combo[col_name]
                 
-                # Check for combo selection overrides
-                if col_name in st.session_state.selected_combo and st.session_state.selected_combo[col_name]:
-                    cur_val = st.session_state.selected_combo[col_name]
-                else:
-                    cur_val = str(row.get(col_name, "")) if str(row.get(col_name, "")).lower() != 'nan' else ""
-
                 with edit_cols[i % 3]:
                     if col_name == 'Completion date':
                         try: d = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
                         except: d = None
-                        sel_d = st.date_input(f"Edit {col_name}", value=d, key=f"ed_{col_name}")
+                        sel_d = st.date_input(col_name, value=d, key=f"ed_{col_name}")
                         updated_vals[col_name] = sel_d.strftime('%d/%m/%Y') if sel_d else ""
                     elif col_name in ["Status", "Open or closed"]: continue
                     elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
                         opts = sorted(list(set([""] + DROPDOWN_DATA[col_name] + ([cur_val] if cur_val else []))))
-                        idx_sel = opts.index(cur_val) if cur_val in opts else 0
-                        updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=idx_sel, key=f"sel_{col_name}")
+                        updated_vals[col_name] = st.selectbox(col_name, options=opts, index=opts.index(cur_val) if cur_val in opts else 0, key=f"sel_{col_name}")
                     else:
-                        updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val, key=f"txt_{col_name}")
+                        updated_vals[col_name] = st.text_input(col_name, value=cur_val, key=f"txt_{col_name}")
 
             if st.button("💾 Save Changes", type="primary", use_container_width=True):
-                # Auto-update status based on completion date
                 final_status = "Closed" if updated_vals.get("Completion date") else "Open"
                 updated_vals["Status"] = final_status
                 updated_vals["Open or closed"] = final_status
-                
-                for k, v in updated_vals.items(): 
-                    df.at[idx, k] = v
-                
+                for k, v in updated_vals.items(): df.at[idx, k] = v
                 save_db(df)
                 st.session_state.selected_combo = {}
-                st.success("Changes saved!")
                 st.rerun()
-    elif search_no:
-        st.error(f"Project '{search_no}' not found.")
 
 # --- TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
+    default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
+    
     with st.form("new_job_form", clear_on_submit=True):
         st.subheader("Register Project")
-        default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
         new_id_input = st.text_input("Pre-Prod No.", value=default_id)
         new_data = {}
         cols = st.columns(3)
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
             val = st.session_state.form_data.get(col_name, "")
-            if col_name in st.session_state.selected_combo and st.session_state.selected_combo[col_name]:
-                val = st.session_state.selected_combo[col_name]
+            if col_name in st.session_state.selected_combo: val = st.session_state.selected_combo[col_name]
 
             with cols[i % 3]:
                 if col_name == 'Date':
@@ -357,18 +305,15 @@ elif tab_nav == "➕ Add New Job":
                     new_data[col_name] = st.text_input(col_name, value=val)
 
         if st.form_submit_button("✅ Save Project"):
-            existing_ids = df['Pre-Prod No.'].tolist()
-            final_id = get_next_available_id(new_id_input, existing_ids)
+            final_id = get_next_available_id(new_id_input, df['Pre-Prod No.'].astype(str).tolist())
             new_data['Pre-Prod No.'] = final_id
-            final_status = "Closed" if new_data.get('Completion date') else "Open"
-            new_data['Status'] = final_status
-            new_data['Open or closed'] = final_status
+            new_data['Status'] = "Closed" if new_data.get('Completion date') else "Open"
+            new_data['Open or closed'] = new_data['Status']
             cat, days = calculate_age_category(new_data)
             new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
             df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
             save_db(df)
             st.session_state.selected_combo = {}
-            st.success(f"Project {final_id} Saved!")
             st.rerun()
 
 # --- TAB: DETAILED AGE ANALYSIS ---
@@ -383,14 +328,7 @@ elif tab_nav == "📊 Detailed Age Analysis":
             st.markdown("**Top Clients with Open Projects**")
             st.bar_chart(open_only['Client'].value_counts().head(10))
 
-# --- 6. GLOBAL DATA TABLE (WITH COMBINATION FILTERING) ---
+# --- 10. GLOBAL DATA TABLE ---
 st.divider()
-
-# --- 8. NAVIGATION ---
-tab_nav = st.radio("Navigation", ["🔍 Search & Edit", "➕ Add New Job", "📊 Analysis"], horizontal=True)
-
-# ... (Insert your Tab Logic and Display Combination Table functions here) ...
-# Note: Ensure you call save_db(df) after any edits to keep the Parquet file updated.
-
-if st.checkbox("Show Master Table"):
+if st.checkbox("Show Master Table", value=True):
     st.dataframe(df, use_container_width=True)
