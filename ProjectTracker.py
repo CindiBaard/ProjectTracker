@@ -188,7 +188,7 @@ DROPDOWN_CONFIG = {
 DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
 
 DESIRED_ORDER = [
-    "Date", "Age Category", "Client", "Description", "Diameter", "Project Description", "New Mould_Client or Product", 
+    "Date", "Age Category", "Client", "Project Description", "Diameter","New Mould_Client or Product", 
     "Product Code", "Machine", "Sales Rep", "Category", "Status", "Open or closed", 
     "Completion date", "Material", "Product Material Colour (tube, jar etc.)", 
     "Artwork Required", "Artwork Received", "Order Qty x1000", "Unit Order No", 
