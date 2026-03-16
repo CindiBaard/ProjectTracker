@@ -178,6 +178,54 @@ if st.sidebar.button("🔄 Force Refresh from CSVs"):
 else:
     df = load_db()
 
+# --- 5.1 PRE-PROD AGE ANALYSIS (NEW SUMMARY SECTION) ---
+if not df.empty:
+    # Filter for Open jobs
+    pp_open = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
+    
+    with st.container():
+        st.subheader("📊 Pre-Prod Age Analysis Summary")
+        
+        # Calculate specific metrics
+        total_open_pp = len(pp_open)
+        critical_pp = len(pp_open[pp_open['Age Category'] == "> 12 Weeks"])
+        mid_pp = len(pp_open[pp_open['Age Category'] == "6-12 Weeks"])
+        recent_pp = len(pp_open[pp_open['Age Category'] == "< 6 Weeks"])
+
+        # Create Layout Columns
+        c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
+        
+        with c1:
+            st.metric("Total Open PP", total_open_pp)
+        with c2:
+            pct_crit = (critical_pp / total_open_pp * 100) if total_open_pp > 0 else 0
+            st.metric("Critical (>12w)", critical_pp, delta=f"{pct_crit:.1f}%", delta_color="inverse")
+        with c3:
+            st.metric("Mid-Term (6-12w)", mid_pp)
+            
+        with c4:
+            # Visual distribution
+            age_dist = pp_open['Age Category'].value_counts().reindex(["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"], fill_value=0)
+            # Note: if horizontal=True causes an error on your version, remove it
+            st.bar_chart(age_dist, height=150)
+
+        # Alert for critical items
+        if critical_pp > 0:
+            with st.expander(f"⚠️ View {critical_pp} Critical Projects (>12 Weeks Old)", expanded=False):
+                critical_list = pp_open[pp_open['Age Category'] == "> 12 Weeks"][['Pre-Prod No.', 'Client', 'Project Age (Open and Closed)', 'Sales Rep']]
+                st.table(critical_list.sort_values('Project Age (Open and Closed)', ascending=False))
+
+st.divider()
+
+# --- 6. CONFIGURATIONS ---
+DROPDOWN_CONFIG = {
+    "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
+    "Orifice": "Orifice.csv", "Diameter": "TubeDia.csv", "Foiling": "Foiling.csv",
+    "Cap_Lid Style": "Cap_Lid Style.csv", "Machine": "Machine.csv", 
+    "Sales Rep": "Sales Rep.csv", 
+    "Cap_Lid Material": "Cap_Material.csv", "Cap_Lid Diameter": "Cap_Lid Diameter.csv"
+}
+
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
     "Orifice": "Orifice.csv", "Diameter": "TubeDia.csv", "Foiling": "Foiling.csv",
