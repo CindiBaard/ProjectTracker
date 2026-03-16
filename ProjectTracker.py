@@ -40,10 +40,7 @@ def pad_preprod_id(val):
     """Standardizes IDs: '9143' -> '09143' and '9143_1' -> '09143_1'."""
     if pd.isna(val) or str(val).strip() == '': 
         return ""
-    
-    # Remove .0 from Excel imports and strip whitespace
     val_str = str(val).strip().split('.')[0]
-    
     if '_' in val_str:
         parts = val_str.split('_', 1)
         base = parts[0]
@@ -56,16 +53,13 @@ def get_auto_next_no(df):
     """Generates the next logical integer ID with 5-digit padding."""
     if df.empty or 'Pre-Prod No.' not in df.columns: 
         return "00001"
-    
     nums = []
     for i in df['Pre-Prod No.'].tolist():
         match = re.match(r"(\d+)", str(i))
         if match: 
             nums.append(int(match.group(1)))
-    
     if not nums:
         return "00001"
-        
     next_val = max(nums) + 1
     return str(next_val).zfill(5)
 
@@ -135,7 +129,6 @@ def load_db(force_refresh=False):
                                    df_d.dropna(subset=['Pre-Prod No.']), 
                                    on='Pre-Prod No.', how='outer', suffixes=('', '_digital_info'))
                 
-                # Apply padding to ensure leading zeros are saved correctly
                 if 'Pre-Prod No.' in combined.columns:
                     combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
 
@@ -162,68 +155,14 @@ def load_db(force_refresh=False):
     return df
 
 def save_db(df_to_save):
-    # Ensure ID column is treated as string to preserve leading zeros
     if 'Pre-Prod No.' in df_to_save.columns:
         df_to_save['Pre-Prod No.'] = df_to_save['Pre-Prod No.'].apply(pad_preprod_id)
-        
     for col in df_to_save.select_dtypes(include=['object']).columns:
         df_to_save[col] = df_to_save[col].astype(str).replace('nan', '')
     df_to_save.to_parquet(FILENAME_PARQUET, index=False)
     st.cache_data.clear()
 
-# --- 5. INITIALIZE DATA ---
-if st.sidebar.button("🔄 Force Refresh from CSVs"):
-    df = load_db(force_refresh=True)
-    st.sidebar.success("Database Rebuilt!")
-else:
-    df = load_db()
-
-# DYNAMICALLY ADD CLIENTS TO DROPDOWN DATA
-if not df.empty and 'Client' in df.columns:
-    # Get unique clients, remove empty values, and sort alphabetically
-    client_list = sorted([str(c) for c in df['Client'].unique() if str(c).strip() and str(c).lower() != 'nan'])
-    DROPDOWN_DATA['Client'] = client_list
-    
-# --- 5.1 PRE-PROD AGE ANALYSIS (NEW SUMMARY SECTION) ---
-if not df.empty:
-    # Filter for Open jobs
-    pp_open = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
-    
-    with st.container():
-        st.subheader("📊 Pre-Prod Age Analysis Summary")
-        
-        # Calculate specific metrics
-        total_open_pp = len(pp_open)
-        critical_pp = len(pp_open[pp_open['Age Category'] == "> 12 Weeks"])
-        mid_pp = len(pp_open[pp_open['Age Category'] == "6-12 Weeks"])
-        recent_pp = len(pp_open[pp_open['Age Category'] == "< 6 Weeks"])
-
-        # Create Layout Columns
-        c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
-        
-        with c1:
-            st.metric("Total Open PP", total_open_pp)
-        with c2:
-            pct_crit = (critical_pp / total_open_pp * 100) if total_open_pp > 0 else 0
-            st.metric("Critical (>12w)", critical_pp, delta=f"{pct_crit:.1f}%", delta_color="inverse")
-        with c3:
-            st.metric("Mid-Term (6-12w)", mid_pp)
-            
-        with c4:
-            # Visual distribution
-            age_dist = pp_open['Age Category'].value_counts().reindex(["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"], fill_value=0)
-            # Note: if horizontal=True causes an error on your version, remove it
-            st.bar_chart(age_dist, height=150)
-
-        # Alert for critical items
-        if critical_pp > 0:
-            with st.expander(f"⚠️ View {critical_pp} Critical Projects (>12 Weeks Old)", expanded=False):
-                critical_list = pp_open[pp_open['Age Category'] == "> 12 Weeks"][['Pre-Prod No.', 'Client', 'Project Age (Open and Closed)', 'Sales Rep']]
-                st.table(critical_list.sort_values('Project Age (Open and Closed)', ascending=False))
-
-st.divider()
-
-# --- 6. CONFIGURATIONS ---
+# --- 5. CONFIGURATIONS & DROPDOWN DATA ---
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
     "Orifice": "Orifice.csv", "Diameter": "TubeDia.csv", "Foiling": "Foiling.csv",
@@ -248,46 +187,57 @@ DESIRED_ORDER = [
     "Blowmould trial requested", "Blowmould trial received", "Comments"
 ]
 
-# --- 5. INTERFACE ---
+# --- 6. INITIALIZE DATA & DYNAMIC DROPDOWNS ---
+if st.sidebar.button("🔄 Force Refresh from CSVs"):
+    df = load_db(force_refresh=True)
+    st.sidebar.success("Database Rebuilt!")
+else:
+    df = load_db()
+
+# Update Client list from loaded data
+if not df.empty and 'Client' in df.columns:
+    client_list = sorted([str(c) for c in df['Client'].unique() if str(c).strip() and str(c).lower() != 'nan'])
+    DROPDOWN_DATA['Client'] = client_list
+
+# --- 7. UI: DASHBOARD SUMMARY ---
 col_title, col_export = st.columns([4, 1])
 with col_title:
     st.title("🚀 Project Tracker Dashboard")
 
-# Excel Export Tool
+if not df.empty:
+    pp_open = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
+    
+    with st.container():
+        st.subheader("📊 Pre-Prod Age Analysis Summary")
+        total_open_pp = len(pp_open)
+        critical_pp = len(pp_open[pp_open['Age Category'] == "> 12 Weeks"])
+        mid_pp = len(pp_open[pp_open['Age Category'] == "6-12 Weeks"])
+        
+        c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
+        with c1: st.metric("Total Open PP", total_open_pp)
+        with c2: 
+            pct_crit = (critical_pp / total_open_pp * 100) if total_open_pp > 0 else 0
+            st.metric("Critical (>12w)", critical_pp, delta=f"{pct_crit:.1f}%", delta_color="inverse")
+        with c3: st.metric("Mid-Term (6-12w)", mid_pp)
+        with c4:
+            age_dist = pp_open['Age Category'].value_counts().reindex(["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"], fill_value=0)
+            st.bar_chart(age_dist, height=150)
+
+        if critical_pp > 0:
+            with st.expander(f"⚠️ View {critical_pp} Critical Projects (>12 Weeks Old)", expanded=False):
+                critical_list = pp_open[pp_open['Age Category'] == "> 12 Weeks"][['Pre-Prod No.', 'Client', 'Project Age (Open and Closed)', 'Sales Rep']]
+                st.table(critical_list.sort_values('Project Age (Open and Closed)', ascending=False))
+
 with col_export:
     if not df.empty:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False, sheet_name='Projects')
-            workbook = writer.book
-            worksheet = writer.sheets['Projects']
-            header_format = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
-            for col_num, value in enumerate(df.columns.values):
-                worksheet.write(0, col_num, value, header_format)
-        
-        st.download_button(
-            label="📥 Download Excel",
-            data=output.getvalue(),
-            file_name=f"Project_Database_{datetime.now().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-
-# --- 7. METRIC DASHBOARD ---
-if not df.empty:
-    open_mask = df['Open or closed'].str.lower().str.contains('open', na=False)
-    open_df = df[open_mask]
-    avg_age = open_df['Project Age (Open and Closed)'].mean() if not open_df.empty else 0
-    overdue_count = len(open_df[open_df['Age Category'] == "> 12 Weeks"])
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Total Projects", len(df))
-    m2.metric("Open Projects", len(open_df))
-    m3.metric("Closed Projects", len(df[~open_mask]))
-    m4.metric("Avg. Age (Open)", f"{int(avg_age)} Days")
-    m5.metric("Critical (>12 Wks)", overdue_count)
+        st.download_button(label="📥 Download Excel", data=output.getvalue(), file_name=f"Project_Database_{datetime.now().strftime('%Y%m%d')}.xlsx")
 
 st.divider()
 
+# --- 8. UI: TABS & NAVIGATION ---
 def display_combination_table(key_prefix):
     if os.path.exists(COMBINATIONS_FILE):
         with st.expander("📂 Browse Tube & Cap Combinations", expanded=False):
@@ -299,26 +249,18 @@ def display_combination_table(key_prefix):
                     mask = combo_df.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)
                     combo_df = combo_df[mask]
                 
-                event = st.dataframe(
-                    combo_df, use_container_width=True, hide_index=True, 
-                    on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table"
-                )
-                
+                event = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table")
                 if event.selection.rows:
-                    selected_index = event.selection.rows[0]
-                    if selected_index < len(combo_df):
-                        selected_row = combo_df.iloc[selected_index].to_dict()
-                        st.session_state.selected_combo = {
-                            "Diameter": str(selected_row.get("Diameter", "")),
-                            "Cap_Lid Style": str(selected_row.get("Cap_Lid_Style", selected_row.get("Cap_Lid Style", ""))),
-                            "Cap_Lid Diameter": str(selected_row.get("Cap_Lid_Diameter", selected_row.get("Cap_Lid Diameter", ""))),
-                            "Cap_Lid Material": str(selected_row.get("Cap_Lid_Material", selected_row.get("Cap_Lid Material", "")))
-                        }
-                        st.toast(f"✅ Selected Combo: {st.session_state.selected_combo['Diameter']}mm")
-            except Exception as e: 
-                st.error(f"Error loading combinations: {e}")
+                    sel_row = combo_df.iloc[event.selection.rows[0]].to_dict()
+                    st.session_state.selected_combo = {
+                        "Diameter": str(sel_row.get("Diameter", "")),
+                        "Cap_Lid Style": str(sel_row.get("Cap_Lid_Style", sel_row.get("Cap_Lid Style", ""))),
+                        "Cap_Lid Diameter": str(sel_row.get("Cap_Lid_Diameter", sel_row.get("Cap_Lid Diameter", ""))),
+                        "Cap_Lid Material": str(sel_row.get("Cap_Lid_Material", sel_row.get("Cap_Lid Material", "")))
+                    }
+                    st.toast("✅ Combination Selected")
+            except Exception as e: st.error(f"Error loading combos: {e}")
 
-# --- 8. NAVIGATION ---
 tab_nav = st.radio("Navigation", ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis"], 
                    index=["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis"].index(st.session_state.active_tab),
                    horizontal=True)
@@ -332,23 +274,19 @@ if tab_nav == "🔍 Search & Edit":
     
     if search_no and not match.empty:
         idx, row = match.index[0], match.iloc[0]
-        col_c, col_d = st.columns(2)
-        with col_c:
+        c_c, c_d = st.columns(2)
+        with c_c:
             if st.button("👯 Clone as Repeat Order", use_container_width=True):
                 new_id = get_next_available_id(search_no, df['Pre-Prod No.'].tolist())
                 new_clone = row.to_dict()
-                new_clone['Pre-Prod No.'] = new_id
-                new_clone['Date'] = datetime.now().strftime('%d/%m/%Y')
-                new_clone['Completion date'] = ""
+                new_clone.update({'Pre-Prod No.': new_id, 'Date': datetime.now().strftime('%d/%m/%Y'), 'Completion date': ""})
                 st.session_state.form_data = new_clone
                 st.session_state.active_tab = "➕ Add New Job"
                 st.rerun()
-        with col_d:
+        with c_d:
             with st.popover("🗑️ Delete", use_container_width=True):
                 if st.button("Confirm Delete"):
-                    df = df.drop(idx)
-                    save_db(df)
-                    st.rerun()
+                    df = df.drop(idx); save_db(df); st.rerun()
 
         display_combination_table("edit")
         with st.expander("Edit Details", expanded=True):
@@ -366,7 +304,7 @@ if tab_nav == "🔍 Search & Edit":
                         sel_d = st.date_input(col_name, value=d, key=f"ed_{col_name}")
                         updated_vals[col_name] = sel_d.strftime('%d/%m/%Y') if sel_d else ""
                     elif col_name in ["Status", "Open or closed"]: continue
-                    elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
+                    elif col_name in DROPDOWN_DATA:
                         opts = sorted(list(set([""] + DROPDOWN_DATA[col_name] + ([cur_val] if cur_val else []))))
                         updated_vals[col_name] = st.selectbox(col_name, options=opts, index=opts.index(cur_val) if cur_val in opts else 0, key=f"sel_{col_name}")
                     else:
@@ -374,15 +312,9 @@ if tab_nav == "🔍 Search & Edit":
 
             if st.button("💾 Save Changes", type="primary", use_container_width=True):
                 final_status = "Closed" if updated_vals.get("Completion date") else "Open"
-                updated_vals["Status"] = final_status
-                updated_vals["Open or closed"] = final_status
-                for k, v in updated_vals.items(): 
-                    df.at[idx, k] = v
-                save_db(df)
-                st.session_state.selected_combo = {}
-                st.rerun()
-    elif raw_search:
-        st.warning(f"No project found for ID: {search_no}")
+                updated_vals["Status"] = updated_vals["Open or closed"] = final_status
+                for k, v in updated_vals.items(): df.at[idx, k] = v
+                save_db(df); st.session_state.selected_combo = {}; st.rerun()
 
 # --- TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
@@ -392,42 +324,31 @@ elif tab_nav == "➕ Add New Job":
     with st.form("new_job_form", clear_on_submit=True):
         st.subheader("Register Project")
         new_id_input = st.text_input("Pre-Prod No.", value=default_id)
-        new_data = {}
-        cols = st.columns(3)
+        new_data = {}; cols = st.columns(3)
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
             val = st.session_state.form_data.get(col_name, "")
             if col_name in st.session_state.selected_combo: val = st.session_state.selected_combo[col_name]
 
             with cols[i % 3]:
-                if col_name == 'Date':
-                    new_data[col_name] = st.date_input(col_name, value=datetime.now()).strftime('%d/%m/%Y')
+                if col_name == 'Date': new_data[col_name] = st.date_input(col_name, value=datetime.now()).strftime('%d/%m/%Y')
                 elif col_name == 'Completion date':
                     res = st.date_input(col_name, value=None)
                     new_data[col_name] = res.strftime('%d/%m/%Y') if res else ""
-                elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
+                elif col_name in DROPDOWN_DATA:
                     opts = sorted(list(set([""] + DROPDOWN_DATA[col_name] + ([val] if val else []))))
                     new_data[col_name] = st.selectbox(col_name, options=opts, index=opts.index(val) if val in opts else 0)
-                elif col_name in ['Status', 'Open or closed']:
-                    new_data[col_name] = "Open"
-                else:
-                    new_data[col_name] = st.text_input(col_name, value=val)
+                elif col_name in ['Status', 'Open or closed']: new_data[col_name] = "Open"
+                else: new_data[col_name] = st.text_input(col_name, value=val)
 
         if st.form_submit_button("✅ Save Project"):
             padded_id = pad_preprod_id(new_id_input)
-            existing_ids = df['Pre-Prod No.'].astype(str).tolist()
-            final_id = get_next_available_id(padded_id, existing_ids)
-            new_data['Pre-Prod No.'] = final_id
-            new_data['Status'] = "Closed" if new_data.get('Completion date') else "Open"
-            new_data['Open or closed'] = new_data['Status']
+            new_data['Pre-Prod No.'] = get_next_available_id(padded_id, df['Pre-Prod No.'].tolist())
+            new_data['Status'] = new_data['Open or closed'] = "Closed" if new_data.get('Completion date') else "Open"
             cat, days = calculate_age_category(new_data)
             new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
-            
             df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
-            save_db(df)
-            st.session_state.selected_combo = {}
-            st.session_state.form_data = {}
-            st.rerun()
+            save_db(df); st.session_state.selected_combo = {}; st.session_state.form_data = {}; st.rerun()
 
 # --- TAB: DETAILED AGE ANALYSIS ---
 elif tab_nav == "📊 Detailed Age Analysis":
@@ -441,11 +362,6 @@ elif tab_nav == "📊 Detailed Age Analysis":
             st.markdown("**Top Clients with Open Projects**")
             st.bar_chart(open_only['Client'].value_counts().head(10))
 
-# --- 10. GLOBAL DATA TABLE ---
 st.divider()
 if st.checkbox("Show Master Table", value=True):
-    # Ensure ID is formatted for display
-    display_df = df.copy()
-    if 'Pre-Prod No.' in display_df.columns:
-        display_df['Pre-Prod No.'] = display_df['Pre-Prod No.'].apply(pad_preprod_id)
-    st.dataframe(display_df, use_container_width=True)
+    st.dataframe(df, use_container_width=True)
