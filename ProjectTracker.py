@@ -202,7 +202,7 @@ DESIRED_ORDER = [
 # --- 5. INTERFACE ---
 col_title, col_export = st.columns([4, 1])
 with col_title:
-    st.title("🚀 Project Management Dashboard")
+    st.title("🚀 Project Tracker Dashboard")
 
 # Excel Export Tool
 with col_export:
