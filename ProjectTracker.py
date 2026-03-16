@@ -226,6 +226,47 @@ DROPDOWN_CONFIG = {
     "Cap_Lid Material": "Cap_Material.csv", "Cap_Lid Diameter": "Cap_Lid Diameter.csv"
 }
 
+DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
+
+DESIRED_ORDER = [
+    "Date", "Age Category", "Client", "Project Description", "New Mould_Client or Product", 
+    "Product Code", "Machine", "Sales Rep", "Category", "Status", "Open or closed", 
+    "Completion date", "Material", "Product Material Colour (tube, jar etc.)", 
+    "Artwork Required", "Artwork Received", "Order Qty x1000", "Unit Order No", 
+    "Length", "Cap_Lid Style", "Cap_Lid Material", "Cap_Lid Diameter", "Orifice", "Other Cap_Lid Info", 
+    "Tube Shoulder colour", "Dust Controlled Area", "Date Sent on Proof", "Size of Eyemark", 
+    "Proof Approved (Conventional)", "Proof Approved (Digital)", "Ordered Plates", 
+    "Plates Arrived", "Sent on Trial", "Digital trial received", 
+    "Revised Artwork After Trialling", "Masterbatch received", "Extrusion requested", 
+    "Extrusion received", "Injection trial requested", "Injection Trial Received", 
+    "Blowmould trial requested", "Blowmould trial received", "Comments"
+]
+
+# --- 5. INTERFACE ---
+col_title, col_export = st.columns([4, 1])
+with col_title:
+    st.title("🚀 Project Tracker Dashboard")
+
+# Excel Export Tool
+with col_export:
+    if not df.empty:
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Projects')
+            workbook = writer.book
+            worksheet = writer.sheets['Projects']
+            header_format = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
+            for col_num, value in enumerate(df.columns.values):
+                worksheet.write(0, col_num, value, header_format)
+        
+        st.download_button(
+            label="📥 Download Excel",
+            data=output.getvalue(),
+            file_name=f"Project_Database_{datetime.now().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+
 # --- 7. METRIC DASHBOARD ---
 if not df.empty:
     open_mask = df['Open or closed'].str.lower().str.contains('open', na=False)
