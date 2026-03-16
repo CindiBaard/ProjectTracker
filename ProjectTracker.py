@@ -130,6 +130,17 @@ if st.sidebar.button("🔄 Force Refresh from CSVs"):
 else:
     df = load_db()
 
+# Convert to string, remove decimals, and pad with leading zeros to 5 digits
+df['Pre-Prod No.'] = (
+    df['Pre-Prod No.']
+    .astype(str)
+    .str.replace(r'\.0$', '', regex=True) # Removes .0 from excel imports
+    .str.zfill(5)                         # Turns '7929' into '07929'
+)
+
+# Sort the dataframe so the newest numbers are at the bottom (or top)
+df = df.sort_values('Pre-Prod No.').reset_index(drop=True)
+
 if 'form_data' not in st.session_state: st.session_state.form_data = {}
 if 'active_tab' not in st.session_state: st.session_state.active_tab = "🔍 Search & Edit"
 if 'selected_combo' not in st.session_state: st.session_state.selected_combo = {}
