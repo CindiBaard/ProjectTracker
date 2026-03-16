@@ -29,13 +29,23 @@ COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 # --- 3. HELPER FUNCTIONS ---
 
 def get_auto_next_no(df):
+    """Generates the next logical integer ID with 5-digit padding (e.g., 09144)."""
     if df.empty or 'Pre-Prod No.' not in df.columns: 
-        return "10001"
+        return "00001"
+    
     nums = []
     for i in df['Pre-Prod No.'].tolist():
+        # This regex finds the first block of numbers, ignoring suffixes like _1
         match = re.match(r"(\d+)", str(i))
-        if match: nums.append(int(match.group(1)))
-    return str(max(nums) + 1) if nums else "10001"
+        if match: 
+            nums.append(int(match.group(1)))
+    
+    if not nums:
+        return "00001"
+        
+    next_val = max(nums) + 1
+    # Returns the incremented number padded to 5 digits
+    return str(next_val).zfill(5)
 
 def get_next_available_id(requested_id, existing_ids):
     requested_id = str(requested_id).strip()
@@ -130,21 +140,78 @@ if st.sidebar.button("🔄 Force Refresh from CSVs"):
 else:
     df = load_db()
 
-# Convert to string, remove decimals, and pad with leading zeros to 5 digits
-df['Pre-Prod No.'] = (
-    df['Pre-Prod No.']
-    .astype(str)
-    .str.replace(r'\.0$', '', regex=True) # Removes .0 from excel imports
-    .str.zfill(5)                         # Turns '7929' into '07929'
-)
+def pad_preprod_id(val):
+    """Standardizes IDs: '9143' -> '09143' and '9143_1' -> '09143_1'."""
+    if pd.isna(val) or str(val).strip() == '': 
+        return ""
+    
+    # Remove .0 from Excel imports and strip whitespace
+    val_str = str(val).strip().replace('.0', '')
+    
+    if '_' in val_str:
+        base, suffix = val_str.split('_', 1)
+        return f"{base.zfill(5)}_{suffix}"
+    else:
+        return val_str.zfill(5)
 
-# Sort the dataframe so the newest numbers are at the bottom (or top)
-df = df.sort_values('Pre-Prod No.').reset_index(drop=True)
+@st.cache_data(show_spinner="Loading High-Performance Database...")
+def load_db(force_refresh=False):
+    # 1. Check if we need to rebuild the Parquet from CSVs
+    if force_refresh or not os.path.exists(FILENAME_PARQUET):
+        if os.path.exists(TRACKER_ADJ_FILE) and os.path.exists(DIGITALPREPROD_FILE):
+            try:
+                # Load CSVs
+                df_d = pd.read_csv(DIGITALPREPROD_FILE, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
+                df_t = pd.read_csv(TRACKER_ADJ_FILE, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
+                
+                # Preliminary cleaning of the join key
+                df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].apply(clean_key)
+                df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].apply(clean_key)
+                
+                # Merge the two datasets
+                combined = pd.merge(
+                    df_t.dropna(subset=['Pre-Prod No.']), 
+                    df_d.dropna(subset=['Pre-Prod No.']), 
+                    on='Pre-Prod No.', 
+                    how='outer', 
+                    suffixes=('', '_digital_info')
+                )
+                
+                # --- APPLY PADDING & STANDARDIZATION ---
+                if 'Pre-Prod No.' in combined.columns:
+                    combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
+                
+                # Convert object columns to string to prevent Parquet schema errors
+                for col in combined.columns:
+                    if combined[col].dtype == 'object' or col == 'Diameter':
+                        combined[col] = combined[col].astype(str).replace('nan', '')
 
-if 'form_data' not in st.session_state: st.session_state.form_data = {}
-if 'active_tab' not in st.session_state: st.session_state.active_tab = "🔍 Search & Edit"
-if 'selected_combo' not in st.session_state: st.session_state.selected_combo = {}
+                # Save the cleaned, padded version to Parquet
+                combined.to_parquet(FILENAME_PARQUET, index=False)
+                
+            except Exception as e:
+                st.error(f"Failed to merge or pad database: {e}")
 
+    # 2. Load the Parquet file
+    if not os.path.exists(FILENAME_PARQUET):
+        return pd.DataFrame()
+
+    df = pd.read_parquet(FILENAME_PARQUET)
+    df = clean_column_names(df)
+    
+    # --- FINAL SORTING ---
+    # Sorting ensures 07929 comes before 10001
+    if 'Pre-Prod No.' in df.columns:
+        df = df.sort_values(by='Pre-Prod No.', ascending=True).reset_index(drop=True)
+
+    # Apply Age Logic (Age Category and Project Age)
+    if 'Date' in df.columns:
+        results = df.apply(calculate_age_category, axis=1)
+        df['Age Category'] = [r[0] for r in results]
+        df['Project Age (Open and Closed)'] = [r[1] for r in results]
+        df['Project Age (Open and Closed)'] = pd.to_numeric(df['Project Age (Open and Closed)'], errors='coerce').fillna(0)
+    
+    return df
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
     "Orifice": "Orifice.csv", "Diameter": "TubeDia.csv", "Foiling": "Foiling.csv",
@@ -298,15 +365,32 @@ if tab_nav == "🔍 Search & Edit":
                     else:
                         updated_vals[col_name] = st.text_input(col_name, value=cur_val, key=f"txt_{col_name}")
 
-            if st.button("💾 Save Changes", type="primary", use_container_width=True):
-                final_status = "Closed" if updated_vals.get("Completion date") else "Open"
-                updated_vals["Status"] = final_status
-                updated_vals["Open or closed"] = final_status
-                for k, v in updated_vals.items(): df.at[idx, k] = v
-                save_db(df)
-                st.session_state.selected_combo = {}
-                st.rerun()
-
+            if st.form_submit_button("✅ Save Project"):
+            # 1. Clean and Pad the manually entered ID or the auto-generated ID
+            # This ensures "9143_1" becomes "09143_1" on save
+            padded_id = pad_preprod_id(new_id_input) 
+            
+            # 2. Check for duplicates (adding _1, _2 if necessary)
+            existing_ids = df['Pre-Prod No.'].astype(str).tolist()
+            final_id = get_next_available_id(padded_id, existing_ids)
+            
+            # 3. Assign the standardized ID to the data
+            new_data['Pre-Prod No.'] = final_id
+            
+            # 4. Set Status and calculate Age
+            new_data['Status'] = "Closed" if new_data.get('Completion date') else "Open"
+            new_data['Open or closed'] = new_data['Status']
+            cat, days = calculate_age_category(new_data)
+            new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
+            
+            # 5. Append and Save
+            df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
+            save_db(df)
+            
+            # 6. Cleanup
+            st.session_state.selected_combo = {}
+            st.rerun()
+            
 # --- TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
