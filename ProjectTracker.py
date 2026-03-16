@@ -178,6 +178,12 @@ if st.sidebar.button("🔄 Force Refresh from CSVs"):
 else:
     df = load_db()
 
+# DYNAMICALLY ADD CLIENTS TO DROPDOWN DATA
+if not df.empty and 'Client' in df.columns:
+    # Get unique clients, remove empty values, and sort alphabetically
+    client_list = sorted([str(c) for c in df['Client'].unique() if str(c).strip() and str(c).lower() != 'nan'])
+    DROPDOWN_DATA['Client'] = client_list
+    
 # --- 5.1 PRE-PROD AGE ANALYSIS (NEW SUMMARY SECTION) ---
 if not df.empty:
     # Filter for Open jobs
@@ -227,6 +233,9 @@ DROPDOWN_CONFIG = {
 }
 
 DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
+elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
+    opts = sorted(list(set([""] + DROPDOWN_DATA[col_name] + ([cur_val] if cur_val else []))))
+    updated_vals[col_name] = st.selectbox(col_name, options=opts, ...)
 
 DESIRED_ORDER = [
     "Date", "Age Category", "Client", "Project Description", "New Mould_Client or Product", 
