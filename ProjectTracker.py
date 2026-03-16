@@ -321,7 +321,7 @@ st.session_state.active_tab = tab_nav
 if tab_nav == "🔍 Search & Edit":
     raw_search = st.text_input("Search Pre-Prod No.").strip()
 search_no = pad_preprod_id(raw_search) if raw_search else ""
-    match = df[df['Pre-Prod No.'] == search_no] if 'Pre-Prod No.' in df.columns else pd.DataFrame()
+match = df[df['Pre-Prod No.'] == search_no] if 'Pre-Prod No.' in df.columns else pd.DataFrame()
     
     if search_no and not match.empty:
         idx, row = match.index[0], match.iloc[0]
