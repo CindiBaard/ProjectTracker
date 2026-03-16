@@ -37,13 +37,10 @@ COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 # --- 3. HELPER FUNCTIONS ---
 
 def pad_preprod_id(val):
-    """Standardizes IDs: '9143' -> '09143' and '9143_1' -> '09143_1'."""
-    if pd.isna(val) or str(val).strip() == '': 
-        return ""
-    val_str = str(val).strip().replace('.0', '')
-    if '_' in val_str:
-        base, suffix = val_str.split('_', 1)
-        return f"{base.zfill(5)}_{suffix}"
+    # This takes "9143" or 9143.0 and forces it to be exactly "09143"
+    # It also handles suffixes like "09143_1"
+    ...
+    return f"{base.zfill(5)}_{suffix}"
     else:
         return val_str.zfill(5)
 
