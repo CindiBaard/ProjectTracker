@@ -129,6 +129,45 @@ def get_options(filename):
 # --- 4. DATA LOADING ---
 df = load_db()
 
+# --- 5. PRE-PROD AGE ANALYSIS (TOP OF PAGE) ---
+if not df.empty:
+    # Filter for Open Pre-Prod items specifically
+    # Assuming 'Category' or 'Description' contains 'Pre-Prod' or you want the analysis on all Open jobs
+    pp_open = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
+    
+    with st.container():
+        st.subheader("📊 Pre-Prod Age Analysis Summary")
+        
+        # Calculate specific metrics for Pre-Prod
+        total_open_pp = len(pp_open)
+        critical_pp = len(pp_open[pp_open['Age Category'] == "> 12 Weeks"])
+        mid_pp = len(pp_open[pp_open['Age Category'] == "6-12 Weeks"])
+        recent_pp = len(pp_open[pp_open['Age Category'] == "< 6 Weeks"])
+
+        # Create Layout Columns
+        c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
+        
+        with c1:
+            st.metric("Total Open PP", total_open_pp)
+        with c2:
+            st.metric("Critical (>12w)", critical_pp, delta=f"{(critical_pp/total_open_pp*100):.1f}%" if total_open_pp > 0 else 0, delta_color="inverse")
+        with c3:
+            st.metric("Mid-Term (6-12w)", mid_pp)
+            
+        with c4:
+            # Small Horizontal Bar Chart for visual age distribution
+            age_dist = pp_open['Age Category'].value_counts().reindex(["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"], fill_value=0)
+            st.bar_chart(age_dist, horizontal=True, height=150)
+
+        # Alert for critical items
+        if critical_pp > 0:
+            with st.expander(f"⚠️ View {critical_pp} Critical Projects (>12 Weeks Old)", expanded=False):
+                critical_list = pp_open[pp_open['Age Category'] == "> 12 Weeks"][['Pre-Prod No.', 'Client', 'Project Age (Open and Closed)', 'Sales Rep']]
+                st.table(critical_list.sort_values('Project Age (Open and Closed)', ascending=False))
+
+st.divider()
+
+
 if 'form_data' not in st.session_state:
     st.session_state.form_data = {}
 if 'active_tab' not in st.session_state:
