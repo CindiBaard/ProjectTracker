@@ -284,34 +284,28 @@ def display_combination_table(key_prefix):
             except Exception as e:
                 st.error(f"Error loading combinations: {e}")
 
+ython
 # --- TAB: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
-    search_no = st.text_input("Search Pre-Prod No. (e.g. 9143 or 9143_1)").strip()
-    match = df[df['Pre-Prod No.'] == search_no]
+    search_no = st.text_input("Search Pre-Prod No. (e.g. 9143)").strip()
+    match = df[df['Pre-Prod No.'] == search_no] if 'Pre-Prod No.' in df.columns else pd.DataFrame()
     
     if search_no and not match.empty:
         idx, row = match.index[0], match.iloc[0]
         
-        # --- NEW STATUS DISPLAY SECTION ---
+        # --- 1. STATUS HEADER ---
         current_status = str(row.get('Status', 'Open'))
         age_days = row.get('Project Age (Open and Closed)', 0)
-        age_cat = row.get('Age Category', 'N/A')
-
-        # Visual indicator based on status
-        if current_status.lower() == 'closed':
-            st.success(f"✅ **Status: CLOSED** (Completed on {row.get('Completion date')})")
-        else:
-            # Color-coded warning for open projects based on age
-            if age_cat == "> 12 Weeks":
-                st.error(f"⚠️ **Status: OPEN (CRITICAL)** - This project is {int(age_days)} days old.")
-            elif age_cat == "6-12 Weeks":
-                st.warning(f"🕒 **Status: OPEN (WARNING)** - This project is {int(age_days)} days old.")
-            else:
-                st.info(f"🔹 **Status: OPEN** - Project Age: {int(age_days)} days.")
         
-        # Quick Actions Row
-        c1, c2, c3 = st.columns([2, 2, 2])
-        with c1:
+        if current_status.lower() == 'closed':
+            st.success(f"✅ **Status: CLOSED** (Completed: {row.get('Completion date')})")
+        else:
+            st.info(f"🔹 **Status: OPEN** | Project Age: {int(age_days)} Days")
+
+        # --- 2. ACTION BUTTONS (Clone & Delete) ---
+        col_clone, col_delete = st.columns(2)
+        
+        with col_clone:
             if st.button("👯 Clone as Repeat Order", use_container_width=True):
                 existing_ids = df['Pre-Prod No.'].tolist()
                 new_id = get_next_available_id(search_no, existing_ids)
@@ -320,9 +314,65 @@ if tab_nav == "🔍 Search & Edit":
                 new_clone['Date'] = datetime.now().strftime('%d/%m/%Y')
                 new_clone['Completion date'] = ""
                 new_clone['Status'] = "Open"
+                new_clone['Open or closed'] = "Open"
                 st.session_state.form_data = new_clone
                 st.session_state.active_tab = "➕ Add New Job"
                 st.rerun()
+
+        with col_delete:
+            # Popover acts as a "Are you sure?" safety net
+            with st.popover("🗑️ Delete Project", use_container_width=True):
+                st.warning(f"Are you sure you want to delete {search_no}?")
+                confirm_delete = st.checkbox("I confirm I want to permanently delete this.")
+                if st.button("❌ Confirm Delete", type="primary", disabled=not confirm_delete):
+                    df = df.drop(idx)
+                    save_db(df)
+                    st.success(f"Project {search_no} deleted successfully.")
+                    st.rerun()
+
+        # --- 3. EDIT FORM ---
+        display_combination_table("edit")
+        with st.expander("Edit Details", expanded=True):
+            updated_vals = {}
+            edit_cols = st.columns(3)
+            for i, col_name in enumerate(DESIRED_ORDER):
+                if col_name == "Age Category": continue
+                
+                # Check for combo selection overrides
+                if col_name in st.session_state.selected_combo and st.session_state.selected_combo[col_name]:
+                    cur_val = st.session_state.selected_combo[col_name]
+                else:
+                    cur_val = str(row.get(col_name, "")) if str(row.get(col_name, "")).lower() != 'nan' else ""
+
+                with edit_cols[i % 3]:
+                    if col_name == 'Completion date':
+                        try: d = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
+                        except: d = None
+                        sel_d = st.date_input(f"Edit {col_name}", value=d, key=f"ed_{col_name}")
+                        updated_vals[col_name] = sel_d.strftime('%d/%m/%Y') if sel_d else ""
+                    elif col_name in ["Status", "Open or closed"]: continue
+                    elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
+                        opts = sorted(list(set([""] + DROPDOWN_DATA[col_name] + ([cur_val] if cur_val else []))))
+                        idx_sel = opts.index(cur_val) if cur_val in opts else 0
+                        updated_vals[col_name] = st.selectbox(f"Edit {col_name}", options=opts, index=idx_sel, key=f"sel_{col_name}")
+                    else:
+                        updated_vals[col_name] = st.text_input(f"Edit {col_name}", value=cur_val, key=f"txt_{col_name}")
+
+            if st.button("💾 Save Changes", type="primary", use_container_width=True):
+                # Auto-update status based on completion date
+                final_status = "Closed" if updated_vals.get("Completion date") else "Open"
+                updated_vals["Status"] = final_status
+                updated_vals["Open or closed"] = final_status
+                
+                for k, v in updated_vals.items(): 
+                    df.at[idx, k] = v
+                
+                save_db(df)
+                st.session_state.selected_combo = {}
+                st.success("Changes saved!")
+                st.rerun()
+    elif search_no:
+        st.error(f"Project '{search_no}' not found.")
 
 # --- TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
