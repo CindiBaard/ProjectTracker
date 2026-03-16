@@ -201,15 +201,22 @@ def display_combination_table(key_prefix):
                     mask = combo_df.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)
                     combo_df = combo_df[mask]
                 event = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table")
-                if event.selection.rows:
-                    selected_row = combo_df.iloc[event.selection.rows[0]].to_dict()
-                    st.session_state.selected_combo = {
-                        "Diameter": str(selected_row.get("Diameter", "")),
-                        "Cap_Lid Style": str(selected_row.get("Cap_Lid_Style", selected_row.get("Cap_Lid Style", ""))),
-                        "Cap_Lid Diameter": str(selected_row.get("Cap_Lid_Diameter", selected_row.get("Cap_Lid Diameter", ""))),
-                        "Cap_Lid Material": str(selected_row.get("Cap_Lid_Material", selected_row.get("Cap_Lid Material", "")))
-                    }
-            except Exception as e: st.error(f"Error: {e}")
+               if event.selection.rows:
+    try:
+        # Check if the selected index actually exists in the current filtered dataframe
+        selected_index = event.selection.rows[0]
+        if selected_index < len(combo_df):
+            selected_row = combo_df.iloc[selected_index].to_dict()
+            st.session_state.selected_combo = {
+                "Diameter": str(selected_row.get("Diameter", "")),
+                "Cap_Lid Style": str(selected_row.get("Cap_Lid_Style", selected_row.get("Cap_Lid Style", ""))),
+                "Cap_Lid Diameter": str(selected_row.get("Cap_Lid_Diameter", selected_row.get("Cap_Lid Diameter", ""))),
+                "Cap_Lid Material": str(selected_row.get("Cap_Lid_Material", selected_row.get("Cap_Lid Material", "")))
+            }
+            # Optional: st.rerun() if you want the form to update immediately
+    except IndexError:
+        # This handles cases where the selection persists from a previous view
+        st.warning("Selection out of range. Please try selecting the row again.")
 
 # --- 9. NAVIGATION ---
 tab_nav = st.radio("Navigation", ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis"], 
