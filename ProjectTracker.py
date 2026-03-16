@@ -422,17 +422,55 @@ elif tab_nav == "➕ Add New Job":
             st.session_state.form_data = {}
             st.rerun()
 
-# --- TAB: DETAILED AGE ANALYSIS ---
-elif tab_nav == "📊 Detailed Age Analysis":
-    if not df.empty:
-        open_only = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
-        c1, c2 = st.columns(2)
+# --- 5.1 PRE-PROD AGE ANALYSIS (NEW SUMMARY SECTION) ---
+if not df.empty:
+    pp_open = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
+    
+    with st.container():
+        st.subheader("📊 Pre-Prod Age Analysis Summary")
+        
+        total_open_pp = len(pp_open)
+        critical_pp_df = pp_open[pp_open['Age Category'] == "> 12 Weeks"].copy()
+        critical_count = len(critical_pp_df)
+        mid_pp = len(pp_open[pp_open['Age Category'] == "6-12 Weeks"])
+        recent_pp = len(pp_open[pp_open['Age Category'] == "< 6 Weeks"])
+
+        c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
+        
         with c1:
-            st.markdown("**Open Projects by Age Category**")
-            st.bar_chart(open_only['Age Category'].value_counts().reindex(["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"], fill_value=0))
+            st.metric("Total Open PP", total_open_pp)
         with c2:
-            st.markdown("**Top Clients with Open Projects**")
-            st.bar_chart(open_only['Client'].value_counts().head(10))
+            pct_crit = (critical_count / total_open_pp * 100) if total_open_pp > 0 else 0
+            st.metric("Critical (>12w)", critical_count, delta=f"{pct_crit:.1f}%", delta_color="inverse")
+        with c3:
+            st.metric("Mid-Term (6-12w)", mid_pp)
+            
+        with c4:
+            age_dist = pp_open['Age Category'].value_counts().reindex(["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"], fill_value=0)
+            st.bar_chart(age_dist, height=150)
+
+        # Alert for critical items with Download Button
+        if critical_count > 0:
+            with st.expander(f"⚠️ View {critical_count} Critical Projects (>12 Weeks Old)", expanded=False):
+                # Prepare a cleaner display for the table
+                display_list = critical_pp_df[['Pre-Prod No.', 'Client', 'Description', 'Project Age (Open and Closed)', 'Sales Rep']].sort_values('Project Age (Open and Closed)', ascending=False)
+                
+                # --- NEW DOWNLOAD BUTTON FOR CRITICAL REPORT ---
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    display_list.to_excel(writer, index=False, sheet_name='Overdue_Projects')
+                
+                st.download_button(
+                    label="📂 Export Overdue List to Excel",
+                    data=buffer.getvalue(),
+                    file_name=f"Critical_Projects_{datetime.now().strftime('%Y-%m-%d')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    help="Click to download this specific list of overdue projects for the sales team."
+                )
+                
+                st.table(display_list)
+
+st.divider()
 
 # --- 10. GLOBAL DATA TABLE ---
 st.divider()
