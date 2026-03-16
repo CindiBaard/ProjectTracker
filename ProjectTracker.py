@@ -233,9 +233,6 @@ DROPDOWN_CONFIG = {
 }
 
 DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
-elif col_name in DROPDOWN_DATA and DROPDOWN_DATA[col_name]:
-    opts = sorted(list(set([""] + DROPDOWN_DATA[col_name] + ([cur_val] if cur_val else []))))
-    updated_vals[col_name] = st.selectbox(col_name, options=opts, ...)
 
 DESIRED_ORDER = [
     "Date", "Age Category", "Client", "Project Description", "New Mould_Client or Product", 
