@@ -319,7 +319,8 @@ st.session_state.active_tab = tab_nav
 
 # --- TAB: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
-    search_no = st.text_input("Search Pre-Prod No.").strip()
+    raw_search = st.text_input("Search Pre-Prod No.").strip()
+search_no = pad_preprod_id(raw_search) if raw_search else ""
     match = df[df['Pre-Prod No.'] == search_no] if 'Pre-Prod No.' in df.columns else pd.DataFrame()
     
     if search_no and not match.empty:
@@ -422,17 +423,27 @@ elif tab_nav == "➕ Add New Job":
                     new_data[col_name] = st.text_input(col_name, value=val)
 
         if st.form_submit_button("✅ Save Project"):
-            final_id = get_next_available_id(new_id_input, df['Pre-Prod No.'].astype(str).tolist())
+            # 1. Apply 5-digit padding to the input
+            padded_id = pad_preprod_id(new_id_input)
+            
+            # 2. Check for duplicates and assign final ID
+            existing_ids = df['Pre-Prod No.'].astype(str).tolist()
+            final_id = get_next_available_id(padded_id, existing_ids)
             new_data['Pre-Prod No.'] = final_id
+            
+            # 3. Finalize Status and Age
             new_data['Status'] = "Closed" if new_data.get('Completion date') else "Open"
             new_data['Open or closed'] = new_data['Status']
             cat, days = calculate_age_category(new_data)
             new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
+            
+            # 4. Save to Database
             df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
             save_db(df)
             st.session_state.selected_combo = {}
+          
             st.rerun()
-
+            
 # --- TAB: DETAILED AGE ANALYSIS ---
 elif tab_nav == "📊 Detailed Age Analysis":
     if not df.empty:
