@@ -4,6 +4,7 @@ import streamlit as st
 from datetime import datetime
 import io
 import re
+import matplotlib.pyplot as plt
 
 # --- 1. INITIAL SETUP ---
 try:
@@ -33,6 +34,7 @@ FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
 TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv") 
 DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
 COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
+TRIALS_FILE = os.path.join(BASE_DIR, "Combined_Weekly_Trials_3_51_2025.csv") 
 
 # --- 3. HELPER FUNCTIONS ---
 
@@ -121,59 +123,42 @@ def load_db(force_refresh=False):
     if force_refresh or not os.path.exists(FILENAME_PARQUET):
         if os.path.exists(TRACKER_ADJ_FILE) and os.path.exists(DIGITALPREPROD_FILE):
             try:
-
-                # 1. Load data with automatic delimiter detection
                 df_t = pd.read_csv(TRACKER_ADJ_FILE, sep=None, engine='python', encoding='utf-8-sig', on_bad_lines='warn')
                 df_d = pd.read_csv(DIGITALPREPROD_FILE, sep=None, engine='python', encoding='utf-8-sig', on_bad_lines='warn')
-
-                # 2. Clean column names
                 df_d = clean_column_names(df_d)
                 df_t = clean_column_names(df_t)
-
-                # 3. Check for the specific column (and handle variations)
-                # If DigitalPreProd uses a slightly different name, rename it here:
-                if 'Pre-Prod No' in df_d.columns: # Handle case with no dot
-                    df_d = df_d.rename(columns={'Pre-Prod No': 'Pre-Prod No.'})
-                elif 'Pre Prod No.' in df_d.columns: # Handle case with space
-                    df_d = df_d.rename(columns={'Pre Prod No.': 'Pre-Prod No.'})
-
-                # 4. Clean keys and merge
+                if 'Pre-Prod No' in df_d.columns: df_d = df_d.rename(columns={'Pre-Prod No': 'Pre-Prod No.'})
+                elif 'Pre Prod No.' in df_d.columns: df_d = df_d.rename(columns={'Pre Prod No.': 'Pre-Prod No.'})
                 df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].apply(clean_key)
                 df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].apply(clean_key)
-                
-                combined = pd.merge(
-                    df_t.dropna(subset=['Pre-Prod No.']), 
-                    df_d.dropna(subset=['Pre-Prod No.']), 
-                    on='Pre-Prod No.', 
-                    how='outer', 
-                    suffixes=('', '_digital_info')
-                )
-                
-                if 'Pre-Prod No.' in combined.columns:
-                    combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
-
+                combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), df_d.dropna(subset=['Pre-Prod No.']), on='Pre-Prod No.', how='outer', suffixes=('', '_digital_info'))
+                if 'Pre-Prod No.' in combined.columns: combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
                 for col in combined.columns:
-                    if combined[col].dtype == 'object' or col == 'Diameter':
-                        combined[col] = combined[col].astype(str).replace('nan', '')
-                
+                    if combined[col].dtype == 'object' or col == 'Diameter': combined[col] = combined[col].astype(str).replace('nan', '')
                 combined.to_parquet(FILENAME_PARQUET, index=False)
-            except Exception as e:
-                st.error(f"Merge Error: {e}")
-    
+            except Exception as e: st.error(f"Merge Error: {e}")
     if not os.path.exists(FILENAME_PARQUET): return pd.DataFrame()
     df = pd.read_parquet(FILENAME_PARQUET)
     df = clean_column_names(df)
-    
     if 'Pre-Prod No.' in df.columns:
         df['Pre-Prod No.'] = df['Pre-Prod No.'].apply(pad_preprod_id)
         df = df.sort_values(by='Pre-Prod No.', ascending=True).reset_index(drop=True)
-
     if 'Date' in df.columns:
         results = df.apply(calculate_age_category, axis=1)
         df['Age Category'] = [r[0] for r in results]
         df['Project Age (Open and Closed)'] = [r[1] for r in results]
         df['Project Age (Open and Closed)'] = pd.to_numeric(df['Project Age (Open and Closed)'], errors='coerce').fillna(0)
     return df
+
+@st.cache_data
+def load_trial_data():
+    """Specifically handles the trials trend data loading."""
+    if os.path.exists(TRIALS_FILE):
+        df_trials = pd.read_csv(TRIALS_FILE)
+        df_trials['Tubes_Completed'] = df_trials['Tubes_Status'].astype(str).str.strip().str.lower().apply(lambda x: 1 if x == 'x' else 0)
+        df_trials['Plates_Completed'] = df_trials['Plates_Status'].astype(str).str.strip().str.lower().apply(lambda x: 1 if x == 'x' else 0)
+        return df_trials
+    return pd.DataFrame()
 
 def save_db(df_to_save):
     if 'Pre-Prod No.' in df_to_save.columns:
@@ -208,14 +193,38 @@ DESIRED_ORDER = [
     "Blowmould trial requested", "Blowmould trial received", "Comments"
 ]
 
-# --- 6. INITIALIZE DATA & DYNAMIC DROPDOWNS ---
+# --- 6. INITIALIZE DATA & UI HELPERS ---
+
+def display_combination_table(key_prefix):
+    """The expandable helper for Tube & Cap combinations."""
+    if os.path.exists(COMBINATIONS_FILE):
+        with st.expander("📂 Browse Tube & Cap Combinations", expanded=False):
+            try:
+                combo_df = pd.read_csv(COMBINATIONS_FILE, sep=',', encoding='utf-8-sig')
+                combo_df = clean_column_names(combo_df)
+                search = st.text_input(f"🔍 Filter List", key=f"{key_prefix}_search")
+                if search:
+                    mask = combo_df.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)
+                    combo_df = combo_df[mask]
+                
+                event = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table")
+                if event.selection.rows:
+                    sel_row = combo_df.iloc[event.selection.rows[0]].to_dict()
+                    st.session_state.selected_combo = {
+                        "Diameter": str(sel_row.get("Diameter", "")),
+                        "Cap_Lid Style": str(sel_row.get("Cap_Lid_Style", sel_row.get("Cap_Lid Style", ""))),
+                        "Cap_Lid Diameter": str(sel_row.get("Cap_Lid_Diameter", sel_row.get("Cap_Lid Diameter", ""))),
+                        "Cap_Lid Material": str(sel_row.get("Cap_Lid_Material", sel_row.get("Cap_Lid Material", "")))
+                    }
+                    st.toast("✅ Combination Selected")
+            except Exception as e: st.error(f"Error loading combos: {e}")
+
 if st.sidebar.button("🔄 Force Refresh from CSVs"):
     df = load_db(force_refresh=True)
     st.sidebar.success("Database Rebuilt!")
 else:
     df = load_db()
 
-# Update Client list from loaded data
 if not df.empty and 'Client' in df.columns:
     client_list = sorted([str(c) for c in df['Client'].unique() if str(c).strip() and str(c).lower() != 'nan'])
     DROPDOWN_DATA['Client'] = client_list
@@ -259,31 +268,8 @@ with col_export:
 st.divider()
 
 # --- 8. UI: TABS & NAVIGATION ---
-def display_combination_table(key_prefix):
-    if os.path.exists(COMBINATIONS_FILE):
-        with st.expander("📂 Browse Tube & Cap Combinations", expanded=False):
-            try:
-                combo_df = pd.read_csv(COMBINATIONS_FILE, sep=',', encoding='utf-8-sig')
-                combo_df = clean_column_names(combo_df)
-                search = st.text_input(f"🔍 Filter List", key=f"{key_prefix}_search")
-                if search:
-                    mask = combo_df.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)
-                    combo_df = combo_df[mask]
-                
-                event = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table")
-                if event.selection.rows:
-                    sel_row = combo_df.iloc[event.selection.rows[0]].to_dict()
-                    st.session_state.selected_combo = {
-                        "Diameter": str(sel_row.get("Diameter", "")),
-                        "Cap_Lid Style": str(sel_row.get("Cap_Lid_Style", sel_row.get("Cap_Lid Style", ""))),
-                        "Cap_Lid Diameter": str(sel_row.get("Cap_Lid_Diameter", sel_row.get("Cap_Lid Diameter", ""))),
-                        "Cap_Lid Material": str(sel_row.get("Cap_Lid_Material", sel_row.get("Cap_Lid Material", "")))
-                    }
-                    st.toast("✅ Combination Selected")
-            except Exception as e: st.error(f"Error loading combos: {e}")
-
-tab_nav = st.radio("Navigation", ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis"], 
-                   index=["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis"].index(st.session_state.active_tab),
+tab_nav = st.radio("Navigation", ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends"], 
+                   index=["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends"].index(st.session_state.active_tab),
                    horizontal=True)
 st.session_state.active_tab = tab_nav
 
@@ -383,6 +369,41 @@ elif tab_nav == "📊 Detailed Age Analysis":
             st.markdown("**Top Clients with Open Projects**")
             st.bar_chart(open_only['Client'].value_counts().head(10))
 
+# --- NEW TAB: TRIAL TRENDS ---
+elif tab_nav == "🧪 Trial Trends":
+    st.subheader("🧪 Trial Completion Trends")
+    df_trials = load_trial_data()
+    
+    if not df_trials.empty:
+        # Group by week and sum completed 'x' marks
+        weekly_trend = df_trials.groupby('Week').agg({
+            'Tubes_Completed': 'sum',
+            'Plates_Completed': 'sum'
+        }).sort_index()
+
+        # Visual Plot
+        fig, ax = plt.subplots(figsize=(10, 4))
+        ax.plot(weekly_trend.index, weekly_trend['Tubes_Completed'], label='Tubes (x)', marker='o', linewidth=2, color='#1f77b4')
+        ax.plot(weekly_trend.index, weekly_trend['Plates_Completed'], label='Plates (x)', marker='s', linewidth=2, color='#ff7f0e', linestyle='--')
+        ax.set_title("Weekly Completed Trials Trend", fontsize=12)
+        ax.set_xlabel("Week Number"); ax.set_ylabel("Count of 'x' Status")
+        ax.legend(); ax.grid(True, linestyle=':', alpha=0.6)
+        st.pyplot(fig)
+        
+        # Latest Week Stats
+        latest_week = weekly_trend.index[-1]
+        t_val = weekly_trend.loc[latest_week, 'Tubes_Completed']
+        p_val = weekly_trend.loc[latest_week, 'Plates_Completed']
+        
+        m1, m2 = st.columns(2)
+        m1.metric(f"Tubes Completed (Week {latest_week})", int(t_val))
+        m2.metric(f"Plates Completed (Week {latest_week})", int(p_val))
+
+        with st.expander("View Full Trials Data Table"):
+            st.dataframe(df_trials, use_container_width=True)
+    else:
+        st.warning(f"File '{TRIALS_FILE}' not found. Please upload it to the project directory.")
+
 st.divider()
-if st.checkbox("Show Master Table", value=True):
+if st.checkbox("Show Master Table", value=False):
     st.dataframe(df, use_container_width=True)
