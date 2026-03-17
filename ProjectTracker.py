@@ -121,22 +121,21 @@ def load_db(force_refresh=False):
     if force_refresh or not os.path.exists(FILENAME_PARQUET):
         if os.path.exists(TRACKER_ADJ_FILE) and os.path.exists(DIGITALPREPROD_FILE):
             try:
-                # 1. Load data
-                # Change sep=';' to sep=',' for the Tracker file
-                df_t = pd.read_csv(TRACKER_ADJ_FILE, sep=',', encoding='utf-8-sig', on_bad_lines='warn')
 
-                # Check DigitalPreProd.csv as well - it likely uses commas too
-                df_d = pd.read_csv(DIGITALPREPROD_FILE, sep=',', encoding='utf-8-sig', on_bad_lines='warn')
-                
-                # 2. CLEAN COLUMN NAMES IMMEDIATELY (Fixes the Merge Error)
+                # 1. Load data with automatic delimiter detection
+                df_t = pd.read_csv(TRACKER_ADJ_FILE, sep=None, engine='python', encoding='utf-8-sig', on_bad_lines='warn')
+                df_d = pd.read_csv(DIGITALPREPROD_FILE, sep=None, engine='python', encoding='utf-8-sig', on_bad_lines='warn')
+
+                # 2. Clean column names
                 df_d = clean_column_names(df_d)
                 df_t = clean_column_names(df_t)
 
-                # 3. Ensure the key column exists in both after cleaning
-                if 'Pre-Prod No.' not in df_d.columns or 'Pre-Prod No.' not in df_t.columns:
-                    missing = "DigitalPreProd" if 'Pre-Prod No.' not in df_d.columns else "Tracker"
-                    st.error(f"Critical Error: Column 'Pre-Prod No.' not found in {missing} file.")
-                    return pd.DataFrame()
+                # 3. Check for the specific column (and handle variations)
+                # If DigitalPreProd uses a slightly different name, rename it here:
+                if 'Pre-Prod No' in df_d.columns: # Handle case with no dot
+                df_d = df_d.rename(columns={'Pre-Prod No': 'Pre-Prod No.'})
+                elif 'Pre Prod No.' in df_d.columns: # Handle case with space
+                df_d = df_d.rename(columns={'Pre Prod No.': 'Pre-Prod No.'})
 
                 # 4. Clean keys and merge
                 df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].apply(clean_key)
