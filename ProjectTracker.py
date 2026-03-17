@@ -122,8 +122,11 @@ def load_db(force_refresh=False):
         if os.path.exists(TRACKER_ADJ_FILE) and os.path.exists(DIGITALPREPROD_FILE):
             try:
                 # 1. Load data
-                df_d = pd.read_csv(DIGITALPREPROD_FILE, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
-                df_t = pd.read_csv(TRACKER_ADJ_FILE, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
+                # Change sep=';' to sep=',' for the Tracker file
+                df_t = pd.read_csv(TRACKER_ADJ_FILE, sep=',', encoding='utf-8-sig', on_bad_lines='warn')
+
+                # Check DigitalPreProd.csv as well - it likely uses commas too
+                df_d = pd.read_csv(DIGITALPREPROD_FILE, sep=',', encoding='utf-8-sig', on_bad_lines='warn')
                 
                 # 2. CLEAN COLUMN NAMES IMMEDIATELY (Fixes the Merge Error)
                 df_d = clean_column_names(df_d)
