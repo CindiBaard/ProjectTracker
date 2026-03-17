@@ -133,9 +133,9 @@ def load_db(force_refresh=False):
                 # 3. Check for the specific column (and handle variations)
                 # If DigitalPreProd uses a slightly different name, rename it here:
                 if 'Pre-Prod No' in df_d.columns: # Handle case with no dot
-                df_d = df_d.rename(columns={'Pre-Prod No': 'Pre-Prod No.'})
+                    df_d = df_d.rename(columns={'Pre-Prod No': 'Pre-Prod No.'})
                 elif 'Pre Prod No.' in df_d.columns: # Handle case with space
-                df_d = df_d.rename(columns={'Pre Prod No.': 'Pre-Prod No.'})
+                    df_d = df_d.rename(columns={'Pre Prod No.': 'Pre-Prod No.'})
 
                 # 4. Clean keys and merge
                 df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].apply(clean_key)
