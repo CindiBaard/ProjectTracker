@@ -5,6 +5,8 @@ from datetime import datetime
 import io
 import re
 import matplotlib.pyplot as plt
+except ImportError:
+    st.error("Matplotlib is not installed. Please check your requirements.txt.")
 
 # --- 1. INITIAL SETUP ---
 try:
