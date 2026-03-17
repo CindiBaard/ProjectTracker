@@ -121,13 +121,31 @@ def load_db(force_refresh=False):
     if force_refresh or not os.path.exists(FILENAME_PARQUET):
         if os.path.exists(TRACKER_ADJ_FILE) and os.path.exists(DIGITALPREPROD_FILE):
             try:
+                # 1. Load data
                 df_d = pd.read_csv(DIGITALPREPROD_FILE, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
                 df_t = pd.read_csv(TRACKER_ADJ_FILE, sep=';', encoding='utf-8-sig', on_bad_lines='warn')
+                
+                # 2. CLEAN COLUMN NAMES IMMEDIATELY (Fixes the Merge Error)
+                df_d = clean_column_names(df_d)
+                df_t = clean_column_names(df_t)
+
+                # 3. Ensure the key column exists in both after cleaning
+                if 'Pre-Prod No.' not in df_d.columns or 'Pre-Prod No.' not in df_t.columns:
+                    missing = "DigitalPreProd" if 'Pre-Prod No.' not in df_d.columns else "Tracker"
+                    st.error(f"Critical Error: Column 'Pre-Prod No.' not found in {missing} file.")
+                    return pd.DataFrame()
+
+                # 4. Clean keys and merge
                 df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].apply(clean_key)
                 df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].apply(clean_key)
-                combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), 
-                                   df_d.dropna(subset=['Pre-Prod No.']), 
-                                   on='Pre-Prod No.', how='outer', suffixes=('', '_digital_info'))
+                
+                combined = pd.merge(
+                    df_t.dropna(subset=['Pre-Prod No.']), 
+                    df_d.dropna(subset=['Pre-Prod No.']), 
+                    on='Pre-Prod No.', 
+                    how='outer', 
+                    suffixes=('', '_digital_info')
+                )
                 
                 if 'Pre-Prod No.' in combined.columns:
                     combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
@@ -135,6 +153,7 @@ def load_db(force_refresh=False):
                 for col in combined.columns:
                     if combined[col].dtype == 'object' or col == 'Diameter':
                         combined[col] = combined[col].astype(str).replace('nan', '')
+                
                 combined.to_parquet(FILENAME_PARQUET, index=False)
             except Exception as e:
                 st.error(f"Merge Error: {e}")
