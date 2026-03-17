@@ -264,7 +264,7 @@ def display_combination_table(key_prefix):
     if os.path.exists(COMBINATIONS_FILE):
         with st.expander("📂 Browse Tube & Cap Combinations", expanded=False):
             try:
-                combo_df = pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig')
+                combo_df = pd.read_csv(COMBINATIONS_FILE, sep=',', encoding='utf-8-sig')
                 combo_df = clean_column_names(combo_df)
                 search = st.text_input(f"🔍 Filter List", key=f"{key_prefix}_search")
                 if search:
