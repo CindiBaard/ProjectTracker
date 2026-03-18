@@ -40,124 +40,9 @@ TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
 DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
 COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 
-# Trial Data Files
+# Updated Trial Data File
+TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
 
-TRIALS_FILE_2026 = "Combined_Weekly_Trials_3_51_2026.csv" # Or "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
-
-# --- 4. DATA LOADING ---
-
-@st.cache_data
-def load_trial_data(file_name):
-    """Refactored to load and standardize any trial CSV file."""
-    path = os.path.join(BASE_DIR, file_name)
-    if os.path.exists(path):
-        try:
-            df = pd.read_csv(path)
-            # Identify the week column (handles 'Week' or 'Source_Week')
-            wk_col = next((c for c in df.columns if 'week' in c.lower()), None)
-            
-            if wk_col:
-                # Extract digits for numeric sorting (prevents 'Week 10' coming before 'Week 2')
-                df['Week_Num'] = df[wk_col].astype(str).str.extract(r'(\d+)').fillna(0).astype(int)
-            else:
-                df['Week_Num'] = 0
-
-            # Standardize 'x' marks into numeric 1s and 0s
-            for col in ['Tubes_Status', 'Plates_Status']:
-                if col in df.columns:
-                    target = col.replace('_Status', '_Completed')
-                    df[target] = df[col].astype(str).str.strip().str.lower().apply(lambda x: 1 if x == 'x' else 0)
-                else:
-                    df[col.replace('_Status', '_Completed')] = 0
-            return df
-        except Exception as e:
-            st.error(f"Error reading {file_name}: {e}")
-    return pd.DataFrame()
-
-# Helper for plotting to avoid code duplication
-def render_trial_chart(df, title):
-    if df.empty:
-        st.warning(f"Data not found for {title}")
-        return
-
-    # Group by week number for numeric sorting
-    weekly_trend = df.groupby('Week_Num').agg({
-        'Tubes_Completed': 'sum',
-        'Plates_Completed': 'sum'
-    }).sort_index()
-
-    if not weekly_trend.empty:
-        fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(weekly_trend.index, weekly_trend['Tubes_Completed'], label='Tubes (x)', marker='o', linewidth=2, color='#1f77b4')
-        ax.plot(weekly_trend.index, weekly_trend['Plates_Completed'], label='Plates (x)', marker='s', linewidth=2, color='#ff7f0e', linestyle='--')
-        ax.set_title(title, fontsize=12)
-        ax.set_xlabel("Week Number")
-        ax.set_ylabel("Count of 'x' Status")
-        ax.legend()
-        ax.grid(True, linestyle=':', alpha=0.6)
-        st.pyplot(fig)
-        
-        # Display Latest Stats
-        latest_wk = weekly_trend.index[-1]
-        m1, m2 = st.columns(2)
-        m1.metric(f"Tubes Completed (Wk {latest_wk})", int(weekly_trend.loc[latest_wk, 'Tubes_Completed']))
-        m2.metric(f"Plates Completed (Wk {latest_wk})", int(weekly_trend.loc[latest_wk, 'Plates_Completed']))
-
-# ... (Rest of UI logic) ...
-
-        with c2:
-            st.markdown("**Top Clients with Open Projects**")
-            st.bar_chart(open_only['Client'].value_counts().head(10))
-            
-elif tab_nav == "🧪 Trial Trends":
-    st.subheader("🧪 Trial Completion Trends")
-    
-    st.subheader("🧪 Trial Completion Trends")
-    
-    # Load the combined trials data
-    try:
-        df_trials = pd.read_csv("Combined_Weekly_Trials_Weeks_3_12_2026.csv")
-        
-        if not df_trials.empty:
-            # Convert 'x' status to numeric 1s for summing
-            df_trials['Tubes_Completed'] = df_trials['Tubes_Status'].apply(lambda x: 1 if str(x).lower() == 'x' else 0)
-            df_trials['Plates_Completed'] = df_trials['Plates_Status'].apply(lambda x: 1 if str(x).lower() == 'x' else 0)
-
-            # Group by Source_Week (e.g., "Week 3", "Week 4")
-            # We strip "Week " to sort numerically
-            df_trials['Week_Num'] = df_trials['Source_Week'].str.replace('Week ', '').astype(int)
-            weekly_trend = df_trials.groupby('Week_Num').agg({
-                'Tubes_Completed': 'sum',
-                'Plates_Completed': 'sum'
-            }).sort_index()
-
-            # Plotting the Trend
-            import matplotlib.pyplot as plt
-            fig, ax = plt.subplots(figsize=(10, 4))
-            ax.plot(weekly_trend.index, weekly_trend['Tubes_Completed'], label='Tubes Completed', marker='o', color='#1f77b4')
-            ax.plot(weekly_trend.index, weekly_trend['Plates_Completed'], label='Plates Completed', marker='s', color='#ff7f0e')
-            
-            ax.set_title("Weekly Completed Trials Trend")
-            ax.set_xlabel("Week Number")
-            ax.set_ylabel("Number of Completions")
-            ax.legend()
-            ax.grid(True, linestyle=':', alpha=0.6)
-            st.pyplot(fig)
-
-            # Metrics for the latest week
-            latest_week = weekly_trend.index[-1]
-            t_val = weekly_trend.loc[latest_week, 'Tubes_Completed']
-            p_val = weekly_trend.loc[latest_week, 'Plates_Completed']
-
-            col1, col2 = st.columns(2)
-            col1.metric(f"Tubes (Week {latest_week})", int(t_val))
-            col2.metric(f"Plates (Week {latest_week})", int(p_val))
-            
-        else:
-            st.info("No trial data available to display trends.")
-    except Exception as e:
-        st.error(f"Error loading trial data: {e}")
-    
 # --- 3. HELPER FUNCTIONS ---
 
 def pad_preprod_id(val):
@@ -227,6 +112,10 @@ def clean_key(val):
     s_val = str(val).strip()
     return s_val[:-2] if s_val.endswith('.0') else s_val
 
+def save_db(df):
+    """Saves the dataframe to parquet for performance."""
+    df.to_parquet(FILENAME_PARQUET, index=False)
+
 # --- 4. DATA LOADING ---
 
 @st.cache_data
@@ -272,24 +161,27 @@ def load_db(force_refresh=False):
         df['Project Age (Open and Closed)'] = pd.to_numeric(df['Project Age (Open and Closed)'], errors='coerce').fillna(0)
     return df
 
-
-
 @st.cache_data
 def load_trial_data():
-    """Specifically handles the trials trend data loading using relative paths."""
-    # This looks for the file in the same folder as your script
-    trials_path = os.path.join(BASE_DIR, "Combined_Weekly_Trials_3_12_2026.csv")
-    
+    """Specifically handles the trials trend data loading for 2026."""
+    trials_path = os.path.join(BASE_DIR, TRIALS_FILE_CURRENT)
     if os.path.exists(trials_path):
         try:
-            df_trials = pd.read_csv(trials_path)
-            # Standardize status columns to 1s and 0s for plotting
-            df_trials['Tubes_Completed'] = df_trials['Tubes_Status'].astype(str).str.strip().str.lower().apply(lambda x: 1 if x == 'x' else 0)
-            df_trials['Plates_Completed'] = df_trials['Plates_Status'].astype(str).str.strip().str.lower().apply(lambda x: 1 if x == 'x' else 0)
-            return df_trials
+            df = pd.read_csv(trials_path)
+            # Identify the week column
+            wk_col = next((c for c in df.columns if 'week' in c.lower()), None)
+            if wk_col:
+                df['Week_Num'] = df[wk_col].astype(str).str.extract(r'(\d+)').fillna(0).astype(int)
+            else:
+                df['Week_Num'] = 0
+            # Standardize 'x' marks
+            for col in ['Tubes_Status', 'Plates_Status']:
+                if col in df.columns:
+                    target = col.replace('_Status', '_Completed')
+                    df[target] = df[col].astype(str).str.strip().str.lower().apply(lambda x: 1 if x == 'x' else 0)
+            return df
         except Exception as e:
-            st.error(f"Error reading CSV: {e}")
-            return pd.DataFrame()
+            st.error(f"Error reading {TRIALS_FILE_CURRENT}: {e}")
     return pd.DataFrame()
 
 # --- 5. CONFIGURATIONS & DROPDOWN DATA ---
@@ -495,38 +387,41 @@ elif tab_nav == "📊 Detailed Age Analysis":
 
 # --- NEW TAB: TRIAL TRENDS ---
 elif tab_nav == "🧪 Trial Trends":
-    st.subheader("🧪 Trial Completion Trends")
+    st.subheader("🧪 Trial Completion Trends (2026)")
     df_trials = load_trial_data()
     
     if not df_trials.empty:
-        # Group by week and sum completed 'x' marks
-        weekly_trend = df_trials.groupby('Week').agg({
+        # Group by week number for numeric sorting
+        weekly_trend = df_trials.groupby('Week_Num').agg({
             'Tubes_Completed': 'sum',
             'Plates_Completed': 'sum'
         }).sort_index()
 
-        # Visual Plot
-        fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(weekly_trend.index, weekly_trend['Tubes_Completed'], label='Tubes (x)', marker='o', linewidth=2, color='#1f77b4')
-        ax.plot(weekly_trend.index, weekly_trend['Plates_Completed'], label='Plates (x)', marker='s', linewidth=2, color='#ff7f0e', linestyle='--')
-        ax.set_title("Weekly Completed Trials Trend", fontsize=12)
-        ax.set_xlabel("Week Number"); ax.set_ylabel("Count of 'x' Status")
-        ax.legend(); ax.grid(True, linestyle=':', alpha=0.6)
-        st.pyplot(fig)
-        
-        # Latest Week Stats
-        latest_week = weekly_trend.index[-1]
-        t_val = weekly_trend.loc[latest_week, 'Tubes_Completed']
-        p_val = weekly_trend.loc[latest_week, 'Plates_Completed']
-        
-        m1, m2 = st.columns(2)
-        m1.metric(f"Tubes Completed (Week {latest_week})", int(t_val))
-        m2.metric(f"Plates Completed (Week {latest_week})", int(p_val))
+        if not weekly_trend.empty:
+            # Visual Plot
+            fig, ax = plt.subplots(figsize=(10, 4))
+            ax.plot(weekly_trend.index, weekly_trend['Tubes_Completed'], label='Tubes (x)', marker='o', linewidth=2, color='#1f77b4')
+            ax.plot(weekly_trend.index, weekly_trend['Plates_Completed'], label='Plates (x)', marker='s', linewidth=2, color='#ff7f0e', linestyle='--')
+            ax.set_title("Weekly Completed Trials Trend", fontsize=12)
+            ax.set_xlabel("Week Number")
+            ax.set_ylabel("Count of 'x' Status")
+            ax.legend()
+            ax.grid(True, linestyle=':', alpha=0.6)
+            st.pyplot(fig)
+            
+            # Latest Week Stats
+            latest_week = weekly_trend.index[-1]
+            t_val = weekly_trend.loc[latest_week, 'Tubes_Completed']
+            p_val = weekly_trend.loc[latest_week, 'Plates_Completed']
+            
+            m1, m2 = st.columns(2)
+            m1.metric(f"Tubes Completed (Week {latest_week})", int(t_val))
+            m2.metric(f"Plates Completed (Week {latest_week})", int(p_val))
 
-        with st.expander("View Full Trials Data Table"):
-            st.dataframe(df_trials, use_container_width=True)
+            with st.expander("View Full Trials Data Table"):
+                st.dataframe(df_trials, use_container_width=True)
     else:
-        st.warning(f"File '{TRIALS_FILE}' not found. Please upload it to the project directory.")
+        st.warning(f"File '{TRIALS_FILE_CURRENT}' not found in project directory.")
 
 st.divider()
 if st.checkbox("Show Master Table", value=False):
