@@ -41,7 +41,7 @@ DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
 COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 
 # Trial Data Files
-TRIALS_FILE_2025 = "Combined_Weekly_Trials_3_51_2025.csv"
+
 TRIALS_FILE_2026 = "Combined_Weekly_Trials_3_51_2026.csv" # Or "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
 
 # --- 4. DATA LOADING ---
