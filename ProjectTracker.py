@@ -105,9 +105,13 @@ def render_trial_chart(df, title):
 
 # ... (Rest of UI logic) ...
 
-# --- NEW TAB: TRIAL TRENDS ---
+        with c2:
+            st.markdown("**Top Clients with Open Projects**")
+            st.bar_chart(open_only['Client'].value_counts().head(10))
+            
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("🧪 Trial Completion Trends")
+    # ... rest of your code ...
     
     # Load the combined trials data
     try:
