@@ -391,37 +391,53 @@ elif tab_nav == "🧪 Trial Trends":
     df_trials = load_trial_data()
     
     if not df_trials.empty:
-        # Group by week number for numeric sorting
-        weekly_trend = df_trials.groupby('Week_Num').agg({
-            'Date_Log': 'sum',
-            'Completion_Date': 'sum'
-        }).sort_index()
+        # FIX: Ensure we aggregate the columns we actually created in load_trial_data
+        agg_cols = {}
+        if 'Tubes_Completed' in df_trials.columns: agg_cols['Tubes_Completed'] = 'sum'
+        if 'Plates_Completed' in df_trials.columns: agg_cols['Plates_Completed'] = 'sum'
+        
+        if agg_cols:
+            weekly_trend = df_trials.groupby('Week_Num').agg(agg_cols).sort_index()
 
-        if not weekly_trend.empty:
-            # Visual Plot
-            fig, ax = plt.subplots(figsize=(10, 4))
-            ax.plot(weekly_trend.index, weekly_trend['Tubes_Completed'], label='Tubes (x)', marker='o', linewidth=2, color='#1f77b4')
-            ax.plot(weekly_trend.index, weekly_trend['Plates_Completed'], label='Plates (x)', marker='s', linewidth=2, color='#ff7f0e', linestyle='--')
-            ax.set_title("Weekly Completed Trials Trend", fontsize=12)
-            ax.set_xlabel("Week Number")
-            ax.set_ylabel("Count of 'x' Status")
-            ax.legend()
-            ax.grid(True, linestyle=':', alpha=0.6)
-            st.pyplot(fig)
-            
-            # Latest Week Stats
-            latest_week = weekly_trend.index[-1]
-            t_val = weekly_trend.loc[latest_week, 'Tubes_Completed']
-            p_val = weekly_trend.loc[latest_week, 'Plates_Completed']
-            
-            m1, m2 = st.columns(2)
-            m1.metric(f"Tubes Completed (Week {latest_week})", int(t_val))
-            m2.metric(f"Plates Completed (Week {latest_week})", int(p_val))
+            if not weekly_trend.empty:
+                # Visual Plot
+                fig, ax = plt.subplots(figsize=(10, 4))
+                
+                # Plot Tubes if they exist
+                if 'Tubes_Completed' in weekly_trend.columns:
+                    ax.plot(weekly_trend.index, weekly_trend['Tubes_Completed'], 
+                            label='Tubes (x)', marker='o', linewidth=2, color='#1f77b4')
+                
+                # Plot Plates if they exist
+                if 'Plates_Completed' in weekly_trend.columns:
+                    ax.plot(weekly_trend.index, weekly_trend['Plates_Completed'], 
+                            label='Plates (x)', marker='s', linewidth=2, color='#ff7f0e', linestyle='--')
+                
+                ax.set_title("Weekly Completed Trials Trend", fontsize=12)
+                ax.set_xlabel("Week Number")
+                ax.set_ylabel("Count of 'x' Status")
+                ax.legend()
+                ax.grid(True, linestyle=':', alpha=0.6)
+                st.pyplot(fig)
+                
+                # Latest Week Stats
+                latest_week = weekly_trend.index[-1]
+                m1, m2 = st.columns(2)
+                
+                if 'Tubes_Completed' in weekly_trend.columns:
+                    t_val = weekly_trend.loc[latest_week, 'Tubes_Completed']
+                    m1.metric(f"Tubes Completed (Week {latest_week})", int(t_val))
+                
+                if 'Plates_Completed' in weekly_trend.columns:
+                    p_val = weekly_trend.loc[latest_week, 'Plates_Completed']
+                    m2.metric(f"Plates Completed (Week {latest_week})", int(p_val))
 
-            with st.expander("View Full Trials Data Table"):
-                st.dataframe(df_trials, use_container_width=True)
+                with st.expander("View Full Trials Data Table"):
+                    st.dataframe(df_trials, use_container_width=True)
+        else:
+            st.error("Trial columns 'Tubes_Status' or 'Plates_Status' not found in CSV.")
     else:
-        st.warning(f"File '{TRIALS_FILE_CURRENT}' not found in project directory.")
+        st.warning(f"File '{TRIALS_FILE_CURRENT}' not found or empty.")
 
 st.divider()
 if st.checkbox("Show Master Table", value=False):
