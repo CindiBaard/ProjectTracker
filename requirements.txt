@@ -1,5 +1,6 @@
+streamlit>=1.40.0
 pandas
-streamlit
 matplotlib
 xlsxwriter
 pyarrow
+altair<5.0.0  # Optional: adding this ensures extra stability with older chart code
