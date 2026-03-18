@@ -276,7 +276,7 @@ def load_db(force_refresh=False):
 def load_trial_data():
     """Specifically handles the trials trend data loading using relative paths."""
     # This looks for the file in the same folder as your script
-    trials_path = os.path.join(BASE_DIR, "Combined_Weekly_Trials_3_51_2025.csv")
+    trials_path = os.path.join(BASE_DIR, "Combined_Weekly_Trials_3_12_2026.csv")
     
     if os.path.exists(trials_path):
         try:
