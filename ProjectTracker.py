@@ -163,25 +163,30 @@ def load_db(force_refresh=False):
 
 @st.cache_data
 def load_trial_data():
-    """Specifically handles the trials trend data loading for 2026."""
+    """Handles trial data and calculates processing duration."""
     trials_path = os.path.join(BASE_DIR, TRIALS_FILE_CURRENT)
     if os.path.exists(trials_path):
         try:
             df = pd.read_csv(trials_path)
-            # Identify the week column
+            
+            # 1. Convert columns to datetime
+            # Adjust 'dayfirst=True' if your CSV uses US format (MM/DD)
+            df['Date_Log'] = pd.to_datetime(df['Date_Log'], dayfirst=True, errors='coerce')
+            df['Completion_Date'] = pd.to_datetime(df['Completion_Date'], dayfirst=True, errors='coerce')
+            
+            # 2. Calculate Days Taken (only where both dates exist)
+            df['Days_Taken'] = (df['Completion_Date'] - df['Date_Log']).dt.days
+            
+            # 3. Handle Week Number
             wk_col = next((c for c in df.columns if 'week' in c.lower()), None)
             if wk_col:
                 df['Week_Num'] = df[wk_col].astype(str).str.extract(r'(\d+)').fillna(0).astype(int)
             else:
                 df['Week_Num'] = 0
-            # Standardize 'x' marks
-            for col in ['Tubes_Status', 'Plates_Status']:
-                if col in df.columns:
-                    target = col.replace('_Status', '_Completed')
-                    df[target] = df[col].astype(str).str.strip().str.lower().apply(lambda x: 1 if x == 'x' else 0)
+                
             return df
         except Exception as e:
-            st.error(f"Error reading {TRIALS_FILE_CURRENT}: {e}")
+            st.error(f"Error processing trial dates: {e}")
     return pd.DataFrame()
 
 # --- 5. CONFIGURATIONS & DROPDOWN DATA ---
@@ -387,58 +392,51 @@ elif tab_nav == "📊 Detailed Age Analysis":
 
 # --- NEW TAB: TRIAL TRENDS ---
 elif tab_nav == "🧪 Trial Trends":
-    st.subheader("🧪 Trial Completion Trends (2026)")
+    st.subheader("🧪 Trial Turnaround Time (2026)")
     df_trials = load_trial_data()
     
     if not df_trials.empty:
-        # FIX: Ensure we aggregate the columns we actually created in load_trial_data
-        agg_cols = {}
-        if 'Tubes_Completed' in df_trials.columns: agg_cols['Tubes_Completed'] = 'sum'
-        if 'Plates_Completed' in df_trials.columns: agg_cols['Plates_Completed'] = 'sum'
-        
-        if agg_cols:
-            weekly_trend = df_trials.groupby('Week_Num').agg(agg_cols).sort_index()
+        # Group by week and calculate the average days taken
+        # We drop NaNs to ensure we only average completed trials
+        weekly_stats = df_trials.dropna(subset=['Days_Taken']).groupby('Week_Num')['Days_Taken'].mean().sort_index()
 
-            if not weekly_trend.empty:
-                # Visual Plot
-                fig, ax = plt.subplots(figsize=(10, 4))
+        if not weekly_stats.empty:
+            # Visual Plot
+            fig, ax = plt.subplots(figsize=(10, 4))
+            ax.plot(weekly_stats.index, weekly_stats.values, 
+                    label='Avg Days to Complete', marker='o', linewidth=2, color='#2ca02c')
+            
+            ax.set_title("Average Days from Logging to Completion", fontsize=12)
+            ax.set_xlabel("Week Number")
+            ax.set_ylabel("Average Days")
+            ax.legend()
+            ax.grid(True, linestyle=':', alpha=0.6)
+            
+            # Add data labels on points for clarity
+            for x, y in zip(weekly_stats.index, weekly_stats.values):
+                ax.annotate(f'{y:.1f}d', (x, y), textcoords="offset points", xytext=(0,10), ha='center')
                 
-                # Plot Tubes if they exist
-                if 'Tubes_Completed' in weekly_trend.columns:
-                    ax.plot(weekly_trend.index, weekly_trend['Tubes_Completed'], 
-                            label='Tubes (x)', marker='o', linewidth=2, color='#1f77b4')
-                
-                # Plot Plates if they exist
-                if 'Plates_Completed' in weekly_trend.columns:
-                    ax.plot(weekly_trend.index, weekly_trend['Plates_Completed'], 
-                            label='Plates (x)', marker='s', linewidth=2, color='#ff7f0e', linestyle='--')
-                
-                ax.set_title("Weekly Completed Trials Trend", fontsize=12)
-                ax.set_xlabel("Week Number")
-                ax.set_ylabel("Count of 'x' Status")
-                ax.legend()
-                ax.grid(True, linestyle=':', alpha=0.6)
-                st.pyplot(fig)
-                
-                # Latest Week Stats
-                latest_week = weekly_trend.index[-1]
-                m1, m2 = st.columns(2)
-                
-                if 'Tubes_Completed' in weekly_trend.columns:
-                    t_val = weekly_trend.loc[latest_week, 'Tubes_Completed']
-                    m1.metric(f"Tubes Completed (Week {latest_week})", int(t_val))
-                
-                if 'Plates_Completed' in weekly_trend.columns:
-                    p_val = weekly_trend.loc[latest_week, 'Plates_Completed']
-                    m2.metric(f"Plates Completed (Week {latest_week})", int(p_val))
+            st.pyplot(fig)
+            
+            # Summary Metrics
+            latest_week = weekly_stats.index[-1]
+            avg_days = weekly_stats.loc[latest_week]
+            overall_avg = df_trials['Days_Taken'].mean()
+            
+            m1, m2 = st.columns(2)
+            m1.metric(f"Avg Days (Week {latest_week})", f"{avg_days:.1f} Days")
+            m2.metric("Overall 2026 Average", f"{overall_avg:.1f} Days")
 
-                with st.expander("View Full Trials Data Table"):
-                    st.dataframe(df_trials, use_container_width=True)
+            with st.expander("View Full Trials Data Table"):
+                # Format dates for display in the table
+                df_display = df_trials.copy()
+                df_display['Date_Log'] = df_display['Date_Log'].dt.strftime('%d/%m/%Y')
+                df_display['Completion_Date'] = df_display['Completion_Date'].dt.strftime('%d/%m/%Y')
+                st.dataframe(df_display, use_container_width=True)
         else:
-            st.error("Trial columns 'Tubes_Status' or 'Plates_Status' not found in CSV.")
+            st.info("No completed trials found (missing Completion_Date) to calculate duration.")
     else:
-        st.warning(f"File '{TRIALS_FILE_CURRENT}' not found or empty.")
-
+        st.warning(f"File '{TRIALS_FILE_CURRENT}' not found.")
 st.divider()
 if st.checkbox("Show Master Table", value=False):
     st.dataframe(df, use_container_width=True)
