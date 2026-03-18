@@ -155,23 +155,25 @@ def load_db(force_refresh=False):
         df['Project Age (Open and Closed)'] = pd.to_numeric(df['Project Age (Open and Closed)'], errors='coerce').fillna(0)
     return df
 
+
+
 @st.cache_data
 def load_trial_data():
-    """Specifically handles the trials trend data loading."""
-    if os.path.exists(TRIALS_FILE):
-        df_trials = pd.read_csv(TRIALS_FILE)
-        df_trials['Tubes_Completed'] = df_trials['Tubes_Status'].astype(str).str.strip().str.lower().apply(lambda x: 1 if x == 'x' else 0)
-        df_trials['Plates_Completed'] = df_trials['Plates_Status'].astype(str).str.strip().str.lower().apply(lambda x: 1 if x == 'x' else 0)
-        return df_trials
+    """Specifically handles the trials trend data loading using relative paths."""
+    # This looks for the file in the same folder as your script
+    trials_path = os.path.join(BASE_DIR, "Combined_Weekly_Trials_3_51_2025.csv")
+    
+    if os.path.exists(trials_path):
+        try:
+            df_trials = pd.read_csv(trials_path)
+            # Standardize status columns to 1s and 0s for plotting
+            df_trials['Tubes_Completed'] = df_trials['Tubes_Status'].astype(str).str.strip().str.lower().apply(lambda x: 1 if x == 'x' else 0)
+            df_trials['Plates_Completed'] = df_trials['Plates_Status'].astype(str).str.strip().str.lower().apply(lambda x: 1 if x == 'x' else 0)
+            return df_trials
+        except Exception as e:
+            st.error(f"Error reading CSV: {e}")
+            return pd.DataFrame()
     return pd.DataFrame()
-
-def save_db(df_to_save):
-    if 'Pre-Prod No.' in df_to_save.columns:
-        df_to_save['Pre-Prod No.'] = df_to_save['Pre-Prod No.'].apply(pad_preprod_id)
-    for col in df_to_save.select_dtypes(include=['object']).columns:
-        df_to_save[col] = df_to_save[col].astype(str).replace('nan', '')
-    df_to_save.to_parquet(FILENAME_PARQUET, index=False)
-    st.cache_data.clear()
 
 # --- 5. CONFIGURATIONS & DROPDOWN DATA ---
 DROPDOWN_CONFIG = {
