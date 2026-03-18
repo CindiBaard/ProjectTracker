@@ -393,8 +393,8 @@ elif tab_nav == "🧪 Trial Trends":
     if not df_trials.empty:
         # Group by week number for numeric sorting
         weekly_trend = df_trials.groupby('Week_Num').agg({
-            'Tubes_Completed': 'sum',
-            'Plates_Completed': 'sum'
+            'Date_Log': 'sum',
+            'Completion_Date': 'sum'
         }).sort_index()
 
         if not weekly_trend.empty:
