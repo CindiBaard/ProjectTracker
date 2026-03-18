@@ -153,6 +153,7 @@ elif tab_nav == "🧪 Trial Trends":
             st.info("No trial data available to display trends.")
     except Exception as e:
         st.error(f"Error loading trial data: {e}")
+    
 # --- 3. HELPER FUNCTIONS ---
 
 def pad_preprod_id(val):
