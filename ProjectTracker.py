@@ -107,27 +107,52 @@ def render_trial_chart(df, title):
 
 # --- NEW TAB: TRIAL TRENDS ---
 elif tab_nav == "🧪 Trial Trends":
-    st.title("🧪 Trial Completion Analysis")
+    st.subheader("🧪 Trial Completion Trends")
     
-    # --- SECTION 1: 2026 TRIALS ---
-    st.subheader("📅 2026 Trial Trends")
-    df_2026 = load_trial_data(TRIALS_FILE_2026)
-    render_trial_chart(df_2026, "Weekly Completed Trials Trend (2026)")
-    
-    if not df_2026.empty:
-        with st.expander("View 2026 Data Table"):
-            st.dataframe(df_2026, use_container_width=True)
+    # Load the combined trials data
+    try:
+        df_trials = pd.read_csv("Combined_Weekly_Trials_Weeks_3_12_2026.csv")
+        
+        if not df_trials.empty:
+            # Convert 'x' status to numeric 1s for summing
+            df_trials['Tubes_Completed'] = df_trials['Tubes_Status'].apply(lambda x: 1 if str(x).lower() == 'x' else 0)
+            df_trials['Plates_Completed'] = df_trials['Plates_Status'].apply(lambda x: 1 if str(x).lower() == 'x' else 0)
 
-    st.divider()
+            # Group by Source_Week (e.g., "Week 3", "Week 4")
+            # We strip "Week " to sort numerically
+            df_trials['Week_Num'] = df_trials['Source_Week'].str.replace('Week ', '').astype(int)
+            weekly_trend = df_trials.groupby('Week_Num').agg({
+                'Tubes_Completed': 'sum',
+                'Plates_Completed': 'sum'
+            }).sort_index()
 
-    # --- SECTION 2: 2025 TRIALS ---
-    st.subheader("📅 2025 Trial Trends")
-    df_2025 = load_trial_data(TRIALS_FILE_2025)
-    render_trial_chart(df_2025, "Weekly Completed Trials Trend (2025)")
+            # Plotting the Trend
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots(figsize=(10, 4))
+            ax.plot(weekly_trend.index, weekly_trend['Tubes_Completed'], label='Tubes Completed', marker='o', color='#1f77b4')
+            ax.plot(weekly_trend.index, weekly_trend['Plates_Completed'], label='Plates Completed', marker='s', color='#ff7f0e')
+            
+            ax.set_title("Weekly Completed Trials Trend")
+            ax.set_xlabel("Week Number")
+            ax.set_ylabel("Number of Completions")
+            ax.legend()
+            ax.grid(True, linestyle=':', alpha=0.6)
+            st.pyplot(fig)
 
-    if not df_2025.empty:
-        with st.expander("View 2025 Data Table"):
-            st.dataframe(df_2025, use_container_width=True)
+            # Metrics for the latest week
+            latest_week = weekly_trend.index[-1]
+            t_val = weekly_trend.loc[latest_week, 'Tubes_Completed']
+            p_val = weekly_trend.loc[latest_week, 'Plates_Completed']
+
+            col1, col2 = st.columns(2)
+            col1.metric(f"Tubes (Week {latest_week})", int(t_val))
+            col2.metric(f"Plates (Week {latest_week})", int(p_val))
+            
+        else:
+            st.info("No trial data available to display trends.")
+    except Exception as e:
+        st.error(f"Error loading trial data: {e}")
+
 # --- 3. HELPER FUNCTIONS ---
 
 def pad_preprod_id(val):
