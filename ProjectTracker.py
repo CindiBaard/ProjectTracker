@@ -106,7 +106,7 @@ def render_trial_chart(df, title):
 # ... (Rest of UI logic) ...
 
 # --- NEW TAB: TRIAL TRENDS ---
-Python
+
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("🧪 Trial Completion Trends")
     
