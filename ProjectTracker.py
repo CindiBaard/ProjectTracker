@@ -39,8 +39,95 @@ FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
 TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv") 
 DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
 COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
-TRIALS_FILE = os.path.join(BASE_DIR, "Combined_Weekly_Trials_3_51_2025.csv") 
 
+# Trial Data Files
+TRIALS_FILE_2025 = "Combined_Weekly_Trials_3_51_2025.csv"
+TRIALS_FILE_2026 = "Combined_Weekly_Trials_3_51_2026.csv" # Or "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
+
+# --- 4. DATA LOADING ---
+
+@st.cache_data
+def load_trial_data(file_name):
+    """Refactored to load and standardize any trial CSV file."""
+    path = os.path.join(BASE_DIR, file_name)
+    if os.path.exists(path):
+        try:
+            df = pd.read_csv(path)
+            # Identify the week column (handles 'Week' or 'Source_Week')
+            wk_col = next((c for c in df.columns if 'week' in c.lower()), None)
+            
+            if wk_col:
+                # Extract digits for numeric sorting (prevents 'Week 10' coming before 'Week 2')
+                df['Week_Num'] = df[wk_col].astype(str).str.extract(r'(\d+)').fillna(0).astype(int)
+            else:
+                df['Week_Num'] = 0
+
+            # Standardize 'x' marks into numeric 1s and 0s
+            for col in ['Tubes_Status', 'Plates_Status']:
+                if col in df.columns:
+                    target = col.replace('_Status', '_Completed')
+                    df[target] = df[col].astype(str).str.strip().str.lower().apply(lambda x: 1 if x == 'x' else 0)
+                else:
+                    df[col.replace('_Status', '_Completed')] = 0
+            return df
+        except Exception as e:
+            st.error(f"Error reading {file_name}: {e}")
+    return pd.DataFrame()
+
+# Helper for plotting to avoid code duplication
+def render_trial_chart(df, title):
+    if df.empty:
+        st.warning(f"Data not found for {title}")
+        return
+
+    # Group by week number for numeric sorting
+    weekly_trend = df.groupby('Week_Num').agg({
+        'Tubes_Completed': 'sum',
+        'Plates_Completed': 'sum'
+    }).sort_index()
+
+    if not weekly_trend.empty:
+        fig, ax = plt.subplots(figsize=(10, 4))
+        ax.plot(weekly_trend.index, weekly_trend['Tubes_Completed'], label='Tubes (x)', marker='o', linewidth=2, color='#1f77b4')
+        ax.plot(weekly_trend.index, weekly_trend['Plates_Completed'], label='Plates (x)', marker='s', linewidth=2, color='#ff7f0e', linestyle='--')
+        ax.set_title(title, fontsize=12)
+        ax.set_xlabel("Week Number")
+        ax.set_ylabel("Count of 'x' Status")
+        ax.legend()
+        ax.grid(True, linestyle=':', alpha=0.6)
+        st.pyplot(fig)
+        
+        # Display Latest Stats
+        latest_wk = weekly_trend.index[-1]
+        m1, m2 = st.columns(2)
+        m1.metric(f"Tubes Completed (Wk {latest_wk})", int(weekly_trend.loc[latest_wk, 'Tubes_Completed']))
+        m2.metric(f"Plates Completed (Wk {latest_wk})", int(weekly_trend.loc[latest_wk, 'Plates_Completed']))
+
+# ... (Rest of UI logic) ...
+
+# --- NEW TAB: TRIAL TRENDS ---
+elif tab_nav == "🧪 Trial Trends":
+    st.title("🧪 Trial Completion Analysis")
+    
+    # --- SECTION 1: 2026 TRIALS ---
+    st.subheader("📅 2026 Trial Trends")
+    df_2026 = load_trial_data(TRIALS_FILE_2026)
+    render_trial_chart(df_2026, "Weekly Completed Trials Trend (2026)")
+    
+    if not df_2026.empty:
+        with st.expander("View 2026 Data Table"):
+            st.dataframe(df_2026, use_container_width=True)
+
+    st.divider()
+
+    # --- SECTION 2: 2025 TRIALS ---
+    st.subheader("📅 2025 Trial Trends")
+    df_2025 = load_trial_data(TRIALS_FILE_2025)
+    render_trial_chart(df_2025, "Weekly Completed Trials Trend (2025)")
+
+    if not df_2025.empty:
+        with st.expander("View 2025 Data Table"):
+            st.dataframe(df_2025, use_container_width=True)
 # --- 3. HELPER FUNCTIONS ---
 
 def pad_preprod_id(val):
