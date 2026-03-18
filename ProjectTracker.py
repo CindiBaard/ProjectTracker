@@ -109,6 +109,8 @@ def render_trial_chart(df, title):
             st.markdown("**Top Clients with Open Projects**")
             st.bar_chart(open_only['Client'].value_counts().head(10))
             
+elif tab_nav == "🧪 Trial Trends":
+    st.subheader("🧪 Trial Completion Trends")
     
     st.subheader("🧪 Trial Completion Trends")
     
