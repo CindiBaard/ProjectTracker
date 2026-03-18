@@ -105,9 +105,8 @@ def render_trial_chart(df, title):
 
 # ... (Rest of UI logic) ...
 
-    # --- NEW TAB: TRIAL TRENDS ---
-
-    elif tab_nav == "🧪 Trial Trends":
+# --- NEW TAB: TRIAL TRENDS ---
+elif tab_nav == "🧪 Trial Trends":
     st.subheader("🧪 Trial Completion Trends")
     
     # Load the combined trials data
