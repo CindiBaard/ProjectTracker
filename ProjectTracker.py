@@ -4,7 +4,10 @@ import streamlit as st
 from datetime import datetime
 import io
 import re
-import matplotlib.pyplot as plt
+
+# This is where the fix happens
+try:
+    import matplotlib.pyplot as plt
 except ImportError:
     st.error("Matplotlib is not installed. Please check your requirements.txt.")
 
