@@ -2,9 +2,10 @@ import streamlit as st
 import pandas as pd
 import os
 
-# File settings
+# --- FILE SETTINGS ---
 CSV_FILE = 'Artwork Status.csv'
-REF_FILE = 'ProjectTrackerPP_Cleaned_NA.csv'
+# REPLACED LOCAL FILE WITH LIVE GOOGLE SHEETS CSV LINK:
+REF_FILE = 'https://docs.google.com/spreadsheets/d/1TiuVzyZLbLAFQ_Os8mzwURFaFV3GJNklBY13PCajkmA/gviz/tq?tqx=out:csv'
 
 def format_date(date_val):
     """Formats date objects to DD.MM.YYYY string."""
@@ -34,26 +35,23 @@ def main():
     col1, col2 = st.columns([1, 2])
     
     with col1:
-        # Use text_input to keep IDs exactly as typed
         search_no = st.text_input("Enter Pre-Prod No. to fetch details", placeholder="e.g. 12326")
     
     if st.button("Search Tracker"):
         if not search_no:
             st.warning("Please enter a number first.")
-        elif os.path.exists(REF_FILE):
+        else:
             try:
-                # 1. 'sep=None' tells Python to automatically detect if it's ; or ,
-                # 2. 'encoding=utf-8-sig' removes hidden Excel formatting (BOM)
-                df_ref = pd.read_csv(REF_FILE, sep=None, engine='python', encoding='utf-8-sig')
+                # UPDATED: We now read directly from the URL. 
+                # Since it's a URL, we don't use sep=None (it's standard CSV)
+                df_ref = pd.read_csv(REF_FILE, encoding='utf-8-sig')
                 
-                # 3. Clean all column names (removes invisible spaces)
+                # Clean all column names
                 df_ref.columns = [str(c).strip() for c in df_ref.columns]
                 
-                # 4. Define the ID column to search
                 id_col = 'Pre-Prod No.'
                 
                 if id_col in df_ref.columns:
-                    # Clean the data in the file and the search term for a perfect match
                     df_ref[id_col] = df_ref[id_col].apply(clean_val)
                     target = clean_val(search_no)
                     
@@ -62,31 +60,24 @@ def main():
                     if not match.empty:
                         # Success: Populate session state
                         st.session_state.found_client = clean_val(match.iloc[0].get('Client', ''))
-                        
-                        # Fetch 'Project Description' specifically
                         st.session_state.found_desc = clean_val(match.iloc[0].get('Project Description', ''))
-                        
                         st.success(f"✅ Found: {st.session_state.found_client}")
                     else:
-                        st.error(f"❌ ID '{target}' not found in the tracker.")
+                        st.error(f"❌ ID '{target}' not found in the live Google Sheet.")
                 else:
-                    st.error(f"Could not find ID column. Available: {list(df_ref.columns)[:5]}...")
+                    st.error(f"Column '{id_col}' not found. Found: {list(df_ref.columns)[:5]}")
             except Exception as e:
-                st.error(f"Error reading tracker file: {e}")
-        else:
-            st.error(f"Tracker file '{REF_FILE}' was not found.")
+                st.error(f"Error connecting to Google Sheets: {e}")
 
     st.divider()
 
     # --- STEP 2: ENTRY FORM ---
     st.subheader("Step 2: Complete Record Information")
-    # Using 'clear_on_submit=True' to reset the form after each upload
     with st.form("main_form", clear_on_submit=True):
         left, right = st.columns(2)
         
         with left:
             st.info(f"Adding entry for ID: **{search_no}**")
-            # Auto-filled from Step 1
             client = st.text_input("Client", value=st.session_state.found_client)
             description = st.text_input("Description", value=st.session_state.found_desc)
             
@@ -121,15 +112,14 @@ def main():
                 }
                 try:
                     df_to_save = pd.DataFrame([new_row])
-                    # Using ';' for the output file to match your 'Artwork Status.csv' format
+                    # Note: This still saves LOCALLY to your computer
                     df_to_save.to_csv(CSV_FILE, mode='a', index=False, header=not os.path.exists(CSV_FILE), sep=';')
                     st.success(f"🎉 Successfully added {search_no} to {CSV_FILE}!")
                     
-                    # Clear session state for next round
                     st.session_state.found_client = ""
                     st.session_state.found_desc = ""
                 except Exception as e:
-                    st.error(f"Error saving data: {e}")
+                    st.error(f"Error saving data locally: {e}")
 
 if __name__ == "__main__":
     main()
