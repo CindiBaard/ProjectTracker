@@ -365,20 +365,26 @@ elif tab_nav == "➕ Add New Job":
         new_data = {}; cols = st.columns(3)
         
         for i, col_name in enumerate(DESIRED_ORDER):
-            if col_name == "Age Category": continue
-            val = st.session_state.form_data.get(col_name, "")
-            if col_name in st.session_state.selected_combo: val = st.session_state.selected_combo[col_name]
-
+            # ... (your existing loop code here) ...
             with cols[i % 3]:
-                if col_name == 'Date': new_data[col_name] = st.date_input(col_name, value=datetime.now()).strftime('%d/%m/%Y')
-                elif col_name == 'Completion date':
-                    res = st.date_input(col_name, value=None)
-                    new_data[col_name] = res.strftime('%d/%m/%Y') if res else ""
-                elif col_name in DROPDOWN_DATA:
-                    opts = sorted(list(set([""] + DROPDOWN_DATA[col_name] + ([val] if val else []))))
-                    new_data[col_name] = st.selectbox(col_name, options=opts, index=opts.index(val) if val in opts else 0)
-                elif col_name in ['Status', 'Open or closed']: new_data[col_name] = "Open"
-                else: new_data[col_name] = st.text_input(col_name, value=val)
+                # ... (your existing inputs here) ...
+                pass # placeholder for your existing logic
+
+        # --- CHECK THIS INDENTATION ---
+        # These columns and buttons MUST be inside the 'with st.form' block
+        c_save, c_clear = st.columns(2)
+        with c_save:
+            save_clicked = st.form_submit_button("✅ Save Project", use_container_width=True)
+        with c_clear:
+            clear_clicked = st.form_submit_button("♻️ Clear Form", use_container_width=True)
+
+        if save_clicked:
+            # ... (save logic) ...
+            save_db(df)
+            reset_form_state()
+
+        if clear_clicked:
+            reset_form_state()
 
         # --- NEW BUTTON LAYOUT START ---
         c_save, c_clear = st.columns(2)
