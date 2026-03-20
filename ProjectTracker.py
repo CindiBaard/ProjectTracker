@@ -58,6 +58,16 @@ def pad_preprod_id(val):
     else:
         return val_str.zfill(5)
 
+def reset_form_state():
+    """Clears form data and resets the UI state."""
+    st.session_state.form_data = {}
+    st.session_state.selected_combo = {}
+    # If you have specific widget keys to clear, do it here
+    for key in list(st.session_state.keys()):
+        if key.startswith("txt_") or key.startswith("sel_") or key.startswith("ed_"):
+            del st.session_state[key]
+    st.rerun()
+
 def get_auto_next_no(df):
     """Generates the next logical integer ID with 5-digit padding."""
     if df.empty or 'Pre-Prod No.' not in df.columns: 
@@ -353,6 +363,7 @@ elif tab_nav == "➕ Add New Job":
         st.subheader("Register Project")
         new_id_input = st.text_input("Pre-Prod No.", value=default_id)
         new_data = {}; cols = st.columns(3)
+        
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
             val = st.session_state.form_data.get(col_name, "")
@@ -369,15 +380,30 @@ elif tab_nav == "➕ Add New Job":
                 elif col_name in ['Status', 'Open or closed']: new_data[col_name] = "Open"
                 else: new_data[col_name] = st.text_input(col_name, value=val)
 
-        if st.form_submit_button("✅ Save Project"):
+        # --- NEW BUTTON LAYOUT START ---
+        c_save, c_clear = st.columns(2)
+        with c_save:
+            save_clicked = st.form_submit_button("✅ Save Project", use_container_width=True)
+        with c_clear:
+            clear_clicked = st.form_submit_button("♻️ Clear Form", use_container_width=True)
+        # --- NEW BUTTON LAYOUT END ---
+
+        # 1. Logic for Saving
+        if save_clicked:
             padded_id = pad_preprod_id(new_id_input)
             new_data['Pre-Prod No.'] = get_next_available_id(padded_id, df['Pre-Prod No.'].tolist())
             new_data['Status'] = new_data['Open or closed'] = "Closed" if new_data.get('Completion date') else "Open"
             cat, days = calculate_age_category(new_data)
             new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
+            
             df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
-            save_db(df); st.session_state.selected_combo = {}; st.session_state.form_data = {}; st.rerun()
+            save_db(df)
+            st.toast(f"Saved: {new_data['Pre-Prod No.']}")
+            reset_form_state() # This function handles the rerun
 
+        # 2. Logic for Clearing
+        if clear_clicked:
+            reset_form_state()
 # --- TAB: DETAILED AGE ANALYSIS ---
 elif tab_nav == "📊 Detailed Age Analysis":
     if not df.empty:
