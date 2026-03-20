@@ -355,7 +355,6 @@ if tab_nav == "🔍 Search & Edit":
                 save_db(df); st.session_state.selected_combo = {}; st.rerun()
 
 # --- TAB: ADD NEW JOB ---
-# --- TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
     default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
@@ -365,11 +364,8 @@ elif tab_nav == "➕ Add New Job":
         new_id_input = st.text_input("Pre-Prod No.", value=default_id)
         new_data = {}; cols = st.columns(3)
         
-        # 1. GENERATE INPUT FIELDS
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
-            
-            # Get values from session state (cloning or combo selection)
             val = st.session_state.form_data.get(col_name, "")
             if col_name in st.session_state.selected_combo: 
                 val = st.session_state.selected_combo[col_name]
@@ -388,35 +384,27 @@ elif tab_nav == "➕ Add New Job":
                 else: 
                     new_data[col_name] = st.text_input(col_name, value=val)
 
-        st.markdown("---") # Visual separator
+        st.divider()
 
-        # 2. BUTTON LAYOUT (Properly Indented inside the form)
+        # --- ONLY ONE SET OF BUTTONS HERE ---
         c_save, c_clear = st.columns(2)
         with c_save:
-            save_clicked = st.form_submit_button("✅ Save Project", use_container_width=True)
+            # Updated use_container_width to width='stretch' per your logs
+            save_clicked = st.form_submit_button("✅ Save Project", width="stretch")
         with c_clear:
-            clear_clicked = st.form_submit_button("♻️ Clear Form", use_container_width=True)
+            clear_clicked = st.form_submit_button("♻️ Clear Form", width="stretch")
 
-        # 3. LOGIC SELECTION
         if save_clicked:
             padded_id = pad_preprod_id(new_id_input)
-            # Check for duplicates/assign next suffix if base ID exists
             new_data['Pre-Prod No.'] = get_next_available_id(padded_id, df['Pre-Prod No.'].tolist())
-            
-            # Status Logic
             new_data['Status'] = new_data['Open or closed'] = "Closed" if new_data.get('Completion date') else "Open"
-            
-            # Age Calculation
             cat, days = calculate_age_category(new_data)
             new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
             
-            # Append and Save
-            new_row_df = pd.DataFrame([new_data])
-            df = pd.concat([df, new_row_df], ignore_index=True)
+            df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
             save_db(df)
-            
             st.toast(f"Saved: {new_data['Pre-Prod No.']}")
-            reset_form_state() # Resets session state and reruns
+            reset_form_state() 
 
         if clear_clicked:
             reset_form_state()
