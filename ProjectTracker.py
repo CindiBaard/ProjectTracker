@@ -355,6 +355,7 @@ if tab_nav == "🔍 Search & Edit":
                 save_db(df); st.session_state.selected_combo = {}; st.rerun()
 
 # --- TAB: ADD NEW JOB ---
+# --- TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
     default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
@@ -364,24 +365,58 @@ elif tab_nav == "➕ Add New Job":
         new_id_input = st.text_input("Pre-Prod No.", value=default_id)
         new_data = {}; cols = st.columns(3)
         
+        # 1. GENERATE INPUT FIELDS
         for i, col_name in enumerate(DESIRED_ORDER):
-            # ... (your existing loop code here) ...
-            with cols[i % 3]:
-                # ... (your existing inputs here) ...
-                pass # placeholder for your existing logic
+            if col_name == "Age Category": continue
+            
+            # Get values from session state (cloning or combo selection)
+            val = st.session_state.form_data.get(col_name, "")
+            if col_name in st.session_state.selected_combo: 
+                val = st.session_state.selected_combo[col_name]
 
-        # --- CHECK THIS INDENTATION ---
-        # These columns and buttons MUST be inside the 'with st.form' block
+            with cols[i % 3]:
+                if col_name == 'Date': 
+                    new_data[col_name] = st.date_input(col_name, value=datetime.now()).strftime('%d/%m/%Y')
+                elif col_name == 'Completion date':
+                    res = st.date_input(col_name, value=None)
+                    new_data[col_name] = res.strftime('%d/%m/%Y') if res else ""
+                elif col_name in DROPDOWN_DATA:
+                    opts = sorted(list(set([""] + DROPDOWN_DATA[col_name] + ([val] if val else []))))
+                    new_data[col_name] = st.selectbox(col_name, options=opts, index=opts.index(val) if val in opts else 0)
+                elif col_name in ['Status', 'Open or closed']: 
+                    new_data[col_name] = "Open"
+                else: 
+                    new_data[col_name] = st.text_input(col_name, value=val)
+
+        st.markdown("---") # Visual separator
+
+        # 2. BUTTON LAYOUT (Properly Indented inside the form)
         c_save, c_clear = st.columns(2)
         with c_save:
             save_clicked = st.form_submit_button("✅ Save Project", use_container_width=True)
         with c_clear:
             clear_clicked = st.form_submit_button("♻️ Clear Form", use_container_width=True)
 
+        # 3. LOGIC SELECTION
         if save_clicked:
-            # ... (save logic) ...
+            padded_id = pad_preprod_id(new_id_input)
+            # Check for duplicates/assign next suffix if base ID exists
+            new_data['Pre-Prod No.'] = get_next_available_id(padded_id, df['Pre-Prod No.'].tolist())
+            
+            # Status Logic
+            new_data['Status'] = new_data['Open or closed'] = "Closed" if new_data.get('Completion date') else "Open"
+            
+            # Age Calculation
+            cat, days = calculate_age_category(new_data)
+            new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
+            
+            # Append and Save
+            new_row_df = pd.DataFrame([new_data])
+            df = pd.concat([df, new_row_df], ignore_index=True)
             save_db(df)
-            reset_form_state()
+            
+            st.toast(f"Saved: {new_data['Pre-Prod No.']}")
+            reset_form_state() # Resets session state and reruns
 
         if clear_clicked:
             reset_form_state()
