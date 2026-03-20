@@ -62,7 +62,6 @@ def reset_form_state():
     """Clears form data and resets the UI state."""
     st.session_state.form_data = {}
     st.session_state.selected_combo = {}
-    # If you have specific widget keys to clear, do it here
     for key in list(st.session_state.keys()):
         if key.startswith("txt_") or key.startswith("sel_") or key.startswith("ed_"):
             del st.session_state[key]
@@ -142,9 +141,9 @@ def get_options(filename):
 @st.cache_data(show_spinner="Loading High-Performance Database...")
 def load_db(force_refresh=False):
     if force_refresh or not os.path.exists(FILENAME_PARQUET):
-        if os.path.exists(TRACKER_ADJ_FILE) and os.path.exists(DIGITALPREPROD_FILE):
+        if os.path.exists(TRACKER_AD_FILE) and os.path.exists(DIGITALPREPROD_FILE):
             try:
-                df_t = pd.read_csv(TRACKER_ADJ_FILE, sep=None, engine='python', encoding='utf-8-sig', on_bad_lines='warn')
+                df_t = pd.read_csv(TRACKER_AD_FILE, sep=None, engine='python', encoding='utf-8-sig', on_bad_lines='warn')
                 df_d = pd.read_csv(DIGITALPREPROD_FILE, sep=None, engine='python', encoding='utf-8-sig', on_bad_lines='warn')
                 df_d = clean_column_names(df_d)
                 df_t = clean_column_names(df_t)
@@ -178,22 +177,14 @@ def load_trial_data():
     if os.path.exists(trials_path):
         try:
             df = pd.read_csv(trials_path)
-            
-            # 1. Convert columns to datetime
-            # Adjust 'dayfirst=True' if your CSV uses US format (MM/DD)
             df['Date_Log'] = pd.to_datetime(df['Date_Log'], dayfirst=True, errors='coerce')
             df['Completion_Date'] = pd.to_datetime(df['Completion_Date'], dayfirst=True, errors='coerce')
-            
-            # 2. Calculate Days Taken (only where both dates exist)
             df['Days_Taken'] = (df['Completion_Date'] - df['Date_Log']).dt.days
-            
-            # 3. Handle Week Number
             wk_col = next((c for c in df.columns if 'week' in c.lower()), None)
             if wk_col:
                 df['Week_Num'] = df[wk_col].astype(str).str.extract(r'(\d+)').fillna(0).astype(int)
             else:
                 df['Week_Num'] = 0
-                
             return df
         except Exception as e:
             st.error(f"Error processing trial dates: {e}")
@@ -370,13 +361,11 @@ elif tab_nav == "➕ Add New Job":
         st.subheader("Register Project")
         new_id_input = st.text_input("Pre-Prod No.", value=default_id)
         
-        # Initialize the dictionary to store new inputs
         new_data = {}
         new_cols = st.columns(3)
         
         for i, col_name in enumerate(DESIRED_ORDER):
             if col_name == "Age Category": continue
-            # Check for cloned data or combo-selected data
             val = st.session_state.form_data.get(col_name, "")
             if col_name in st.session_state.selected_combo: 
                 val = st.session_state.selected_combo[col_name]
@@ -397,10 +386,12 @@ elif tab_nav == "➕ Add New Job":
 
         st.divider()
         c_save, c_clear = st.columns(2)
+        
+        # KEY PARAMETERS ADDED TO PREVENT DUPLICATES
         with c_save:
-            save_clicked = st.form_submit_button("✅ Save Project", use_container_width=True)
+            save_clicked = st.form_submit_button("✅ Save Project", use_container_width=True, key="btn_save_new")
         with c_clear:
-            clear_clicked = st.form_submit_button("♻️ Clear Form", use_container_width=True)
+            clear_clicked = st.form_submit_button("♻️ Clear Form", use_container_width=True, key="btn_clear_new")
 
         if save_clicked:
             padded_id = pad_preprod_id(new_id_input)
@@ -411,38 +402,12 @@ elif tab_nav == "➕ Add New Job":
             
             df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
             save_db(df)
-            st.toast(f"Saved: {new_data['Pre-Prod No.']}")
+            st.toast(f"Successfully Saved: {new_data['Pre-Prod No.']}")
             reset_form_state() 
 
         if clear_clicked:
             reset_form_state()
 
-
-        # --- NEW BUTTON LAYOUT START ---
-        c_save, c_clear = st.columns(2)
-        with c_save:
-            save_clicked = st.form_submit_button("✅ Save Project", use_container_width=True)
-        with c_clear:
-            clear_clicked = st.form_submit_button("♻️ Clear Form", use_container_width=True)
-        # --- NEW BUTTON LAYOUT END ---
-
-        # 1. Logic for Saving
-        if save_clicked:
-            padded_id = pad_preprod_id(new_id_input)
-            new_data['Pre-Prod No.'] = get_next_available_id(padded_id, df['Pre-Prod No.'].tolist())
-            new_data['Status'] = new_data['Open or closed'] = "Closed" if new_data.get('Completion date') else "Open"
-            cat, days = calculate_age_category(new_data)
-            new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
-            
-            df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
-            save_db(df)
-            st.toast(f"Saved: {new_data['Pre-Prod No.']}")
-            reset_form_state() # This function handles the rerun
-
-        # 2. Logic for Clearing
-        if clear_clicked:
-            reset_form_state()
-            
 # --- TAB: DETAILED AGE ANALYSIS ---
 elif tab_nav == "📊 Detailed Age Analysis":
     if not df.empty:
@@ -461,12 +426,9 @@ elif tab_nav == "🧪 Trial Trends":
     df_trials = load_trial_data()
     
     if not df_trials.empty:
-        # Group by week and calculate the average days taken
-        # We drop NaNs to ensure we only average completed trials
         weekly_stats = df_trials.dropna(subset=['Days_Taken']).groupby('Week_Num')['Days_Taken'].mean().sort_index()
 
         if not weekly_stats.empty:
-            # Visual Plot
             fig, ax = plt.subplots(figsize=(10, 4))
             ax.plot(weekly_stats.index, weekly_stats.values, 
                     label='Avg Days to Complete', marker='o', linewidth=2, color='#2ca02c')
@@ -477,13 +439,11 @@ elif tab_nav == "🧪 Trial Trends":
             ax.legend()
             ax.grid(True, linestyle=':', alpha=0.6)
             
-            # Add data labels on points for clarity
             for x, y in zip(weekly_stats.index, weekly_stats.values):
                 ax.annotate(f'{y:.1f}d', (x, y), textcoords="offset points", xytext=(0,10), ha='center')
                 
             st.pyplot(fig)
             
-            # Summary Metrics
             latest_week = weekly_stats.index[-1]
             avg_days = weekly_stats.loc[latest_week]
             overall_avg = df_trials['Days_Taken'].mean()
@@ -493,15 +453,15 @@ elif tab_nav == "🧪 Trial Trends":
             m2.metric("Overall 2026 Average", f"{overall_avg:.1f} Days")
 
             with st.expander("View Full Trials Data Table"):
-                # Format dates for display in the table
                 df_display = df_trials.copy()
                 df_display['Date_Log'] = df_display['Date_Log'].dt.strftime('%d/%m/%Y')
                 df_display['Completion_Date'] = df_display['Completion_Date'].dt.strftime('%d/%m/%Y')
                 st.dataframe(df_display, use_container_width=True)
         else:
-            st.info("No completed trials found (missing Completion_Date) to calculate duration.")
+            st.info("No completed trials found to calculate duration.")
     else:
         st.warning(f"File '{TRIALS_FILE_CURRENT}' not found.")
+
 st.divider()
 if st.checkbox("Show Master Table", value=False):
     st.dataframe(df, use_container_width=True)
