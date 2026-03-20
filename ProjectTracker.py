@@ -404,6 +404,7 @@ elif tab_nav == "➕ Add New Job":
         # 2. Logic for Clearing
         if clear_clicked:
             reset_form_state()
+            
 # --- TAB: DETAILED AGE ANALYSIS ---
 elif tab_nav == "📊 Detailed Age Analysis":
     if not df.empty:
