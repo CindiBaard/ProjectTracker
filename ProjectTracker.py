@@ -297,13 +297,15 @@ st.session_state.active_tab = tab_nav
 
 # --- TAB: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
-    raw_search = st.text_input("Search Pre-Prod No.").strip()
+    # Use a key for the search input so we can clear it manually if needed
+    raw_search = st.text_input("Search Pre-Prod No.", key="search_input_box").strip()
     search_no = pad_preprod_id(raw_search) if raw_search else ""
     match = df[df['Pre-Prod No.'] == search_no] if 'Pre-Prod No.' in df.columns else pd.DataFrame()
     
     if search_no and not match.empty:
         idx, row = match.index[0], match.iloc[0]
         c_c, c_d = st.columns(2)
+        
         with c_c:
             if st.button("👯 Clone as Repeat Order", use_container_width=True):
                 new_id = get_next_available_id(search_no, df['Pre-Prod No.'].tolist())
@@ -312,20 +314,27 @@ if tab_nav == "🔍 Search & Edit":
                 st.session_state.form_data = new_clone
                 st.session_state.active_tab = "➕ Add New Job"
                 st.rerun()
+                
         with c_d:
             with st.popover("🗑️ Delete", use_container_width=True):
                 if st.button("Confirm Delete"):
                     df = df.drop(idx)
                     save_db(df)
+                    # Clear search and force refresh
+                    if "search_input_box" in st.session_state:
+                        st.session_state.search_input_box = ""
                     st.rerun()
 
         display_combination_table("edit")
+        
         with st.expander("Edit Details", expanded=True):
             updated_vals = {}
             edit_cols = st.columns(3)
             for i, col_name in enumerate(DESIRED_ORDER):
                 if col_name == "Age Category": continue
                 cur_val = str(row.get(col_name, "")) if str(row.get(col_name, "")).lower() != 'nan' else ""
+                
+                # Apply combination selection if active
                 if col_name in st.session_state.selected_combo: 
                     cur_val = st.session_state.selected_combo[col_name]
                 
@@ -344,12 +353,22 @@ if tab_nav == "🔍 Search & Edit":
                         updated_vals[col_name] = st.text_input(col_name, value=cur_val, key=f"txt_{col_name}")
 
             if st.button("💾 Save Changes", type="primary", use_container_width=True):
+                # 1. Update logic
                 final_status = "Closed" if updated_vals.get("Completion date") else "Open"
                 updated_vals["Status"] = updated_vals["Open or closed"] = final_status
                 for k, v in updated_vals.items(): 
                     df.at[idx, k] = v
+                
+                # 2. Save to database
                 save_db(df)
+                
+                # 3. CLEANUP & REFRESH
                 st.session_state.selected_combo = {}
+                # Clear the search box value in session state
+                if "search_input_box" in st.session_state:
+                    st.session_state.search_input_box = ""
+                
+                st.toast("Changes Saved Successfully!")
                 st.rerun()
 
 # --- TAB: ADD NEW JOB ---
