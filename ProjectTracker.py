@@ -324,7 +324,9 @@ if tab_nav == "🔍 Search & Edit":
         with c_d:
             with st.popover("🗑️ Delete", use_container_width=True):
                 if st.button("Confirm Delete"):
-                    df = df.drop(idx); save_db(df); st.rerun()
+                    df = df.drop(idx)
+                    save_db(df)
+                    st.rerun()
 
         display_combination_table("edit")
         with st.expander("Edit Details", expanded=True):
@@ -333,7 +335,8 @@ if tab_nav == "🔍 Search & Edit":
             for i, col_name in enumerate(DESIRED_ORDER):
                 if col_name == "Age Category": continue
                 cur_val = str(row.get(col_name, "")) if str(row.get(col_name, "")).lower() != 'nan' else ""
-                if col_name in st.session_state.selected_combo: cur_val = st.session_state.selected_combo[col_name]
+                if col_name in st.session_state.selected_combo: 
+                    cur_val = st.session_state.selected_combo[col_name]
                 
                 with edit_cols[i % 3]:
                     if col_name == 'Completion date':
@@ -341,14 +344,15 @@ if tab_nav == "🔍 Search & Edit":
                         except: d = None
                         sel_d = st.date_input(col_name, value=d, key=f"ed_{col_name}")
                         updated_vals[col_name] = sel_d.strftime('%d/%m/%Y') if sel_d else ""
-                    elif col_name in ["Status", "Open or closed"]: continue
+                    elif col_name in ["Status", "Open or closed"]: 
+                        continue
                     elif col_name in DROPDOWN_DATA:
                         opts = sorted(list(set([""] + DROPDOWN_DATA[col_name] + ([cur_val] if cur_val else []))))
                         updated_vals[col_name] = st.selectbox(col_name, options=opts, index=opts.index(cur_val) if cur_val in opts else 0, key=f"sel_{col_name}")
                     else:
                         updated_vals[col_name] = st.text_input(col_name, value=cur_val, key=f"txt_{col_name}")
 
-if st.button("💾 Save Changes", type="primary", use_container_width=True):
+            if st.button("💾 Save Changes", type="primary", use_container_width=True):
                 final_status = "Closed" if updated_vals.get("Completion date") else "Open"
                 updated_vals["Status"] = updated_vals["Open or closed"] = final_status
                 for k, v in updated_vals.items(): 
@@ -356,6 +360,8 @@ if st.button("💾 Save Changes", type="primary", use_container_width=True):
                 save_db(df)
                 st.session_state.selected_combo = {}
                 st.rerun()
+
+# --- TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
     default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
@@ -364,19 +370,52 @@ elif tab_nav == "➕ Add New Job":
         st.subheader("Register Project")
         new_id_input = st.text_input("Pre-Prod No.", value=default_id)
         
-        # ... (Your loop to create text_inputs/selectboxes for new_data goes here) ...
+        # Initialize the dictionary to store new inputs
+        new_data = {}
+        new_cols = st.columns(3)
+        
+        for i, col_name in enumerate(DESIRED_ORDER):
+            if col_name == "Age Category": continue
+            # Check for cloned data or combo-selected data
+            val = st.session_state.form_data.get(col_name, "")
+            if col_name in st.session_state.selected_combo: 
+                val = st.session_state.selected_combo[col_name]
+
+            with new_cols[i % 3]:
+                if col_name == 'Date':
+                    new_data[col_name] = st.date_input(col_name, value=datetime.now()).strftime('%d/%m/%Y')
+                elif col_name == 'Completion date':
+                    res = st.date_input(col_name, value=None)
+                    new_data[col_name] = res.strftime('%d/%m/%Y') if res else ""
+                elif col_name in DROPDOWN_DATA:
+                    opts = sorted(list(set([""] + DROPDOWN_DATA[col_name] + ([val] if val else []))))
+                    new_data[col_name] = st.selectbox(col_name, options=opts, index=opts.index(val) if val in opts else 0)
+                elif col_name in ["Status", "Open or closed"]:
+                    new_data[col_name] = "Open"
+                else:
+                    new_data[col_name] = st.text_input(col_name, value=val)
 
         st.divider()
         c_save, c_clear = st.columns(2)
         with c_save:
-            save_clicked = st.form_submit_button("✅ Save Project", width="stretch")
+            save_clicked = st.form_submit_button("✅ Save Project", use_container_width=True)
         with c_clear:
-            clear_clicked = st.form_submit_button("♻️ Clear Form", width="stretch")
+            clear_clicked = st.form_submit_button("♻️ Clear Form", use_container_width=True)
 
         if save_clicked:
-            # Your logic for padding ID, calculating age, and pd.concat goes here
-            # Ensure new_data is populated before this!
-            pass
+            padded_id = pad_preprod_id(new_id_input)
+            new_data['Pre-Prod No.'] = get_next_available_id(padded_id, df['Pre-Prod No.'].tolist())
+            new_data['Status'] = new_data['Open or closed'] = "Closed" if new_data.get('Completion date') else "Open"
+            cat, days = calculate_age_category(new_data)
+            new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
+            
+            df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
+            save_db(df)
+            st.toast(f"Saved: {new_data['Pre-Prod No.']}")
+            reset_form_state() 
+
+        if clear_clicked:
+            reset_form_state()
 
 
         # --- NEW BUTTON LAYOUT START ---
