@@ -125,71 +125,52 @@ def save_db(df):
     """Saves the dataframe to parquet for performance."""
     df.to_parquet(FILENAME_PARQUET, index=False)
 
-# --- 4. DATA LOADING ---
-
-@st.cache_data
-def get_options(filename):
-    path = os.path.join(BASE_DIR, filename)
-    if os.path.exists(path):
-        try:
-            with open(path, 'r', encoding='latin1', errors='ignore') as f:
-                lines = [line.strip().replace('"', '') for line in f.readlines() if line.strip()]
-                return sorted(list(set([l.split(';')[0].split(',')[0].strip() for l in lines if l])))
-        except: return []
-    return []
-
 @st.cache_data(show_spinner="Loading High-Performance Database...")
-def load_db(force_refresh=False):
-    if force_refresh or not os.path.exists(FILENAME_PARQUET):
-        if os.path.exists(TRACKER_AD_FILE) and os.path.exists(DIGITALPREPROD_FILE):
+def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
+    # Now the function uses the variables passed into it
+    if force_refresh or not os.path.exists(parquet_path):
+        if os.path.exists(tracker_file) and os.path.exists(digital_file):
             try:
-                df_t = pd.read_csv(TRACKER_AD_FILE, sep=None, engine='python', encoding='utf-8-sig', on_bad_lines='warn')
-                df_d = pd.read_csv(DIGITALPREPROD_FILE, sep=None, engine='python', encoding='utf-8-sig', on_bad_lines='warn')
+                df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig', on_bad_lines='warn')
+                df_d = pd.read_csv(digital_file, sep=None, engine='python', encoding='utf-8-sig', on_bad_lines='warn')
+                
                 df_d = clean_column_names(df_d)
                 df_t = clean_column_names(df_t)
+                
                 if 'Pre-Prod No' in df_d.columns: df_d = df_d.rename(columns={'Pre-Prod No': 'Pre-Prod No.'})
                 elif 'Pre Prod No.' in df_d.columns: df_d = df_d.rename(columns={'Pre Prod No.': 'Pre-Prod No.'})
+                
                 df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].apply(clean_key)
                 df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].apply(clean_key)
+                
                 combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), df_d.dropna(subset=['Pre-Prod No.']), on='Pre-Prod No.', how='outer', suffixes=('', '_digital_info'))
+                
                 if 'Pre-Prod No.' in combined.columns: combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
+                
                 for col in combined.columns:
-                    if combined[col].dtype == 'object' or col == 'Diameter': combined[col] = combined[col].astype(str).replace('nan', '')
-                combined.to_parquet(FILENAME_PARQUET, index=False)
-            except Exception as e: st.error(f"Merge Error: {e}")
-    if not os.path.exists(FILENAME_PARQUET): return pd.DataFrame()
-    df = pd.read_parquet(FILENAME_PARQUET)
+                    if combined[col].dtype == 'object' or col == 'Diameter': 
+                        combined[col] = combined[col].astype(str).replace('nan', '')
+                
+                combined.to_parquet(parquet_path, index=False)
+            except Exception as e: 
+                st.error(f"Merge Error: {e}")
+                
+    if not os.path.exists(parquet_path): 
+        return pd.DataFrame()
+        
+    df = pd.read_parquet(parquet_path)
     df = clean_column_names(df)
+    
     if 'Pre-Prod No.' in df.columns:
         df['Pre-Prod No.'] = df['Pre-Prod No.'].apply(pad_preprod_id)
         df = df.sort_values(by='Pre-Prod No.', ascending=True).reset_index(drop=True)
+    
     if 'Date' in df.columns:
         results = df.apply(calculate_age_category, axis=1)
         df['Age Category'] = [r[0] for r in results]
         df['Project Age (Open and Closed)'] = [r[1] for r in results]
         df['Project Age (Open and Closed)'] = pd.to_numeric(df['Project Age (Open and Closed)'], errors='coerce').fillna(0)
     return df
-
-@st.cache_data
-def load_trial_data():
-    """Handles trial data and calculates processing duration."""
-    trials_path = os.path.join(BASE_DIR, TRIALS_FILE_CURRENT)
-    if os.path.exists(trials_path):
-        try:
-            df = pd.read_csv(trials_path)
-            df['Date_Log'] = pd.to_datetime(df['Date_Log'], dayfirst=True, errors='coerce')
-            df['Completion_Date'] = pd.to_datetime(df['Completion_Date'], dayfirst=True, errors='coerce')
-            df['Days_Taken'] = (df['Completion_Date'] - df['Date_Log']).dt.days
-            wk_col = next((c for c in df.columns if 'week' in c.lower()), None)
-            if wk_col:
-                df['Week_Num'] = df[wk_col].astype(str).str.extract(r'(\d+)').fillna(0).astype(int)
-            else:
-                df['Week_Num'] = 0
-            return df
-        except Exception as e:
-            st.error(f"Error processing trial dates: {e}")
-    return pd.DataFrame()
-
 # --- 5. CONFIGURATIONS & DROPDOWN DATA ---
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
@@ -242,10 +223,12 @@ def display_combination_table(key_prefix):
             except Exception as e: st.error(f"Error loading combos: {e}")
 
 if st.sidebar.button("🔄 Force Refresh from CSVs"):
-    df = load_db(force_refresh=True)
+    # Pass all required paths here
+    df = load_db(TRACKER_AD_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=True)
     st.sidebar.success("Database Rebuilt!")
 else:
-    df = load_db()
+    # Pass all required paths here
+    df = load_db(TRACKER_AD_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
 
 if not df.empty and 'Client' in df.columns:
     client_list = sorted([str(c) for c in df['Client'].unique() if str(c).strip() and str(c).lower() != 'nan'])
