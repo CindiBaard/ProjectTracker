@@ -127,23 +127,20 @@ def get_options(filename):
     path = os.path.join(BASE_DIR, filename)
     if os.path.exists(path):
         try:
-            # We use latin1 and ignore errors to handle various CSV encodings safely
             with open(path, 'r', encoding='latin1', errors='ignore') as f:
                 lines = [line.strip().replace('"', '') for line in f.readlines() if line.strip()]
-                # Splits by common delimiters and takes the first value
                 return sorted(list(set([l.split(';')[0].split(',')[0].strip() for l in lines if l])))
         except Exception as e:
             st.error(f"Error loading {filename}: {e}")
             return []
     return []
-    
+
 def save_db(df):
     """Saves the dataframe to parquet for performance."""
     df.to_parquet(FILENAME_PARQUET, index=False)
 
 @st.cache_data(show_spinner="Loading High-Performance Database...")
 def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
-    # Now the function uses the variables passed into it
     if force_refresh or not os.path.exists(parquet_path):
         if os.path.exists(tracker_file) and os.path.exists(digital_file):
             try:
@@ -187,6 +184,24 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
         df['Project Age (Open and Closed)'] = [r[1] for r in results]
         df['Project Age (Open and Closed)'] = pd.to_numeric(df['Project Age (Open and Closed)'], errors='coerce').fillna(0)
     return df
+
+@st.cache_data
+def load_trial_data():
+    """Helper to load and process the trials trending data."""
+    if os.path.exists(TRIALS_FILE_CURRENT):
+        try:
+            df = pd.read_csv(TRIALS_FILE_CURRENT, encoding='utf-8-sig')
+            df = clean_column_names(df)
+            df['Date_Log'] = pd.to_datetime(df['Date_Log'], dayfirst=True, errors='coerce')
+            df['Completion_Date'] = pd.to_datetime(df['Completion_Date'], dayfirst=True, errors='coerce')
+            df['Days_Taken'] = (df['Completion_Date'] - df['Date_Log']).dt.days
+            df['Week_Num'] = df['Date_Log'].dt.isocalendar().week
+            return df
+        except Exception as e:
+            st.error(f"Error loading trial data: {e}")
+            return pd.DataFrame()
+    return pd.DataFrame()
+
 # --- 5. CONFIGURATIONS & DROPDOWN DATA ---
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
@@ -238,13 +253,12 @@ def display_combination_table(key_prefix):
                     st.toast("✅ Combination Selected")
             except Exception as e: st.error(f"Error loading combos: {e}")
 
+# FIX: Corrected variable name TRACKER_ADJ_FILE
 if st.sidebar.button("🔄 Force Refresh from CSVs"):
-    # Pass all required paths here
-    df = load_db(TRACKER_AD_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=True)
+    df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=True)
     st.sidebar.success("Database Rebuilt!")
 else:
-    # Pass all required paths here
-    df = load_db(TRACKER_AD_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
+    df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
 
 if not df.empty and 'Client' in df.columns:
     client_list = sorted([str(c) for c in df['Client'].unique() if str(c).strip() and str(c).lower() != 'nan'])
@@ -296,7 +310,6 @@ st.session_state.active_tab = tab_nav
 
 # --- TAB: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
-    # Use a key for the search input so we can clear it manually if needed
     raw_search = st.text_input("Search Pre-Prod No.", key="search_input_box").strip()
     search_no = pad_preprod_id(raw_search) if raw_search else ""
     match = df[df['Pre-Prod No.'] == search_no] if 'Pre-Prod No.' in df.columns else pd.DataFrame()
@@ -319,7 +332,6 @@ if tab_nav == "🔍 Search & Edit":
                 if st.button("Confirm Delete"):
                     df = df.drop(idx)
                     save_db(df)
-                    # Clear search and force refresh
                     if "search_input_box" in st.session_state:
                         st.session_state.search_input_box = ""
                     st.rerun()
@@ -333,7 +345,6 @@ if tab_nav == "🔍 Search & Edit":
                 if col_name == "Age Category": continue
                 cur_val = str(row.get(col_name, "")) if str(row.get(col_name, "")).lower() != 'nan' else ""
                 
-                # Apply combination selection if active
                 if col_name in st.session_state.selected_combo: 
                     cur_val = st.session_state.selected_combo[col_name]
                 
@@ -352,21 +363,15 @@ if tab_nav == "🔍 Search & Edit":
                         updated_vals[col_name] = st.text_input(col_name, value=cur_val, key=f"txt_{col_name}")
 
             if st.button("💾 Save Changes", type="primary", use_container_width=True):
-                # 1. Update logic
                 final_status = "Closed" if updated_vals.get("Completion date") else "Open"
                 updated_vals["Status"] = updated_vals["Open or closed"] = final_status
                 for k, v in updated_vals.items(): 
                     df.at[idx, k] = v
                 
-                # 2. Save to database
                 save_db(df)
-                
-                # 3. CLEANUP & REFRESH
                 st.session_state.selected_combo = {}
-                # Clear the search box value in session state
                 if "search_input_box" in st.session_state:
                     st.session_state.search_input_box = ""
-                
                 st.toast("Changes Saved Successfully!")
                 st.rerun()
 
@@ -405,7 +410,6 @@ elif tab_nav == "➕ Add New Job":
         st.divider()
         c_save, c_clear = st.columns(2)
         
-        # KEY PARAMETERS ADDED TO PREVENT DUPLICATES
         with c_save:
             save_clicked = st.form_submit_button("✅ Save Project", use_container_width=True, key="btn_save_new")
         with c_clear:
@@ -438,7 +442,7 @@ elif tab_nav == "📊 Detailed Age Analysis":
             st.markdown("**Top Clients with Open Projects**")
             st.bar_chart(open_only['Client'].value_counts().head(10))
 
-# --- NEW TAB: TRIAL TRENDS ---
+# --- TAB: TRIAL TRENDS ---
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("🧪 Trial Turnaround Time (2026)")
     df_trials = load_trial_data()
