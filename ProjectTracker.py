@@ -316,7 +316,7 @@ if tab_nav == "🔍 Search & Edit":
     with col_search:
         raw_search = st.text_input("Search Pre-Prod No.", key="search_input_box").strip()
     
-     with col_clear_btn:
+    with col_clear_btn:
         st.write("##") # Visual alignment
         if st.button("♻️ Clear Search", use_container_width=True):
             # Delete the key instead of setting it to ""
