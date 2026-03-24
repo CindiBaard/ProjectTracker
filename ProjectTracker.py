@@ -620,8 +620,8 @@ tab_nav = st.radio("Navigation", ["🔍 Search & Edit", "➕ Add New Job", "📊
 st.session_state.active_tab = tab_nav
 
 
-    display_combination_table("new")
-    default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
+display_combination_table("new")
+default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
     
     with st.form("new_job_form", clear_on_submit=True):
         st.subheader("Register Project")
