@@ -316,16 +316,21 @@ if tab_nav == "🔍 Search & Edit":
     with col_search:
         raw_search = st.text_input("Search Pre-Prod No.", key="search_input_box").strip()
     
-    with col_clear_btn:
+     with col_clear_btn:
         st.write("##") # Visual alignment
         if st.button("♻️ Clear Search", use_container_width=True):
-            st.session_state.search_input_box = ""
+            # Delete the key instead of setting it to ""
+            if "search_input_box" in st.session_state:
+                del st.session_state["search_input_box"]
+            
             st.session_state.last_search_no = ""
+            
+            # Clean up other form-related keys
             for key in list(st.session_state.keys()):
                 if key.startswith(("txt_", "sel_", "ed_")):
                     del st.session_state[key]
+            
             st.rerun()
-
     search_no = pad_preprod_id(raw_search) if raw_search else ""
     
     # 2. CHANGE DETECTOR (Prevents sticky data)
@@ -361,7 +366,9 @@ if tab_nav == "🔍 Search & Edit":
                 if st.button("Confirm Delete"):
                     df = df.drop(idx)
                     save_db(df)
-                    st.session_state.search_input_box = ""
+                    # Delete the key to reset the search box
+                    if "search_input_box" in st.session_state:
+                        del st.session_state["search_input_box"]
                     st.rerun()
 
         display_combination_table("edit")
