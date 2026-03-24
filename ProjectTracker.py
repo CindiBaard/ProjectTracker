@@ -121,6 +121,22 @@ def clean_key(val):
     s_val = str(val).strip()
     return s_val[:-2] if s_val.endswith('.0') else s_val
 
+@st.cache_data
+def get_options(filename):
+    """Reads a CSV file and returns a sorted list of unique values for dropdowns."""
+    path = os.path.join(BASE_DIR, filename)
+    if os.path.exists(path):
+        try:
+            # We use latin1 and ignore errors to handle various CSV encodings safely
+            with open(path, 'r', encoding='latin1', errors='ignore') as f:
+                lines = [line.strip().replace('"', '') for line in f.readlines() if line.strip()]
+                # Splits by common delimiters and takes the first value
+                return sorted(list(set([l.split(';')[0].split(',')[0].strip() for l in lines if l])))
+        except Exception as e:
+            st.error(f"Error loading {filename}: {e}")
+            return []
+    return []
+    
 def save_db(df):
     """Saves the dataframe to parquet for performance."""
     df.to_parquet(FILENAME_PARQUET, index=False)
