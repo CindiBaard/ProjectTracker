@@ -237,24 +237,42 @@ def display_combination_table(key_prefix):
     if os.path.exists(COMBINATIONS_FILE):
         with st.expander("📂 Browse Tube & Cap Combinations", expanded=False):
             try:
-                combo_df = pd.read_csv(COMBINATIONS_FILE, sep=',', encoding='utf-8-sig')
+                # FIX: Added sep=';' to correctly split the columns
+                combo_df = pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig')
+                
+                # Clean column names to remove any invisible characters
                 combo_df = clean_column_names(combo_df)
+                
                 search = st.text_input(f"🔍 Filter List", key=f"{key_prefix}_search")
                 if search:
                     mask = combo_df.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)
                     combo_df = combo_df[mask]
                 
-                event = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table")
+                # Display as a clean, interactive table
+                event = st.dataframe(
+                    combo_df, 
+                    use_container_width=True, 
+                    hide_index=True, 
+                    on_select="rerun", 
+                    selection_mode="single-row", 
+                    key=f"{key_prefix}_table"
+                )
+                
                 if event.selection.rows:
                     sel_row = combo_df.iloc[event.selection.rows[0]].to_dict()
+                    
+                    # Logic: Map the CSV columns to your app's internal keys
+                    # Ensure the keys here match your DESIRED_ORDER list exactly
                     st.session_state.selected_combo = {
                         "Diameter": str(sel_row.get("Diameter", "")),
-                        "Cap_Lid Style": str(sel_row.get("Cap_Lid_Style", "")), # Match the DESIRED_ORDER string
-                        "Cap_Lid Diameter": str(sel_row.get("Cap_Lid_Diameter", sel_row.get("Cap_Lid Diameter", ""))),
-                        "Cap_Lid Material": str(sel_row.get("Cap_Lid_Material", sel_row.get("Cap_Lid Material", "")))
+                        "Cap_Lid Style": str(sel_row.get("Cap_Lid Style", "")),
+                        "Cap_Lid Diameter": str(sel_row.get("Cap_Lid Diameter", "")),
+                        "Cap_Lid Material": str(sel_row.get("Cap_Lid Material", ""))
                     }
                     st.toast("✅ Combination Selected")
-            except Exception as e: st.error(f"Error loading combos: {e}")
+                    
+            except Exception as e: 
+                st.error(f"Error loading combos: {e}")
 
 # FIX: Corrected variable name TRACKER_ADJ_FILE
 if st.sidebar.button("🔄 Force Refresh from CSVs"):
