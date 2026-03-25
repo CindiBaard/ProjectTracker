@@ -313,8 +313,38 @@ st.session_state.active_tab = tab_nav
 
 # --- TAB: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
-    # ... (Search Layout and Change Detector logic remains same)
+    # 1. SEARCH LAYOUT WITH CLEAR BUTTON
+    col_search, col_clear_btn = st.columns([4, 1])
+    
+    with col_search:
+        raw_search = st.text_input("Search Pre-Prod No.", key="search_input_box").strip()
+    
+    with col_clear_btn:
+        st.write("##") 
+        if st.button("♻️ Clear Search", use_container_width=True):
+            if "search_input_box" in st.session_state:
+                del st.session_state["search_input_box"]
+            st.session_state.last_search_no = ""
+            for key in list(st.session_state.keys()):
+                if key.startswith(("txt_", "sel_", "ed_")):
+                    del st.session_state[key]
+            st.rerun()
 
+    # Define search_no immediately so it's ready for the logic below
+    search_no = pad_preprod_id(raw_search) if raw_search else ""
+    
+    # 2. CHANGE DETECTOR
+    if "last_search_no" not in st.session_state:
+        st.session_state.last_search_no = ""
+        
+    if search_no != st.session_state.last_search_no:
+        for key in list(st.session_state.keys()):
+            if key.startswith(("txt_", "sel_", "ed_")):
+                del st.session_state[key]
+        st.session_state.last_search_no = search_no
+        st.rerun() 
+
+    # 3. DATABASE MATCHING
     match = df[df['Pre-Prod No.'] == search_no] if 'Pre-Prod No.' in df.columns else pd.DataFrame()
     
     if search_no and not match.empty:
@@ -341,7 +371,7 @@ if tab_nav == "🔍 Search & Edit":
                         del st.session_state["search_input_box"]
                     st.rerun()
 
-        # FIXED INDENTATION: These must be inside the "if match" block
+        # Display helper table
         display_combination_table("edit")
         
         with st.expander("Edit Details", expanded=True):
@@ -352,7 +382,7 @@ if tab_nav == "🔍 Search & Edit":
             for i, col_name in enumerate(DESIRED_ORDER):
                 if col_name == "Age Category": continue
                 
-                # Logic to prioritize table selection
+                # Logic: prioritized table selection > current row data
                 if col_name in selected and selected[col_name] != "":
                     cur_val = selected[col_name]
                 else:
