@@ -189,7 +189,7 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
     return df
 
 @st.cache_data
-TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_3_12_2026.csv" 
+TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv" 
 
 @st.cache_data
 def load_trial_data():
