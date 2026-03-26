@@ -186,7 +186,7 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
         df['Age Category'] = [r[0] for r in results]
         df['Project Age (Open and Closed)'] = [r[1] for r in results]
         df['Project Age (Open and Closed)'] = pd.to_numeric(df['Project Age (Open and Closed)'], errors='coerce').fillna(0)
-return df
+    return df
 
 # --- 4. TRIAL DATA CONFIG ---
 TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
