@@ -7,7 +7,6 @@ import os
 st.set_page_config(layout="wide", page_title="Injection Trial Data Entry")
 
 # --- DIRECTORY SETUP ---
-# This ensures the app finds the file whether running locally or on Streamlit Cloud
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
 
@@ -22,7 +21,7 @@ def get_project_data(pre_prod_no):
         df_tracker = pd.read_parquet(FILENAME_PARQUET)
         search_term = str(pre_prod_no).strip()
         
-        # --- CLEAN INDENTATION STARTS HERE ---
+        # Dynamic Column Detection
         col_name = None
         for col in df_tracker.columns:
             if 'Pre' in col and 'Prod' in col:
@@ -45,78 +44,19 @@ def get_project_data(pre_prod_no):
         st.error(f"Error reading database: {e}")
     return None
 
-        # Filter for the record
-        result = df_tracker[df_tracker[col_name].astype(str).str.strip() == search_term]
-        
-        if not result.empty:
-            return result.iloc[0].to_dict()
-        else:
-            st.warning(f"No record found for '{search_term}' in the database.")
-            
-    except Exception as e:
-        st.error(f"Error reading database: {e}")
-    return None
-        
-        # --- DYNAMIC COLUMN DETECTION ---
-        # Look for any column that contains 'Pre-Prod' or 'Pre Prod'
-        col_name = None
-        for col in df_tracker.columns:
-            if 'Pre' in col and 'Prod' in col:
-                col_name = col
-                break
-
-        if not col_name:
-            st.error(f"Could not find a Pre-Prod column. Available columns: {list(df_tracker.columns)}")
-            return None
-
-        # Filter for the record using the detected column name
-        result = df_tracker[df_tracker[col_name].astype(str).str.strip() == search_term]
-        
-        if not result.empty:
-            return result.iloc[0].to_dict()
-        else:
-            # If not found, show the user what's available to help debug
-            st.warning(f"No record found for '{search_term}' in column '{col_name}'.")
-            
-    except Exception as e:
-        st.error(f"Error reading database: {e}")
-    return None
-    try:
-        df_tracker = pd.read_parquet(FILENAME_PARQUET)
-        search_term = str(pre_prod_no).strip()
-        
-        # Check for standard column name variations
-        possible_cols = ['Pre-Prod No.', 'Pre-Prod No', 'Pre-Prod_No']
-        col_name = next((c for c in possible_cols if c in df_tracker.columns), None)
-
-        if not col_name:
-            st.error("Pre-Prod No. column not found in database.")
-            return None
-
-        # Filter for the record (string-based comparison for reliability)
-        result = df_tracker[df_tracker[col_name].astype(str).str.strip() == search_term]
-        
-        if not result.empty:
-            return result.iloc[0].to_dict()
-            
-    except Exception as e:
-        st.error(f"Error reading database: {e}")
-    return None
-
 # --- INITIALIZE SESSION STATE ---
 if 'lookup_data' not in st.session_state:
     st.session_state.lookup_data = {}
 
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
-st.info("Use the search below to pre-fill the form from Project Tracker.")
 
 st.subheader("Search Project Tracker")
 col_s1, col_s2 = st.columns([1, 3])
 with col_s1:
-    search_input = st.text_input("Enter Pre-Prod No. (e.g. 9143):", key="search_box")
+    search_input = st.text_input("Enter Pre-Prod No. (e.g. 11925):")
 with col_s2:
-    st.write("##") # Alignment
+    st.write("##") 
     if st.button("Pull Information"):
         if search_input:
             data = get_project_data(search_input)
@@ -125,7 +65,8 @@ with col_s2:
                 st.success(f"Data found for {search_input}")
                 st.rerun()
             else:
-                st.warning(f"No record found for '{search_input}'")
+                # Warning already handled in function
+                pass
 
 st.divider()
 
@@ -140,10 +81,10 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
         date = st.date_input("Date", datetime.now())
         sales_rep = st.text_input("Sales Rep", value=ld.get('Sales Rep', ''))
     with s2:
-        job_no = st.text_input("Pre-Prod No.", value=search_input if search_input else "")
+        job_no = st.text_input("Job Number", value=search_input if search_input else "")
         target_to = st.text_input("Target to", value=ld.get('Target to', ''))
     with s3:
-        customer = st.text_input("Client", value=ld.get('Client', ''))
+        customer = st.text_input("Customer", value=ld.get('Client', ''))
         trial_qty = st.number_input("Trial Quantity", step=1)
     with s4:
         operator = st.text_input("Operator")
@@ -155,7 +96,7 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
     st.subheader("2. Product Specifications")
     p1, p2, p3 = st.columns(3)
     with p1:
-        part_desc = st.text_input("Part Description / Number", value=ld.get('Description', ''))
+        part_desc = st.text_input("Part Description / Number", value=ld.get('Project Description', ''))
         length = st.text_input("Length", value=str(ld.get('Length', '')))
         orifice = st.text_input("Orifice", value=str(ld.get('Orifice', '')))
     with p2:
@@ -163,7 +104,7 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
         cap_lid_material = st.text_input("Cap_Lid Material", value=ld.get('Cap_Lid Material', ''))
         cap_lid_diameter = st.text_input("Cap_Lid Diameter", value=str(ld.get('Diameter', '')))
     with p3:
-        product_material_colour = st.text_input("Product Material Colour (tube, jar etc.)", value=ld.get('Product Code', ''))
+        product_material_colour = st.text_input("Product Material Colour", value=ld.get('Product Code', ''))
         mat_type = st.text_input("Material Type / Grade", value=ld.get('Material', ''))
         pigment_mb_grade = st.text_input("Pigment_MB Grade")
 
@@ -171,7 +112,6 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
 
     # --- SECTION 3: TECHNICAL PROCESS PARAMETERS ---
     st.subheader("3. Machine Process Settings")
-    st.write("**Temperature Profile (°C)**")
     t1, t2, t3, t4, t5 = st.columns(5)
     with t1: zone_1 = st.number_input("Zone 1", step=1)
     with t2: zone_2 = st.number_input("Zone 2", step=1)
@@ -198,33 +138,10 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
 
     # --- SECTION 4: OBSERVATIONS ---
     st.subheader("4. Trial Observations")
-    notes = st.text_area("Observations (e.g., Short shots, flash, burning, dimensions)")
+    notes = st.text_area("Observations")
 
     submit_trial = st.form_submit_button("Submit Trial Entry")
 
 if submit_trial:
-    # Final data record
-    final_record = {
-        "Date": [date],
-        "Sales Rep": [sales_rep],
-        "Pre-Prod No.": [pre_prod_no],
-        "Target to": [target_to],
-        "Client": [client],
-        "Trial Quantity": [trial_qty],
-        "Machine used for Trial": [machine_used],
-        "Part Description": [part_desc],
-        "Length": [length],
-        "Cap_Lid Style": [cap_lid_style],
-        "Cap_Lid Material": [cap_lid_material],
-        "Cap_Lid Diameter": [cap_lid_diameter],
-        "Orifice": [orifice],
-        "Product Material Colour": [product_material_colour],
-        "Pigment_MB Grade": [pigment_mb_grade],
-        "Observations": [notes]
-    }
-    
     st.success(f"Success! Trial entry for {job_no} recorded.")
-    st.table(pd.DataFrame(final_record))
-    
-    # Reset for next entry
     st.session_state.lookup_data = {}
