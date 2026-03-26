@@ -6,32 +6,36 @@ import os
 # --- PAGE CONFIGURATION ---
 st.set_page_config(layout="wide", page_title="Injection Trial Data Entry")
 
+# --- DIRECTORY SETUP ---
+# This ensures the app finds the file whether running locally or on Streamlit Cloud
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
+
 # --- DATA LOOKUP FUNCTION ---
 def get_project_data(pre_prod_no):
-    """Searches ProjectTracker.parquet for the Pre-Prod number."""
-    file_path = "ProjectTracker.parquet"
-    if not os.path.exists(file_path):
-        st.error(f"File not found: {file_path}. Please ensure it is in the repository.")
+    """Searches the combined parquet file for the Pre-Prod number."""
+    if not os.path.exists(FILENAME_PARQUET):
+        st.error(f"Database file not found at: {FILENAME_PARQUET}")
         return None
 
     try:
-        df_tracker = pd.read_parquet(file_path)
-        # Clean search term and column for comparison
+        df_tracker = pd.read_parquet(FILENAME_PARQUET)
         search_term = str(pre_prod_no).strip()
         
-        # Check for various possible column name variations
+        # Check for standard column name variations
         possible_cols = ['Pre-Prod No.', 'Pre-Prod No', 'Pre-Prod_No']
         col_name = next((c for c in possible_cols if c in df_tracker.columns), None)
 
         if not col_name:
-            st.error("Could not find Pre-Prod No. column in ProjectTracker.")
+            st.error("Pre-Prod No. column not found in database.")
             return None
 
-        # Filter for the record
+        # Filter for the record (string-based comparison for reliability)
         result = df_tracker[df_tracker[col_name].astype(str).str.strip() == search_term]
         
         if not result.empty:
             return result.iloc[0].to_dict()
+            
     except Exception as e:
         st.error(f"Error reading database: {e}")
     return None
@@ -42,13 +46,14 @@ if 'lookup_data' not in st.session_state:
 
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
+st.info("Use the search below to pre-fill the form from Project Tracker.")
 
 st.subheader("Search Project Tracker")
 col_s1, col_s2 = st.columns([1, 3])
 with col_s1:
-    search_input = st.text_input("Enter Pre-Prod No. (e.g. 9143):")
+    search_input = st.text_input("Enter Pre-Prod No. (e.g. 9143):", key="search_box")
 with col_s2:
-    st.write("##") # Vertical alignment
+    st.write("##") # Alignment
     if st.button("Pull Information"):
         if search_input:
             data = get_project_data(search_input)
@@ -72,7 +77,6 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
         date = st.date_input("Date", datetime.now())
         sales_rep = st.text_input("Sales Rep", value=ld.get('Sales Rep', ''))
     with s2:
-        # Pre-Prod No. acts as the Job Number here
         job_no = st.text_input("Job Number", value=search_input if search_input else "")
         target_to = st.text_input("Target to", value=ld.get('Target to', ''))
     with s3:
@@ -136,7 +140,7 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
     submit_trial = st.form_submit_button("Submit Trial Entry")
 
 if submit_trial:
-    # Final data object
+    # Final data record
     final_record = {
         "Date": [date],
         "Sales Rep": [sales_rep],
@@ -158,5 +162,6 @@ if submit_trial:
     
     st.success(f"Success! Trial entry for {job_no} recorded.")
     st.table(pd.DataFrame(final_record))
-    # Clear session state for next lookup
+    
+    # Reset for next entry
     st.session_state.lookup_data = {}
