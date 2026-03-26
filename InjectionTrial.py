@@ -77,10 +77,10 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
         date = st.date_input("Date", datetime.now())
         sales_rep = st.text_input("Sales Rep", value=ld.get('Sales Rep', ''))
     with s2:
-        job_no = st.text_input("Job Number", value=search_input if search_input else "")
+        job_no = st.text_input("Pre-Prod No.", value=search_input if search_input else "")
         target_to = st.text_input("Target to", value=ld.get('Target to', ''))
     with s3:
-        customer = st.text_input("Customer", value=ld.get('Client', ''))
+        customer = st.text_input("Client", value=ld.get('Client', ''))
         trial_qty = st.number_input("Trial Quantity", step=1)
     with s4:
         operator = st.text_input("Operator")
@@ -92,7 +92,7 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
     st.subheader("2. Product Specifications")
     p1, p2, p3 = st.columns(3)
     with p1:
-        part_desc = st.text_input("Part Description / Number", value=ld.get('Project Description', ''))
+        part_desc = st.text_input("Part Description / Number", value=ld.get('Description', ''))
         length = st.text_input("Length", value=str(ld.get('Length', '')))
         orifice = st.text_input("Orifice", value=str(ld.get('Orifice', '')))
     with p2:
@@ -144,9 +144,9 @@ if submit_trial:
     final_record = {
         "Date": [date],
         "Sales Rep": [sales_rep],
-        "Job Number": [job_no],
+        "Pre-Prod No.": [pre_prod_no],
         "Target to": [target_to],
-        "Customer": [customer],
+        "Client": [client],
         "Trial Quantity": [trial_qty],
         "Machine used for Trial": [machine_used],
         "Part Description": [part_desc],
