@@ -2,49 +2,53 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-# Page configuration for a professional, wide layout
+# Page configuration
 st.set_page_config(layout="wide", page_title="Injection Trial Data Entry")
 
 st.title("Injection Trial Data Entry")
-st.info("Please ensure all fields match the current Trial Sheet (Injection.xlsm)")
+st.info("Form fields matched to Injection.xlsm requirements.")
 
-# Use a form to group all data and prevent constant app refreshes
 with st.form("injection_xlsm_form", clear_on_submit=True):
     
-    # --- SECTION 1: IDENTITY & REFERENCE ---
-    st.subheader("1. General Information")
-    r1_col1, r1_col2, r1_col3 = st.columns(3)
-    with r1_col1:
+    # --- SECTION 1: SALES & LOGISTICS ---
+    st.subheader("1. Sales & Administration")
+    s1, s2, s3, s4 = st.columns(4)
+    with s1:
         date = st.date_input("Date", datetime.now())
-        job_no = st.text_input("Job Number")
-    with r1_col2:
-        customer = st.text_input("Customer")
-        part_desc = st.text_input("Part Description / Number")
-    with r1_col3:
-        machine = st.text_input("Machine")
+        sales_rep = st.text_input("Sales Rep")
+    with s2:
+        job_no = st.text_input("Pre-Prod No.")
+        target_to = st.text_input("Target to")
+    with s3:
+        customer = st.text_input("Client")
+        trial_qty = st.number_input("Trial Quantity", step=1)
+    with s4:
         operator = st.text_input("Operator")
+        machine_used = st.text_input("Machine used for Trial")
 
     st.divider()
 
-    # --- SECTION 2: MATERIAL & MASTERBATCH ---
-    st.subheader("2. Material Specifications")
-    r2_col1, r2_col2, r2_col3 = st.columns(3)
-    with r2_col1:
+    # --- SECTION 2: PRODUCT & COMPONENT SPECIFICATIONS ---
+    st.subheader("2. Product Specifications")
+    p1, p2, p3 = st.columns(3)
+    with p1:
+        part_desc = st.text_input("Part Description / Number")
+        length = st.text_input("Length")
+        orifice = st.text_input("Orifice")
+    with p2:
+        cap_lid_style = st.text_input("Cap_Lid Style")
+        cap_lid_material = st.text_input("Cap_Lid Material")
+        cap_lid_diameter = st.text_input("Cap_Lid Diameter")
+    with p3:
+        product_material_colour = st.text_input("Product Material Colour (tube, jar etc.)")
         mat_type = st.text_input("Material Type / Grade")
-        mat_batch = st.text_input("Material Batch No.")
-    with r2_col2:
-        mb_code = st.text_input("Masterbatch Code")
-        mb_batch = st.text_input("Masterbatch Batch No.")
-    with r2_col3:
-        mb_ratio = st.number_input("MB Ratio (%)", format="%.2f", step=0.01)
-        regrind_pct = st.number_input("Regrind (%)", step=1.0)
+        pigment_mb_grade = st.text_input("Pigment_MB Grade")
 
     st.divider()
 
     # --- SECTION 3: TECHNICAL PROCESS PARAMETERS ---
     st.subheader("3. Machine Process Settings")
     
-    # Temperature Zones
     st.write("**Temperature Profile (°C)**")
     t1, t2, t3, t4, t5 = st.columns(5)
     with t1: zone_1 = st.number_input("Zone 1", step=1)
@@ -53,44 +57,48 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
     with t4: zone_4 = st.number_input("Zone 4", step=1)
     with t5: nozzle = st.number_input("Nozzle", step=1)
 
-    # Pressures and Times
     st.write("**Pressures, Speeds & Times**")
-    p1, p2, p3, p4 = st.columns(4)
-    with p1:
+    pr1, pr2, pr3, pr4 = st.columns(4)
+    with pr1:
         inj_pressure = st.number_input("Injection Pressure (bar)", step=1)
         hold_pressure = st.number_input("Holding Pressure (bar)", step=1)
-    with p2:
+    with pr2:
         inj_speed = st.number_input("Injection Speed (mm/s)", step=1)
         back_pressure = st.number_input("Back Pressure (bar)", step=1)
-    with p3:
+    with pr3:
         cycle_time = st.number_input("Total Cycle Time (s)", format="%.2f")
         cool_time = st.number_input("Cooling Time (s)", format="%.2f")
-    with p4:
+    with pr4:
         dosage_stroke = st.number_input("Dosage Stroke (mm)", step=1)
         decompression = st.number_input("Decompression (mm)", step=1)
 
     st.divider()
 
-    # --- SECTION 4: TRIAL OBSERVATIONS ---
-    st.subheader("4. Observations & Quality Checks")
+    # --- SECTION 4: OBSERVATIONS ---
+    st.subheader("4. Trial Observations")
     notes = st.text_area("Observations (e.g., Short shots, flash, burning, dimensions)")
 
-    # Form Submission
-    submit_trial = st.form_submit_button("Submit Trial Entry to Database")
+    submit_trial = st.form_submit_button("Submit Trial Entry")
 
 if submit_trial:
-    # Creating a structured record matching the xlsm column layout
-    trial_data = {
+    trial_record = {
         "Date": [date],
-        "Job Number": [job_no],
-        "Machine": [machine],
-        "Material": [mat_type],
-        "MB Ratio": [mb_ratio],
-        "Inj Pressure": [inj_pressure],
-        "Cycle Time": [cycle_time],
+        "Sales Rep": [sales_rep],
+        "Pre-Prod No.": [preprod_no],
+        "Target to": [target_to],
+        "Client": [client],
+        "Trial Quantity": [trial_qty],
+        "Description": [description],
+        "Machine used for Trial": [machine_used],
+        "Length": [length],
+        "Cap_Lid Style": [cap_lid_style],
+        "Cap_Lid Material": [cap_lid_material],
+        "Cap_Lid Diameter": [cap_lid_diameter],
+        "Orifice": [orifice],
+        "Product Material Colour": [product_material_colour],
+        "Pigment_MB Grade": [pigment_mb_grade],
         "Observations": [notes]
     }
     
-    # Display success and summary for the user
-    st.success(f"Trial data for Job {job_no} has been captured.")
-    st.table(pd.DataFrame(trial_data))
+    st.success(f"Trial for Job {preprod_no} successfully captured.")
+    st.table(pd.DataFrame(trial_record))
