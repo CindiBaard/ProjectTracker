@@ -22,6 +22,34 @@ def get_project_data(pre_prod_no):
         df_tracker = pd.read_parquet(FILENAME_PARQUET)
         search_term = str(pre_prod_no).strip()
         
+        # --- DYNAMIC COLUMN DETECTION ---
+        # Look for any column that contains 'Pre-Prod' or 'Pre Prod'
+        col_name = None
+        for col in df_tracker.columns:
+            if 'Pre' in col and 'Prod' in col:
+                col_name = col
+                break
+
+        if not col_name:
+            st.error(f"Could not find a Pre-Prod column. Available columns: {list(df_tracker.columns)}")
+            return None
+
+        # Filter for the record using the detected column name
+        result = df_tracker[df_tracker[col_name].astype(str).str.strip() == search_term]
+        
+        if not result.empty:
+            return result.iloc[0].to_dict()
+        else:
+            # If not found, show the user what's available to help debug
+            st.warning(f"No record found for '{search_term}' in column '{col_name}'.")
+            
+    except Exception as e:
+        st.error(f"Error reading database: {e}")
+    return None
+    try:
+        df_tracker = pd.read_parquet(FILENAME_PARQUET)
+        search_term = str(pre_prod_no).strip()
+        
         # Check for standard column name variations
         possible_cols = ['Pre-Prod No.', 'Pre-Prod No', 'Pre-Prod_No']
         col_name = next((c for c in possible_cols if c in df_tracker.columns), None)
