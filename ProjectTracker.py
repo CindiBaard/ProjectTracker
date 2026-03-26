@@ -493,6 +493,7 @@ elif tab_nav == "➕ Add New Job":
             save_db(df)
             st.toast(f"Saved: {new_data['Pre-Prod No.']}")
             reset_form_state()
+            
 # --- TAB: DETAILED AGE ANALYSIS ---
 elif tab_nav == "📊 Detailed Age Analysis":
     if not df.empty:
@@ -507,9 +508,41 @@ elif tab_nav == "📊 Detailed Age Analysis":
 
 # --- TAB: TRIAL TRENDS ---
 elif tab_nav == "🧪 Trial Trends":
-    st.subheader("🧪 Trial Turnaround Time (2026)")
+    st.subheader("🧪 Weekly Average Trial Turnaround (2026)")
+    
+    # Ensure the file path matches your corrected name
+    TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
+    
     df_trials = load_trial_data()
+    
     if not df_trials.empty:
-        # (Your existing Trial Trends chart logic here)
-        st.line_chart(df_trials.set_index('Date_Log')['Days_Taken'])
+        # 1. Clean and Sort
+        df_trials['Date_Log'] = pd.to_datetime(df_trials['Date_Log'], dayfirst=True, errors='coerce')
+        df_trials = df_trials.dropna(subset=['Date_Log', 'Days_Taken'])
+        
+        # 2. Add Week-Year column for accurate grouping
+        # This prevents Week 1 of 2026 from mixing with Week 1 of 2025
+        df_trials['Week_Year'] = df_trials['Date_Log'].dt.strftime('%Y-W%U')
+        
+        # 3. Group by Week and calculate the Average Days Taken
+        # We sort by Date_Log first to ensure the weeks appear in order
+        weekly_avg = df_trials.sort_values('Date_Log').groupby('Week_Year')['Days_Taken'].mean()
 
+        # 4. Display Metrics
+        col1, col2 = st.columns(2)
+        col1.metric("Overall Avg Turnaround", f"{df_trials['Days_Taken'].mean():.1f} Days")
+        col2.metric("Total Trials (YTD)", len(df_trials))
+
+        # 5. Plot the Trend
+        st.write("### 📈 Average Days to Complete per Week")
+        st.line_chart(weekly_avg)
+        
+        # 6. Detail View
+        with st.expander("📄 View Weekly Breakdown Table"):
+            weekly_table = df_trials.groupby('Week_Year').agg({
+                'Days_Taken': ['mean', 'count']
+            }).rename(columns={'mean': 'Avg Days', 'count': 'Number of Trials'})
+            st.dataframe(weekly_table, use_container_width=True)
+            
+    else:
+        st.warning(f"Could not find {TRIALS_FILE_CURRENT}. Please ensure the file is in the 'projecttracker' folder.")
