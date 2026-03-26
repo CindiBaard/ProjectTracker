@@ -189,21 +189,39 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
     return df
 
 @st.cache_data
+TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_3_12_2026.csv" 
+
+@st.cache_data
 def load_trial_data():
     """Helper to load and process the trials trending data."""
     if os.path.exists(TRIALS_FILE_CURRENT):
         try:
-            df = pd.read_csv(TRIALS_FILE_CURRENT, encoding='utf-8-sig')
+            # Added sep=None and engine='python' so it detects semicolons OR commas automatically
+            df = pd.read_csv(TRIALS_FILE_CURRENT, sep=None, engine='python', encoding='utf-8-sig')
             df = clean_column_names(df)
+            
+            # Convert dates - ensuring the column names match your CSV exactly
+            # If your CSV uses 'Date Log' (with a space), clean_column_names changes it to 'Date_Log'
             df['Date_Log'] = pd.to_datetime(df['Date_Log'], dayfirst=True, errors='coerce')
             df['Completion_Date'] = pd.to_datetime(df['Completion_Date'], dayfirst=True, errors='coerce')
+            
+            # Remove rows where dates failed to parse
+            df = df.dropna(subset=['Date_Log', 'Completion_Date'])
+            
+            # Calculate metrics
             df['Days_Taken'] = (df['Completion_Date'] - df['Date_Log']).dt.days
             df['Week_Num'] = df['Date_Log'].dt.isocalendar().week
+            
+            # Sort by date so the line chart flows chronologically
+            df = df.sort_values('Date_Log')
+            
             return df
         except Exception as e:
             st.error(f"Error loading trial data: {e}")
             return pd.DataFrame()
-    return pd.DataFrame()
+    else:
+        st.warning(f"File not found: {TRIALS_FILE_CURRENT}")
+        return pd.DataFrame()
 
 # --- 5. CONFIGURATIONS & DROPDOWN DATA ---
 DROPDOWN_CONFIG = {
