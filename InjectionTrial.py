@@ -11,7 +11,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
 
 # --- DATA LOOKUP FUNCTION ---
-ython
+
 def get_project_data(pre_prod_no):
     """Searches the combined parquet file for the Pre-Prod number."""
     if not os.path.exists(FILENAME_PARQUET):
