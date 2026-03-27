@@ -20,7 +20,7 @@ def get_project_data(pre_prod_no):
     try:
         df_tracker = pd.read_parquet(FILENAME_PARQUET)
         
-        # Dynamic Column Detection
+        # 1. Identify the correct column
         col_name = None
         for col in df_tracker.columns:
             if 'Pre' in col and 'Prod' in col:
@@ -31,10 +31,10 @@ def get_project_data(pre_prod_no):
             st.error(f"Could not find a Pre-Prod column. Available: {list(df_tracker.columns)}")
             return None
 
-        # Clean search term and database column
+        # 2. Clean both the search term and the database column
         search_term = str(pre_prod_no).strip()
         
-        # Convert DB column to string and remove '.0' if it exists
+        # This converts numbers to text and removes the '.0' from the database
         df_tracker[col_name] = (
             df_tracker[col_name]
             .astype(str)
@@ -42,85 +42,15 @@ def get_project_data(pre_prod_no):
             .str.strip()
         )
 
-        # Filter for the record
+        # 3. Search
         result = df_tracker[df_tracker[col_name] == search_term]
         
         if not result.empty:
             return result.iloc[0].to_dict()
         else:
             st.warning(f"No record found for '{search_term}' in column '{col_name}'.")
-            
-    except Exception as e:
-        st.error(f"Error reading database: {e}")
-    return None
-
-        # 2. Clean the input and the data (Aligned exactly 8 spaces in)
-        search_term = str(pre_prod_no).strip()
-        
-        df_tracker[col_name] = (
-            df_tracker[col_name]
-            .astype(str)
-            .str.replace(r'\.0$', '', regex=True)
-            .str.strip()
-        )
-
-        # 3. Filter
-        result = df_tracker[df_tracker[col_name] == search_term]
-        
-        if not result.empty:
-            return result.iloc[0].to_dict()
-        else:
-            st.warning(f"No record found for '{search_term}' in column '{col_name}'.")
-            
-    except Exception as e:
-        st.error(f"Error reading database: {e}")
-    return None
-        # Clean search term
-        search_term = str(pre_prod_no).strip()
-        
-        # --- STRONGER CLEANING ---
-        # 1. Convert to string
-        # 2. Remove decimals
-        # 3. Strip spaces
-        # 4. Handle 'None' or 'nan' strings that might appear
-        df_tracker[col_name] = (
-            df_tracker[col_name]
-            .astype(str)
-            .str.replace(r'\.0$', '', regex=True)
-            .str.strip()
-        )
-
-        result = df_tracker[df_tracker[col_name] == search_term]
-        
-        if not result.empty:
-            return result.iloc[0].to_dict()
-        else:
-            # Show what values ARE in that column so we can spot the difference
-            st.warning(f"No record found for '{search_term}' in column '{col_name}'.")
-            st.write("Sample values in this column:", df_tracker[col_name].unique()[:10])
-            
-    except Exception as e:
-        st.error(f"Error reading database: {e}")
-    return None
-        # --- UPDATE THIS PART ONLY ---
-        search_term = str(pre_prod_no).strip()
-        
-        # This cleans the database column so '11925.0' becomes '11925'
-        df_tracker[col_name] = (
-            df_tracker[col_name]
-            .astype(str)
-            .str.replace(r'\.0$', '', regex=True)
-            .str.strip()
-        )
-
-        result = df_tracker[df_tracker[col_name] == search_term]
-        
-        # -----------------------------
-        
-        if not result.empty:
-            return result.iloc[0].to_dict()
-        else:
-            st.warning(f"No record found for '{search_term}' in column '{col_name}'.")
+            # This helps you see why it might be failing
+            st.write("First 5 IDs in database:", df_tracker[col_name].head().tolist())
             
     except Exception as e:
         st.error(f"Error reading database: {e}")
@@ -146,9 +76,6 @@ with col_s2:
                 st.session_state.lookup_data = data
                 st.success(f"Data found for {search_input}")
                 st.rerun()
-            else:
-                # Warning already handled in function
-                pass
 
 st.divider()
 
@@ -163,7 +90,8 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
         date = st.date_input("Date", datetime.now())
         sales_rep = st.text_input("Sales Rep", value=ld.get('Sales Rep', ''))
     with s2:
-        job_no = st.text_input("Pre-Prod No.", value=search_input if search_input else "")
+        # We use a unique key here to prevent Streamlit duplicate widget errors
+        job_no = st.text_input("Form Pre-Prod No.", value=search_input if search_input else "")
         target_to = st.text_input("Target to", value=ld.get('Target to', ''))
     with s3:
         customer = st.text_input("Client", value=ld.get('Client', ''))
@@ -174,11 +102,11 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
 
     st.divider()
 
-    # --- SECTION 2: PRODUCT & COMPONENT SPECIFICATIONS ---
+    # --- SECTION 2: PRODUCT SPECIFICATIONS ---
     st.subheader("2. Product Specifications")
     p1, p2, p3 = st.columns(3)
     with p1:
-        part_desc = st.text_input("Part Description / Number", value=ld.get('Project Description', ''))
+        part_desc = st.text_input("Part Description", value=ld.get('Project Description', ''))
         length = st.text_input("Length", value=str(ld.get('Length', '')))
         orifice = st.text_input("Orifice", value=str(ld.get('Orifice', '')))
     with p2:
@@ -186,13 +114,13 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
         cap_lid_material = st.text_input("Cap_Lid Material", value=ld.get('Cap_Lid Material', ''))
         cap_lid_diameter = st.text_input("Cap_Lid Diameter", value=str(ld.get('Diameter', '')))
     with p3:
-        product_material_colour = st.text_input("Product Material Colour", value=ld.get('Product Code', ''))
-        mat_type = st.text_input("Material Type / Grade", value=ld.get('Material', ''))
-        pigment_mb_grade = st.text_input("Pigment_MB Grade")
+        product_code = st.text_input("Product Code", value=ld.get('Product Code', ''))
+        mat_type = st.text_input("Material Type", value=ld.get('Material', ''))
+        pigment = st.text_input("Pigment_MB Grade")
 
     st.divider()
 
-    # --- SECTION 3: TECHNICAL PROCESS PARAMETERS ---
+    # --- SECTION 3: MACHINE PROCESS SETTINGS ---
     st.subheader("3. Machine Process Settings")
     t1, t2, t3, t4, t5 = st.columns(5)
     with t1: zone_1 = st.number_input("Zone 1", step=1)
@@ -226,4 +154,5 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
 
 if submit_trial:
     st.success(f"Success! Trial entry for {job_no} recorded.")
+    # Reset for next entry
     st.session_state.lookup_data = {}
