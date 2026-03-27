@@ -21,9 +21,16 @@ def get_project_data(pre_prod_no):
     try:
         df_tracker = pd.read_parquet(FILENAME_PARQUET)
         
+        # --- DEBUGGING: SEE WHAT IS ACTUALLY INSIDE ---
+        with st.expander("Debug: Data View"):
+            st.write("Columns found:", df_tracker.columns.tolist())
+            st.write("First 3 rows of data:", df_tracker.head(3))
+        
+        # Dynamic Column Detection
         col_name = None
         for col in df_tracker.columns:
-            if 'Pre' in col and 'Prod' in col:
+            # We use .lower() to be less strict during detection
+            if 'pre' in col.lower() and 'prod' in col.lower():
                 col_name = col
                 break
 
@@ -31,6 +38,33 @@ def get_project_data(pre_prod_no):
             st.error(f"Could not find a Pre-Prod column. Available: {list(df_tracker.columns)}")
             return None
 
+        # Clean search term
+        search_term = str(pre_prod_no).strip()
+        
+        # --- STRONGER CLEANING ---
+        # 1. Convert to string
+        # 2. Remove decimals
+        # 3. Strip spaces
+        # 4. Handle 'None' or 'nan' strings that might appear
+        df_tracker[col_name] = (
+            df_tracker[col_name]
+            .astype(str)
+            .str.replace(r'\.0$', '', regex=True)
+            .str.strip()
+        )
+
+        result = df_tracker[df_tracker[col_name] == search_term]
+        
+        if not result.empty:
+            return result.iloc[0].to_dict()
+        else:
+            # Show what values ARE in that column so we can spot the difference
+            st.warning(f"No record found for '{search_term}' in column '{col_name}'.")
+            st.write("Sample values in this column:", df_tracker[col_name].unique()[:10])
+            
+    except Exception as e:
+        st.error(f"Error reading database: {e}")
+    return None
         # --- UPDATE THIS PART ONLY ---
         search_term = str(pre_prod_no).strip()
         
