@@ -19,28 +19,17 @@ def get_project_data(pre_prod_no):
 
     try:
         df_tracker = pd.read_parquet(FILENAME_PARQUET)
-        st.write("Actual Columns in File:", df_tracker.columns.tolist())
-        # --- ADD THIS TEMP LINE TO SEE THE DATA ---
-        st.write("### Data Preview (First 5 Rows)")
-        st.dataframe(df_tracker.head(5)) 
-        # ------------------------------------------
         
         # 1. Manually set the correct column name
-        # Change "Pre-Prod No." to the exact header name in your file
         col_name = "Pre-Prod No." 
         
         if col_name not in df_tracker.columns:
             st.error(f"Column '{col_name}' not found. Available columns: {df_tracker.columns.tolist()}")
             return None
 
-        if not col_name:
-            st.error(f"Could not find a Pre-Prod column. Available: {list(df_tracker.columns)}")
-            return None
-
         # 2. Clean both the search term and the database column
         search_term = str(pre_prod_no).strip()
         
-        # This converts numbers to text and removes the '.0' from the database
         df_tracker[col_name] = (
             df_tracker[col_name]
             .astype(str)
@@ -55,8 +44,7 @@ def get_project_data(pre_prod_no):
             return result.iloc[0].to_dict()
         else:
             st.warning(f"No record found for '{search_term}' in column '{col_name}'.")
-            # This helps you see why it might be failing
-            st.write("First 5 IDs in database:", df_tracker[col_name].head().tolist())
+            return None
             
     except Exception as e:
         st.error(f"Error reading database: {e}")
@@ -96,8 +84,7 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
         date = st.date_input("Date", datetime.now())
         sales_rep = st.text_input("Sales Rep", value=ld.get('Sales Rep', ''))
     with s2:
-        # We use a unique key here to prevent Streamlit duplicate widget errors
-        pre_prod_no = st.text_input("Form Pre-Prod No.", value=search_input if search_input else "")
+        job_no = st.text_input("Form Pre-Prod No.", value=search_input if search_input else "")
         target_to = st.text_input("Target to", value=ld.get('Target to', ''))
     with s3:
         client = st.text_input("Client", value=ld.get('Client', ''))
@@ -112,32 +99,34 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
     st.subheader("2. Product Specifications")
     p1, p2, p3 = st.columns(3)
     with p1:
-        description = st.text_input("Description", value=ld.get('Description', ''))
+        description = st.text_input("Description", value=ld.get('Project Description', ''))
         length = st.text_input("Length", value=str(ld.get('Length', '')))
         orifice = st.text_input("Orifice", value=str(ld.get('Orifice', '')))
         supplier = st.text_input("Supplier", value=str(ld.get('Supplier', '')))
     with p2:
         cap_lid_style = st.text_input("Cap_Lid Style", value=ld.get('Cap_Lid Style', ''))
-        cap_lid_material = st.text_input("Cap_Lid Material", value=ld.get('Cap_Lid Material', '')))
+        cap_lid_material = st.text_input("Cap_Lid Material", value=ld.get('Cap_Lid Material', ''))
         cap_lid_diameter = st.text_input("Cap_Lid Diameter", value=str(ld.get('Diameter', '')))
         mix = st.text_input("Mix_%", value=str(ld.get('Mix_%', '')))
     with p3:
         product_code = st.text_input("Product Code", value=ld.get('Product Code', ''))
-        material = st.text_input("Material", value=ld.get('Material', '')))
-        pigment_MB_Grade = st.text_input("Pigment_MB Grade")))
-        is_dosing_unit_fitted = st.text_input("Is Dosing Unit Fitted")))
+        material = st.text_input("Material", value=ld.get('Material', ''))
+        pigment = st.text_input("Pigment_MB Grade", value=ld.get('Pigment_MB Grade', ''))
+        dosing_fitted = st.text_input("Is Dosing Unit Fitted", value=ld.get('Is Dosing Unit Fitted', ''))
 
     st.divider()
-
     
     # --- SECTION 3: DOSING UNIT SETTINGS ---
-    st.subheader("3. Dosing Unit Settins")
-    d1, d2, d3, d4= st.columns(4)
-        colour_set_value = st.text_input("Colour_Set_Value", value=ld.get('Colour Set Value', ''))
-        colour_actual = st.text_input("Colour_Actual", value=ld.get('Colour Actual', '')))
-        colour_percentage = st.text_input("Colour_Percentage", value=ld.get('Colour Percentage', '')))
-        shot_weight = st.text_input("Shot_Weight", value=ld.get('Shot Weight', '')))
-        dosing_time = st.text_input("Dosing_Time", value=ld.get('Dosing Time', '')))
+    st.subheader("3. Dosing Unit Settings")
+    d1, d2, d3, d4 = st.columns(4)
+    with d1:
+        colour_set = st.text_input("Colour_Set_Value", value=ld.get('Colour Set Value', ''))
+    with d2:
+        colour_act = st.text_input("Colour_Actual", value=ld.get('Colour Actual', ''))
+    with d3:
+        colour_perc = st.text_input("Colour_Percentage", value=ld.get('Colour Percentage', ''))
+    with d4:
+        shot_w = st.text_input("Shot_Weight", value=ld.get('Shot Weight', ''))
 
     st.divider()
 
@@ -153,17 +142,17 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
     st.write("**Pressures, Speeds & Times**")
     pr1, pr2, pr3, pr4 = st.columns(4)
     with pr1:
-        inj_pressure = st.number_input("Injection Pressure (bar)", step=1)
-        hold_pressure = st.number_input("Holding Pressure (bar)", step=1)
+        inj_p = st.number_input("Injection Pressure (bar)", step=1)
+        hold_p = st.number_input("Holding Pressure (bar)", step=1)
     with pr2:
-        inj_speed = st.number_input("Injection Speed (mm/s)", step=1)
-        back_pressure = st.number_input("Back Pressure (bar)", step=1)
+        inj_s = st.number_input("Injection Speed (mm/s)", step=1)
+        back_p = st.number_input("Back Pressure (bar)", step=1)
     with pr3:
-        cycle_time = st.number_input("Total Cycle Time (s)", format="%.2f")
-        cool_time = st.number_input("Cooling Time (s)", format="%.2f")
+        cyc_t = st.number_input("Total Cycle Time (s)", format="%.2f")
+        cool_t = st.number_input("Cooling Time (s)", format="%.2f")
     with pr4:
-        dosage_stroke = st.number_input("Dosage Stroke (mm)", step=1)
-        decompression = st.number_input("Decompression (mm)", step=1)
+        dos_s = st.number_input("Dosage Stroke (mm)", step=1)
+        dec_m = st.number_input("Decompression (mm)", step=1)
 
     st.divider()
 
@@ -175,5 +164,4 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
 
 if submit_trial:
     st.success(f"Success! Trial entry for {job_no} recorded.")
-    # Reset for next entry
     st.session_state.lookup_data = {}
