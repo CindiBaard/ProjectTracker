@@ -19,6 +19,7 @@ def get_project_data(pre_prod_no):
 
     try:
         df_tracker = pd.read_parquet(FILENAME_PARQUET)
+        st.write("Actual Columns in File:", df_tracker.columns.tolist())
         
         # 1. Manually set the correct column name
         # Change "Pre-Prod No." to the exact header name in your file
