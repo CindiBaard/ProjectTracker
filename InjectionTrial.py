@@ -20,6 +20,10 @@ def get_project_data(pre_prod_no):
     try:
         df_tracker = pd.read_parquet(FILENAME_PARQUET)
         st.write("Actual Columns in File:", df_tracker.columns.tolist())
+        # --- ADD THIS TEMP LINE TO SEE THE DATA ---
+        st.write("### Data Preview (First 5 Rows)")
+        st.dataframe(df_tracker.head(5)) 
+        # ------------------------------------------
         
         # 1. Manually set the correct column name
         # Change "Pre-Prod No." to the exact header name in your file
@@ -93,10 +97,10 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
         sales_rep = st.text_input("Sales Rep", value=ld.get('Sales Rep', ''))
     with s2:
         # We use a unique key here to prevent Streamlit duplicate widget errors
-        job_no = st.text_input("Form Pre-Prod No.", value=search_input if search_input else "")
+        pre_prod_no = st.text_input("Form Pre-Prod No.", value=search_input if search_input else "")
         target_to = st.text_input("Target to", value=ld.get('Target to', ''))
     with s3:
-        customer = st.text_input("Client", value=ld.get('Client', ''))
+        client = st.text_input("Client", value=ld.get('Client', ''))
         trial_qty = st.number_input("Trial Quantity", step=1)
     with s4:
         operator = st.text_input("Operator")
@@ -108,22 +112,37 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
     st.subheader("2. Product Specifications")
     p1, p2, p3 = st.columns(3)
     with p1:
-        part_desc = st.text_input("Part Description", value=ld.get('Project Description', ''))
+        description = st.text_input("Description", value=ld.get('Description', ''))
         length = st.text_input("Length", value=str(ld.get('Length', '')))
         orifice = st.text_input("Orifice", value=str(ld.get('Orifice', '')))
+        supplier = st.text_input("Supplier", value=str(ld.get('Supplier', '')))
     with p2:
         cap_lid_style = st.text_input("Cap_Lid Style", value=ld.get('Cap_Lid Style', ''))
-        cap_lid_material = st.text_input("Cap_Lid Material", value=ld.get('Cap_Lid Material', ''))
+        cap_lid_material = st.text_input("Cap_Lid Material", value=ld.get('Cap_Lid Material', '')))
         cap_lid_diameter = st.text_input("Cap_Lid Diameter", value=str(ld.get('Diameter', '')))
+        mix = st.text_input("Mix_%", value=str(ld.get('Mix_%', '')))
     with p3:
         product_code = st.text_input("Product Code", value=ld.get('Product Code', ''))
-        mat_type = st.text_input("Material Type", value=ld.get('Material', ''))
-        pigment = st.text_input("Pigment_MB Grade")
+        material = st.text_input("Material", value=ld.get('Material', '')))
+        pigment_MB_Grade = st.text_input("Pigment_MB Grade")))
+        is_dosing_unit_fitted = st.text_input("Is Dosing Unit Fitted")))
 
     st.divider()
 
-    # --- SECTION 3: MACHINE PROCESS SETTINGS ---
-    st.subheader("3. Machine Process Settings")
+    
+    # --- SECTION 3: DOSING UNIT SETTINGS ---
+    st.subheader("3. Dosing Unit Settins")
+    d1, d2, d3, d4= st.columns(4)
+        colour_set_value = st.text_input("Colour_Set_Value", value=ld.get('Colour Set Value', ''))
+        colour_actual = st.text_input("Colour_Actual", value=ld.get('Colour Actual', '')))
+        colour_percentage = st.text_input("Colour_Percentage", value=ld.get('Colour Percentage', '')))
+        shot_weight = st.text_input("Shot_Weight", value=ld.get('Shot Weight', '')))
+        dosing_time = st.text_input("Dosing_Time", value=ld.get('Dosing Time', '')))
+
+    st.divider()
+
+    # --- SECTION 4: MACHINE PROCESS SETTINGS ---
+    st.subheader("4. Machine Process Settings")
     t1, t2, t3, t4, t5 = st.columns(5)
     with t1: zone_1 = st.number_input("Zone 1", step=1)
     with t2: zone_2 = st.number_input("Zone 2", step=1)
@@ -148,8 +167,8 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
 
     st.divider()
 
-    # --- SECTION 4: OBSERVATIONS ---
-    st.subheader("4. Trial Observations")
+    # --- SECTION 5: OBSERVATIONS ---
+    st.subheader("5. Trial Observations")
     notes = st.text_area("Observations")
 
     submit_trial = st.form_submit_button("Submit Trial Entry")
