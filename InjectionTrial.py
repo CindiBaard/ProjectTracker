@@ -20,12 +20,13 @@ def get_project_data(pre_prod_no):
     try:
         df_tracker = pd.read_parquet(FILENAME_PARQUET)
         
-        # 1. Identify the correct column
-        col_name = None
-        for col in df_tracker.columns:
-            if 'Pre' in col and 'Prod' in col:
-                col_name = col
-                break
+        # 1. Manually set the correct column name
+        # Change "Pre-Prod No." to the exact header name in your file
+        col_name = "Pre-Prod No." 
+        
+        if col_name not in df_tracker.columns:
+            st.error(f"Column '{col_name}' not found. Available columns: {df_tracker.columns.tolist()}")
+            return None
 
         if not col_name:
             st.error(f"Could not find a Pre-Prod column. Available: {list(df_tracker.columns)}")
