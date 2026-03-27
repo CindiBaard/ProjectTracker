@@ -11,7 +11,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
 
 # --- DATA LOOKUP FUNCTION ---
-
 def get_project_data(pre_prod_no):
     """Searches the combined parquet file for the Pre-Prod number."""
     if not os.path.exists(FILENAME_PARQUET):
@@ -21,7 +20,7 @@ def get_project_data(pre_prod_no):
     try:
         df_tracker = pd.read_parquet(FILENAME_PARQUET)
         
-        # 1. Detect the column
+        # Dynamic Column Detection
         col_name = None
         for col in df_tracker.columns:
             if 'Pre' in col and 'Prod' in col:
@@ -31,6 +30,29 @@ def get_project_data(pre_prod_no):
         if not col_name:
             st.error(f"Could not find a Pre-Prod column. Available: {list(df_tracker.columns)}")
             return None
+
+        # Clean search term and database column
+        search_term = str(pre_prod_no).strip()
+        
+        # Convert DB column to string and remove '.0' if it exists
+        df_tracker[col_name] = (
+            df_tracker[col_name]
+            .astype(str)
+            .str.replace(r'\.0$', '', regex=True)
+            .str.strip()
+        )
+
+        # Filter for the record
+        result = df_tracker[df_tracker[col_name] == search_term]
+        
+        if not result.empty:
+            return result.iloc[0].to_dict()
+        else:
+            st.warning(f"No record found for '{search_term}' in column '{col_name}'.")
+            
+    except Exception as e:
+        st.error(f"Error reading database: {e}")
+    return None
 
         # 2. Clean the input and the data (Aligned exactly 8 spaces in)
         search_term = str(pre_prod_no).strip()
