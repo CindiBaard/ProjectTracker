@@ -120,13 +120,13 @@ with st.form("injection_xlsm_form", clear_on_submit=True):
     st.subheader("3. Dosing Unit Settings")
     d1, d2, d3, d4 = st.columns(4)
     with d1:
-        colour_set = st.text_input("Colour_Set_Value", value=ld.get('Colour Set Value', ''))
+        colour_set = st.text_input("Colour Set Value", value=ld.get('Colour Set Value', ''))
     with d2:
-        colour_act = st.text_input("Colour_Actual", value=ld.get('Colour Actual', ''))
+        colour_act = st.text_input("Colour Actual", value=ld.get('Colour Actual', ''))
     with d3:
-        colour_perc = st.text_input("Colour_Percentage", value=ld.get('Colour Percentage', ''))
+        colour_perc = st.text_input("Colour Percentage", value=ld.get('Colour Percentage', ''))
     with d4:
-        shot_w = st.text_input("Shot_Weight", value=ld.get('Shot Weight', ''))
+        shot_w = st.text_input("Shot Weight", value=ld.get('Shot Weight', ''))
 
     st.divider()
 
