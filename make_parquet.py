@@ -1,12 +1,12 @@
 import pandas as pd
 
-# Load the CSV using the semicolon separator
+# 1. Load the CSV telling Python to split at the semicolon
 df = pd.read_csv("ProjectTrackerPP_Cleaned_NA.csv", sep=';', low_memory=False)
 
-# Check the columns to make sure they are separate now
-print("Columns found:", df.columns.tolist())
+# 2. Check if it worked (it should print a clean list of names)
+print("Corrected Columns:", df.columns.tolist())
 
-# Save the corrected version
+# 3. Save this properly formatted version
 df.to_parquet("ProjectTracker_Combined.parquet")
 
-print("Success! The corrected Parquet file has been created.")
+print("Physical file 'ProjectTracker_Combined.parquet' is now corrected and saved!")
