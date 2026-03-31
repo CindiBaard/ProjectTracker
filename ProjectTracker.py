@@ -378,71 +378,41 @@ with col_export:
 
 st.divider()
 
-## --- 8. UI: TABS & NAVIGATION ---
+# --- 8. UI: TABS & NAVIGATION ---
 tabs = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"]
-tab_nav = st.radio("Navigation", tabs, index=tabs.index(st.session_state.active_tab) if st.session_state.active_tab in tabs else 0, horizontal=True)
+
+# Initialize active_tab if not present
+if 'active_tab' not in st.session_state:
+    st.session_state.active_tab = "🔍 Search & Edit"
+
+tab_nav = st.radio("Navigation", tabs, index=tabs.index(st.session_state.active_tab), horizontal=True)
 st.session_state.active_tab = tab_nav
 
-# --- TAB: SEARCH & EDIT ---
+# --- TAB LOGIC ---
 if tab_nav == "🔍 Search & Edit":
-    col_search, col_clear_btn = st.columns([4, 1])
-    with col_search:
-        raw_search = st.text_input("Search Pre-Prod No.", key="search_input_box").strip()
-    
-    with col_clear_btn:
-        st.write("##") 
-        if st.button("♻️ Clear Search", use_container_width=True):
-            if "search_input_box" in st.session_state:
-                del st.session_state["search_input_box"]
-            st.session_state.last_search_no = ""
-            st.rerun()
+    st.subheader("Search and Edit Projects")
+    # ... (Your Search Code Here) ...
 
-    search_no = pad_preprod_id(raw_search) if raw_search else ""
-    match = df[df['Pre-Prod No.'] == search_no] if 'Pre-Prod No.' in df.columns else pd.DataFrame()
-    
-    if search_no and not match.empty:
-        # ... (Your existing Edit Details code goes here, indented once) ...
-        st.write(f"Editing: {search_no}") 
-    elif search_no:
-        st.info(f"No results found for {search_no}")
-
-# --- TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
-    display_combination_table("new")
-    # ... (Your existing Add New Job form code goes here, indented once) ...
+    st.subheader("Add a New Project")
+    # ... (Your Add Job Code Here) ...
 
-# --- TAB: DETAILED AGE ANALYSIS ---
 elif tab_nav == "📊 Detailed Age Analysis":
-    if not df.empty:
-        open_only = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
-        st.bar_chart(open_only['Age Category'].value_counts())
+    st.subheader("Project Age Analysis")
+    # ... (Your Analysis Code Here) ...
 
-# --- TAB: TRIAL TRENDS ---
 elif tab_nav == "🧪 Trial Trends":
-    st.subheader("🧪 Weekly Average Trial Turnaround (2026)")
-    df_trials = load_trial_data()
-    if not df_trials.empty:
-        st.line_chart(df_trials.groupby(df_trials['Date_Log'].dt.isocalendar().week)['Days_Taken'].mean())
-    else:
-        st.warning("No trial data found.")
+    st.subheader("Trial Turnaround Trends")
+    # ... (Your Trial Trends Code Here) ...
 
-# --- TAB: GOOGLE DB VIEW ---
 elif tab_nav == "🌐 Google DB View":
     st.subheader("🌐 Live Google Sheets Database")
-    st.info("This shows data currently in the cloud.")
-
     if st.button("🔄 Fetch Latest from Google"):
-        with st.spinner("Accessing Google Sheets..."):
+        with st.spinner("Connecting to Google..."):
             gs_df = load_from_google_sheets()
             if not gs_df.empty:
                 st.session_state.google_data = gs_df
                 st.success("Data fetched!")
 
     if "google_data" in st.session_state:
-        gs_search = st.text_input("🔍 Filter Cloud Data")
-        display_df = st.session_state.google_data
-        if gs_search:
-            mask = display_df.apply(lambda row: row.astype(str).str.contains(gs_search, case=False).any(), axis=1)
-            display_df = display_df[mask]
-        
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        st.dataframe(st.session_state.google_data, use_container_width=True)
