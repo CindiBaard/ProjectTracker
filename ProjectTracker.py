@@ -547,57 +547,56 @@ elif tab_nav == "🧪 Trial Trends":
     else:
         st.warning(f"Could not find {TRIALS_FILE_CURRENT}. Please ensure the file is in the 'projecttracker' folder.")
 
-        import gspread
+import gspread
 from google.oauth2.service_account import Credentials
 
 def save_to_google_sheets(df):
     """
-    Connects to Google Sheets using st.secrets and updates the tracker.
+    Connects to Google Sheets and overwrites with the latest dataframe.
     """
     try:
-        # 1. Define the scope
         scope = ["https://www.googleapis.com/auth/spreadsheets"]
         
-        # 2. Authenticate using Streamlit Secrets 
-        # (Assuming your secrets are stored under a 'gcp_service_account' key)
-        creds = Credentials.from_service_account_info(
-            st.secrets["gcp_service_account"], 
-            scopes=scope
-        )
+        # --- AUTHENTICATION LOGIC ---
+        # If running on Streamlit Cloud, it looks for 'gcp_service_account' in Secrets.
+        # If running locally, it will look for your secrets.toml file.
+        if "gcp_service_account" in st.secrets:
+            creds_info = st.secrets["gcp_service_account"]
+        else:
+            # Fallback for manual entry (using the variables you provided)
+            creds_info = {
+                "type": "service_account",
+                "project_id": "projecttracker-491911",
+                "private_key_id": "113bbec16cec5c007a64e24ab4c84faf55ce7733",
+                "private_key": st.secrets["private_key"], # Never hardcode the actual key string!
+                "client_email": "projecttracker@projecttracker-491911.iam.gserviceaccount.com",
+                "client_id": "115177684337876407555",
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.google.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/projecttracker@projecttracker-491911.iam.gserviceaccount.com"
+            }
+
+        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
 
-        # 3. Open the specific Sheet by the ID you provided
+        # Open by ID
         sheet_id = "1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M"
         spreadsheet = client.open_by_key(sheet_id)
-        
-        # Select the worksheet by index (0 is the first tab)
         worksheet = spreadsheet.get_worksheet(0) 
 
-        # 4. Prepare data for Google Sheets
-        # Google Sheets requires a list of lists. We fill NaN with empty strings.
+        # Prepare and upload data
         df_filled = df.fillna("")
+        # Convert all columns to strings to avoid JSON serialization errors with dates
+        for col in df_filled.columns:
+            df_filled[col] = df_filled[col].astype(str)
+            
         data_to_upload = [df_filled.columns.values.tolist()] + df_filled.values.tolist()
 
-        # 5. Overwrite the sheet
-        worksheet.update(data_to_upload)
+        # Clear and Update
+        worksheet.clear()
+        worksheet.update(values=data_to_upload, range_name='A1')
         st.toast("✅ Google Sheet Synced!")
         
     except Exception as e:
         st.error(f"❌ Google Sheets Sync Failed: {e}")
-
-# --- REPLACING THE ORIGINAL SAVE_DB ---
-def save_db(df):
-    """
-    Saves the dataframe to:
-    1. Local Parquet (for speed)
-    2. Local CSV (ProjectTrackerPP_Cleaned_NA.csv)
-    3. Google Sheets (for cloud access)
-    """
-    # Save local Parquet
-    df.to_parquet(FILENAME_PARQUET, index=False)
-    
-    # Save local CSV (important to keep your TRACKER_ADJ_FILE updated)
-    df.to_csv(TRACKER_ADJ_FILE, index=False, encoding='utf-8-sig')
-    
-    # Push to Google Sheets
-    save_to_google_sheets(df)
