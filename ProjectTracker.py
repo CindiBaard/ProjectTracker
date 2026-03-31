@@ -645,6 +645,16 @@ def save_to_google_sheets(df):
         st.error(f"❌ Google Sheets Sync Failed: {e}")
 
 # --- TAB: GOOGLE DB VIEW ---
+        if tab_nav == "🔍 Search & Edit":
+    # ... search code ...
+        elif tab_nav == "➕ Add New Job":
+    # ... add job code ...
+        elif tab_nav == "📊 Detailed Age Analysis":
+    # ... analysis code ...
+        elif tab_nav == "🧪 Trial Trends":
+    # ... trial trends code ...
+        elif tab_nav == "🌐 Google DB View":  # <--- Make sure this matches the "if" above!
+    st.subheader("🌐 Live Google Sheets Database")
     elif tab_nav == "🌐 Google DB View":
     st.subheader("🌐 Live Google Sheets Database")
     st.info("This view shows the data currently stored in the cloud. Use the 'Force Refresh' button in the sidebar if you need to sync local changes first.")
