@@ -378,23 +378,14 @@ with col_export:
 
 st.divider()
 
-# --- 8. UI: TABS & NAVIGATION ---
-# Define the tabs in a variable first to ensure they match exactly in both places
+## --- 8. UI: TABS & NAVIGATION ---
 tabs = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"]
-
-tab_nav = st.radio(
-    "Navigation", 
-    tabs, 
-    index=tabs.index(st.session_state.active_tab) if st.session_state.active_tab in tabs else 0,
-    horizontal=True
-)
+tab_nav = st.radio("Navigation", tabs, index=tabs.index(st.session_state.active_tab) if st.session_state.active_tab in tabs else 0, horizontal=True)
 st.session_state.active_tab = tab_nav
 
 # --- TAB: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
-    # 1. SEARCH LAYOUT WITH CLEAR BUTTON
     col_search, col_clear_btn = st.columns([4, 1])
-    
     with col_search:
         raw_search = st.text_input("Search Pre-Prod No.", key="search_input_box").strip()
     
@@ -404,283 +395,54 @@ if tab_nav == "🔍 Search & Edit":
             if "search_input_box" in st.session_state:
                 del st.session_state["search_input_box"]
             st.session_state.last_search_no = ""
-            for key in list(st.session_state.keys()):
-                if key.startswith(("txt_", "sel_", "ed_")):
-                    del st.session_state[key]
             st.rerun()
 
-    # Define search_no immediately so it's ready for the logic below
     search_no = pad_preprod_id(raw_search) if raw_search else ""
-    
-    # 2. CHANGE DETECTOR
-    if "last_search_no" not in st.session_state:
-        st.session_state.last_search_no = ""
-        
-    if search_no != st.session_state.last_search_no:
-        for key in list(st.session_state.keys()):
-            if key.startswith(("txt_", "sel_", "ed_")):
-                del st.session_state[key]
-        st.session_state.last_search_no = search_no
-        st.rerun() 
-
-    # 3. DATABASE MATCHING
     match = df[df['Pre-Prod No.'] == search_no] if 'Pre-Prod No.' in df.columns else pd.DataFrame()
     
     if search_no and not match.empty:
-        idx, row = match.index[0], match.iloc[0]
-        
-        # Action Buttons
-        c_c, c_d = st.columns(2)
-        with c_c:
-            if st.button("👯 Clone as Repeat Order", use_container_width=True):
-                new_id = get_next_available_id(search_no, df['Pre-Prod No.'].tolist())
-                new_clone = row.to_dict()
-                new_clone.update({'Pre-Prod No.': new_id, 'Date': datetime.now().strftime('%d/%m/%Y'), 'Completion date': ""})
-                st.session_state.form_data = new_clone
-                st.session_state.active_tab = "➕ Add New Job"
-                st.rerun()
-                
-        with c_d:
-            with st.popover("🗑️ Delete", use_container_width=True):
-                st.error(f"Confirm deletion of {search_no}?")
-                if st.button("Confirm Delete"):
-                    df = df.drop(idx)
-                    save_db(df)
-                    if "search_input_box" in st.session_state:
-                        del st.session_state["search_input_box"]
-                    st.rerun()
-
-        # Display helper table
-        display_combination_table("edit")
-        
-        with st.expander("Edit Details", expanded=True):
-            updated_vals = {}
-            edit_cols = st.columns(3)
-            selected = st.session_state.get("selected_combo", {})
-
-            for i, col_name in enumerate(DESIRED_ORDER):
-                if col_name == "Age Category": continue
-                
-                # Logic: prioritized table selection > current row data
-                if col_name in selected and selected[col_name] != "":
-                    cur_val = selected[col_name]
-                else:
-                    cur_val = str(row.get(col_name, "")) if str(row.get(col_name, "")).lower() != 'nan' else ""
-                
-                with edit_cols[i % 3]:
-                    if col_name == 'Completion date':
-                        try: d = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
-                        except: d = None
-                        sel_d = st.date_input(col_name, value=d, key=f"ed_{col_name}")
-                        updated_vals[col_name] = sel_d.strftime('%d/%m/%Y') if sel_d else ""
-                    elif col_name in ["Status", "Open or closed"]: continue 
-                    elif col_name in DROPDOWN_DATA:
-                        opts = sorted(list(set([""] + DROPDOWN_DATA[col_name] + ([cur_val] if cur_val else []))))
-                        updated_vals[col_name] = st.selectbox(col_name, options=opts, index=opts.index(cur_val) if cur_val in opts else 0, key=f"sel_{col_name}")
-                    else:
-                        updated_vals[col_name] = st.text_input(col_name, value=cur_val, key=f"txt_{col_name}")
-
-            if st.button("💾 Save Changes", type="primary", use_container_width=True):
-                final_status = "Closed" if updated_vals.get("Completion date") else "Open"
-                updated_vals["Status"] = updated_vals["Open or closed"] = final_status
-                for k, v in updated_vals.items(): df.at[idx, k] = v
-                save_db(df)
-                st.session_state.selected_combo = {}
-                st.toast("Changes Saved!")
-                st.rerun()
+        # ... (Your existing Edit Details code goes here, indented once) ...
+        st.write(f"Editing: {search_no}") 
     elif search_no:
         st.info(f"No results found for {search_no}")
 
 # --- TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
-    
-    selected = st.session_state.get("selected_combo", {})
-    # FIXED: Added back the ID and Data initialization
-    default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
-    new_data = {}
+    # ... (Your existing Add New Job form code goes here, indented once) ...
 
-    with st.form("new_job_form", clear_on_submit=True):
-        st.subheader("Register Project")
-        new_id_input = st.text_input("Pre-Prod No.", value=default_id)
-        new_cols = st.columns(3) # FIXED: Ensure columns are defined inside the form
-
-        for i, col_name in enumerate(DESIRED_ORDER):
-            if col_name == "Age Category": continue
-            
-            # Prioritize table selection, then form_data (clones), then empty
-            val = selected.get(col_name, st.session_state.form_data.get(col_name, ""))
-
-            with new_cols[i % 3]:
-                if col_name == 'Date':
-                    new_data[col_name] = st.date_input(col_name, value=datetime.now()).strftime('%d/%m/%Y')
-                elif col_name == 'Completion date':
-                    res = st.date_input(col_name, value=None)
-                    new_data[col_name] = res.strftime('%d/%m/%Y') if res else ""
-                elif col_name in DROPDOWN_DATA:
-                    opts = sorted(list(set([""] + DROPDOWN_DATA[col_name] + ([val] if val else []))))
-                    new_data[col_name] = st.selectbox(col_name, options=opts, index=opts.index(val) if val in opts else 0)
-                elif col_name in ["Status", "Open or closed"]: 
-                    new_data[col_name] = "Open"
-                else: 
-                    new_data[col_name] = st.text_input(col_name, value=val)
-
-        st.divider()
-        if st.form_submit_button("✅ Save Project", use_container_width=True):
-            padded_id = pad_preprod_id(new_id_input)
-            new_data['Pre-Prod No.'] = get_next_available_id(padded_id, df['Pre-Prod No.'].tolist())
-            new_data['Status'] = new_data['Open or closed'] = "Closed" if new_data.get('Completion date') else "Open"
-            cat, days = calculate_age_category(new_data)
-            new_data.update({'Age Category': cat, 'Project Age (Open and Closed)': days})
-            df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
-            save_db(df)
-            st.toast(f"Saved: {new_data['Pre-Prod No.']}")
-            reset_form_state()
-            
 # --- TAB: DETAILED AGE ANALYSIS ---
 elif tab_nav == "📊 Detailed Age Analysis":
     if not df.empty:
         open_only = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("**Open Projects by Age Category**")
-            st.bar_chart(open_only['Age Category'].value_counts().reindex(["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"], fill_value=0))
-        with c2:
-            st.markdown("**Top Clients with Open Projects**")
-            st.bar_chart(open_only['Client'].value_counts().head(10))
+        st.bar_chart(open_only['Age Category'].value_counts())
 
 # --- TAB: TRIAL TRENDS ---
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("🧪 Weekly Average Trial Turnaround (2026)")
-    
-    # Ensure the file path matches your corrected name
-    TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
-    
     df_trials = load_trial_data()
-    
     if not df_trials.empty:
-        # 1. Clean and Sort
-        df_trials['Date_Log'] = pd.to_datetime(df_trials['Date_Log'], dayfirst=True, errors='coerce')
-        df_trials = df_trials.dropna(subset=['Date_Log', 'Days_Taken'])
-        
-        # 2. Add Week-Year column for accurate grouping
-        # This prevents Week 1 of 2026 from mixing with Week 1 of 2025
-        df_trials['Week_Year'] = df_trials['Date_Log'].dt.strftime('%Y-W%U')
-        
-        # 3. Group by Week and calculate the Average Days Taken
-        # We sort by Date_Log first to ensure the weeks appear in order
-        weekly_avg = df_trials.sort_values('Date_Log').groupby('Week_Year')['Days_Taken'].mean()
-
-        # 4. Display Metrics
-        col1, col2 = st.columns(2)
-        col1.metric("Overall Avg Turnaround", f"{df_trials['Days_Taken'].mean():.1f} Days")
-        col2.metric("Total Trials (YTD)", len(df_trials))
-
-        # 5. Plot the Trend
-        st.write("### 📈 Average Days to Complete per Week")
-        st.line_chart(weekly_avg)
-        
-        # 6. Detail View
-        with st.expander("📄 View Weekly Breakdown Table"):
-            weekly_table = df_trials.groupby('Week_Year').agg({
-                'Days_Taken': ['mean', 'count']
-            }).rename(columns={'mean': 'Avg Days', 'count': 'Number of Trials'})
-            st.dataframe(weekly_table, use_container_width=True)
-            
+        st.line_chart(df_trials.groupby(df_trials['Date_Log'].dt.isocalendar().week)['Days_Taken'].mean())
     else:
-        st.warning(f"Could not find {TRIALS_FILE_CURRENT}. Please ensure the file is in the 'projecttracker' folder.")
-
-import gspread
-from google.oauth2.service_account import Credentials
-
-def save_to_google_sheets(df):
-    """
-    Connects to Google Sheets and overwrites with the latest dataframe.
-    """
-    try:
-        scope = ["https://www.googleapis.com/auth/spreadsheets"]
-        
-        # --- AUTHENTICATION LOGIC ---
-        # If running on Streamlit Cloud, it looks for 'gcp_service_account' in Secrets.
-        # If running locally, it will look for your secrets.toml file.
-        if "gcp_service_account" in st.secrets:
-            creds_info = st.secrets["gcp_service_account"]
-        else:
-            # Fallback for manual entry (using the variables you provided)
-            creds_info = {
-                "type": "service_account",
-                "project_id": "projecttracker-491911",
-                "private_key_id": "113bbec16cec5c007a64e24ab4c84faf55ce7733",
-                "private_key": st.secrets["private_key"], # Never hardcode the actual key string!
-                "client_email": "projecttracker@projecttracker-491911.iam.gserviceaccount.com",
-                "client_id": "115177684337876407555",
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.google.com/token",
-                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-                "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/projecttracker@projecttracker-491911.iam.gserviceaccount.com"
-            }
-
-        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
-        client = gspread.authorize(creds)
-
-        # Open by ID
-        sheet_id = "1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M"
-        spreadsheet = client.open_by_key(sheet_id)
-        worksheet = spreadsheet.get_worksheet(0) 
-
-        # Prepare and upload data
-        df_filled = df.fillna("")
-        # Convert all columns to strings to avoid JSON serialization errors with dates
-        for col in df_filled.columns:
-            df_filled[col] = df_filled[col].astype(str)
-            
-        data_to_upload = [df_filled.columns.values.tolist()] + df_filled.values.tolist()
-
-        # Clear and Update
-        worksheet.clear()
-        worksheet.update(values=data_to_upload, range_name='A1')
-        st.toast("✅ Google Sheet Synced!")
-        
-    except Exception as e:
-        st.error(f"❌ Google Sheets Sync Failed: {e}")
+        st.warning("No trial data found.")
 
 # --- TAB: GOOGLE DB VIEW ---
-        if tab_nav == "🔍 Search & Edit":
-    # ... search code ...
-        elif tab_nav == "➕ Add New Job":
-    # ... add job code ...
-        elif tab_nav == "📊 Detailed Age Analysis":
-    # ... analysis code ...
-        elif tab_nav == "🧪 Trial Trends":
-    # ... trial trends code ...
-        elif tab_nav == "🌐 Google DB View":  # <--- Make sure this matches the "if" above!
+elif tab_nav == "🌐 Google DB View":
     st.subheader("🌐 Live Google Sheets Database")
-    elif tab_nav == "🌐 Google DB View":
-    st.subheader("🌐 Live Google Sheets Database")
-    st.info("This view shows the data currently stored in the cloud. Use the 'Force Refresh' button in the sidebar if you need to sync local changes first.")
+    st.info("This shows data currently in the cloud.")
 
     if st.button("🔄 Fetch Latest from Google"):
         with st.spinner("Accessing Google Sheets..."):
             gs_df = load_from_google_sheets()
             if not gs_df.empty:
                 st.session_state.google_data = gs_df
-                st.success("Data fetched successfully!")
+                st.success("Data fetched!")
 
-    # Display data if it exists in session state
     if "google_data" in st.session_state:
-        # Add a search filter for the cloud data specifically
-        gs_search = st.text_input("🔍 Filter Cloud Data", placeholder="Search client, ID, or status...")
-        
+        gs_search = st.text_input("🔍 Filter Cloud Data")
         display_df = st.session_state.google_data
         if gs_search:
             mask = display_df.apply(lambda row: row.astype(str).str.contains(gs_search, case=False).any(), axis=1)
             display_df = display_df[mask]
-
-        st.dataframe(
-            display_df, 
-            use_container_width=True, 
-            hide_index=True,
-            column_order=DESIRED_ORDER # Keeps the view consistent with your app's layout
-        )
-    else:
-        st.write("Click the button above to load the live cloud database.")
+        
+        st.dataframe(display_df, use_container_width=True, hide_index=True)
