@@ -379,11 +379,15 @@ with col_export:
 st.divider()
 
 # --- 8. UI: TABS & NAVIGATION ---
-tab_nav = st.radio("Navigation", 
-                   ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"], 
-                   index=["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"].index(st.session_state.active_tab),
-                   horizontal=True)Trends"].index(st.session_state.active_tab),
-                   horizontal=True)
+# Define the tabs in a variable first to ensure they match exactly in both places
+tabs = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"]
+
+tab_nav = st.radio(
+    "Navigation", 
+    tabs, 
+    index=tabs.index(st.session_state.active_tab) if st.session_state.active_tab in tabs else 0,
+    horizontal=True
+)
 st.session_state.active_tab = tab_nav
 
 # --- TAB: SEARCH & EDIT ---
