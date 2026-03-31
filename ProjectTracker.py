@@ -188,6 +188,43 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
         df['Project Age (Open and Closed)'] = pd.to_numeric(df['Project Age (Open and Closed)'], errors='coerce').fillna(0)
     return df
 
+def load_from_google_sheets():
+    """
+    Connects to Google Sheets and returns the data as a DataFrame.
+    """
+    try:
+        scope = ["https://www.googleapis.com/auth/spreadsheets"]
+        
+        # Re-use your existing auth logic
+        if "gcp_service_account" in st.secrets:
+            creds_info = st.secrets["gcp_service_account"]
+        else:
+            creds_info = {
+                "type": "service_account",
+                "project_id": "projecttracker-491911",
+                "private_key_id": "113bbec16cec5c007a64e24ab4c84faf55ce7733",
+                "private_key": st.secrets["private_key"],
+                "client_email": "projecttracker@projecttracker-491911.iam.gserviceaccount.com",
+                "client_id": "115177684337876407555",
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.google.com/token",
+            }
+
+        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+        client = gspread.authorize(creds)
+
+        sheet_id = "1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M"
+        spreadsheet = client.open_by_key(sheet_id)
+        worksheet = spreadsheet.get_worksheet(0)
+        
+        # Get all records and convert to DataFrame
+        data = worksheet.get_all_records()
+        return pd.DataFrame(data)
+        
+    except Exception as e:
+        st.error(f"❌ Could not read Google Sheet: {e}")
+        return pd.DataFrame()
+
 # --- 4. TRIAL DATA CONFIG ---
 TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
 
@@ -342,8 +379,10 @@ with col_export:
 st.divider()
 
 # --- 8. UI: TABS & NAVIGATION ---
-tab_nav = st.radio("Navigation", ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends"], 
-                   index=["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends"].index(st.session_state.active_tab),
+tab_nav = st.radio("Navigation", 
+                   ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"], 
+                   index=["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"].index(st.session_state.active_tab),
+                   horizontal=True)Trends"].index(st.session_state.active_tab),
                    horizontal=True)
 st.session_state.active_tab = tab_nav
 
@@ -600,3 +639,34 @@ def save_to_google_sheets(df):
         
     except Exception as e:
         st.error(f"❌ Google Sheets Sync Failed: {e}")
+
+# --- TAB: GOOGLE DB VIEW ---
+elif tab_nav == "🌐 Google DB View":
+    st.subheader("🌐 Live Google Sheets Database")
+    st.info("This view shows the data currently stored in the cloud. Use the 'Force Refresh' button in the sidebar if you need to sync local changes first.")
+
+    if st.button("🔄 Fetch Latest from Google"):
+        with st.spinner("Accessing Google Sheets..."):
+            gs_df = load_from_google_sheets()
+            if not gs_df.empty:
+                st.session_state.google_data = gs_df
+                st.success("Data fetched successfully!")
+
+    # Display data if it exists in session state
+    if "google_data" in st.session_state:
+        # Add a search filter for the cloud data specifically
+        gs_search = st.text_input("🔍 Filter Cloud Data", placeholder="Search client, ID, or status...")
+        
+        display_df = st.session_state.google_data
+        if gs_search:
+            mask = display_df.apply(lambda row: row.astype(str).str.contains(gs_search, case=False).any(), axis=1)
+            display_df = display_df[mask]
+
+        st.dataframe(
+            display_df, 
+            use_container_width=True, 
+            hide_index=True,
+            column_order=DESIRED_ORDER # Keeps the view consistent with your app's layout
+        )
+    else:
+        st.write("Click the button above to load the live cloud database.")
