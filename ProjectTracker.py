@@ -546,3 +546,58 @@ elif tab_nav == "🧪 Trial Trends":
             
     else:
         st.warning(f"Could not find {TRIALS_FILE_CURRENT}. Please ensure the file is in the 'projecttracker' folder.")
+
+        import gspread
+from google.oauth2.service_account import Credentials
+
+def save_to_google_sheets(df):
+    """
+    Connects to Google Sheets using st.secrets and updates the tracker.
+    """
+    try:
+        # 1. Define the scope
+        scope = ["https://www.googleapis.com/auth/spreadsheets"]
+        
+        # 2. Authenticate using Streamlit Secrets 
+        # (Assuming your secrets are stored under a 'gcp_service_account' key)
+        creds = Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"], 
+            scopes=scope
+        )
+        client = gspread.authorize(creds)
+
+        # 3. Open the specific Sheet by the ID you provided
+        sheet_id = "1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M"
+        spreadsheet = client.open_by_key(sheet_id)
+        
+        # Select the worksheet by index (0 is the first tab)
+        worksheet = spreadsheet.get_worksheet(0) 
+
+        # 4. Prepare data for Google Sheets
+        # Google Sheets requires a list of lists. We fill NaN with empty strings.
+        df_filled = df.fillna("")
+        data_to_upload = [df_filled.columns.values.tolist()] + df_filled.values.tolist()
+
+        # 5. Overwrite the sheet
+        worksheet.update(data_to_upload)
+        st.toast("✅ Google Sheet Synced!")
+        
+    except Exception as e:
+        st.error(f"❌ Google Sheets Sync Failed: {e}")
+
+# --- REPLACING THE ORIGINAL SAVE_DB ---
+def save_db(df):
+    """
+    Saves the dataframe to:
+    1. Local Parquet (for speed)
+    2. Local CSV (ProjectTrackerPP_Cleaned_NA.csv)
+    3. Google Sheets (for cloud access)
+    """
+    # Save local Parquet
+    df.to_parquet(FILENAME_PARQUET, index=False)
+    
+    # Save local CSV (important to keep your TRACKER_ADJ_FILE updated)
+    df.to_csv(TRACKER_ADJ_FILE, index=False, encoding='utf-8-sig')
+    
+    # Push to Google Sheets
+    save_to_google_sheets(df)
