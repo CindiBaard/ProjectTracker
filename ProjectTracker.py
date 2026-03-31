@@ -200,15 +200,17 @@ def load_from_google_sheets():
             creds_info = st.secrets["gcp_service_account"]
         else:
             creds_info = {
-                "type": "service_account",
-                "project_id": "projecttracker-491911",
-                "private_key_id": "113bbec16cec5c007a64e24ab4c84faf55ce7733",
-                "private_key": st.secrets["private_key"],
-                "client_email": "projecttracker@projecttracker-491911.iam.gserviceaccount.com",
-                "client_id": "115177684337876407555",
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.google.com/token",
-            }
+                "type": st.secrets["connections.gsheets"]["type"],
+                "project_id": st.secrets["connections.gsheets"]["project_id"],
+                "private_key_id": st.secrets["connections.gsheets"]["private_key_id"],
+                "private_key": st.secrets["connections.gsheets"]["private_key"],
+                "client_email": st.secrets["connections.gsheets"]["client_email"],
+                "client_id": st.secrets["connections.gsheets"]["client_id"],
+                "auth_uri": st.secrets["connections.gsheets"]["auth_uri"],
+                "token_uri": st.secrets["connections.gsheets"]["token_uri"],
+                "auth_provider_x509_cert_url": st.secrets["connections.gsheets"]["auth_provider_x509_cert_url"],
+                "client_x509_cert_url": st.secrets["connections.gsheets"]["client_x509_cert_url"]
+}
 
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
