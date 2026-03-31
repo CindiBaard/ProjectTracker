@@ -5,3 +5,5 @@ xlsxwriter
 pyarrow
 altair<5.0.0  # Optional: adding this ensures extra stability with older chart code
 fastparquet
+gspread
+google-auth
