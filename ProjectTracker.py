@@ -33,19 +33,21 @@ if 'form_data' not in st.session_state:
 if 'selected_combo' not in st.session_state:
     st.session_state.selected_combo = {}
 
-# --- 3. NAVIGATION (Moved up to ensure logic flows correctly) ---
+# --- 3. NAVIGATION ---
 tabs = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"]
+
+# Initialize if missing
+if 'active_tab' not in st.session_state:
+    st.session_state.active_tab = tabs[0]
 
 tab_nav = st.radio(
     "Navigation", 
     tabs, 
-    index=tabs.index(st.session_state.active_tab) if st.session_state.active_tab in tabs else 0,
-    horizontal=True
+    index=tabs.index(st.session_state.active_tab) if st.session_state.active_tab in tabs else 0, 
+    horizontal=True,
+    key="main_nav_radio" # Adding a unique key is a safety measure
 )
-
-# Update the state so the app remembers the choice for the next rerun
 st.session_state.active_tab = tab_nav
-
 # --- 4. FILE PATHS ---
 BASE_DIR = os.getcwd() 
 FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
@@ -391,14 +393,6 @@ with col_export:
 st.divider()
 
 # --- 8. UI: TABS & NAVIGATION ---
-tabs = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"]
-
-# Initialize active_tab if not present
-if 'active_tab' not in st.session_state:
-    st.session_state.active_tab = "🔍 Search & Edit"
-
-tab_nav = st.radio("Navigation", tabs, index=tabs.index(st.session_state.active_tab), horizontal=True)
-st.session_state.active_tab = tab_nav
 
 # --- TAB LOGIC ---
 # --- TAB: SEARCH & EDIT ---
