@@ -33,10 +33,10 @@ if 'form_data' not in st.session_state:
 if 'selected_combo' not in st.session_state:
     st.session_state.selected_combo = {}
 
-# --- 3. NAVIGATION ---
+# --- 4. NAVIGATION & TAB SELECTION ---
+# We place this here so 'tab_nav' is ready before the UI starts rendering tabs below
 tabs = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"]
 
-# Initialize if missing
 if 'active_tab' not in st.session_state:
     st.session_state.active_tab = tabs[0]
 
@@ -45,9 +45,10 @@ tab_nav = st.radio(
     tabs, 
     index=tabs.index(st.session_state.active_tab) if st.session_state.active_tab in tabs else 0, 
     horizontal=True,
-    key="main_nav_radio" # Adding a unique key is a safety measure
+    key="main_nav_radio" 
 )
 st.session_state.active_tab = tab_nav
+
 # --- 4. FILE PATHS ---
 BASE_DIR = os.getcwd() 
 FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
@@ -57,8 +58,6 @@ COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 
 # Updated Trial Data File
 TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
-
-# --- 3. HELPER FUNCTIONS ---
 
 def pad_preprod_id(val):
     """Standardizes IDs: '9143' -> '09143' and '9143_1' -> '09143_1'."""
