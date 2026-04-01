@@ -5,16 +5,12 @@ from datetime import datetime
 import io
 import re
 
-if "selected_combo" not in st.session_state:
-    st.session_state.selected_combo = {}
-
-# This is where the fix happens
+# --- 1. INITIAL SETUP & DEPENDENCIES ---
 try:
     import matplotlib.pyplot as plt
 except ImportError:
     st.error("Matplotlib is not installed. Please check your requirements.txt.")
 
-# --- 1. INITIAL SETUP ---
 try:
     import xlsxwriter
 except ImportError:
@@ -25,10 +21,11 @@ try:
 except ImportError:
     st.error("Missing dependency: Please run 'pip install pyarrow'")
 
+# Page Config must be one of the first Streamlit commands called
 st.set_page_config(page_title="Project Tracker Dashboard", layout="wide")
 pd.set_option("styler.render.max_elements", 1000000)
 
-# Initialize session state keys
+# --- 2. SESSION STATE INITIALIZATION ---
 if 'active_tab' not in st.session_state:
     st.session_state.active_tab = "🔍 Search & Edit"
 if 'form_data' not in st.session_state:
@@ -36,7 +33,20 @@ if 'form_data' not in st.session_state:
 if 'selected_combo' not in st.session_state:
     st.session_state.selected_combo = {}
 
-# --- 2. FILE PATHS ---
+# --- 3. NAVIGATION (Moved up to ensure logic flows correctly) ---
+tabs = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"]
+
+tab_nav = st.radio(
+    "Navigation", 
+    tabs, 
+    index=tabs.index(st.session_state.active_tab) if st.session_state.active_tab in tabs else 0,
+    horizontal=True
+)
+
+# Update the state so the app remembers the choice for the next rerun
+st.session_state.active_tab = tab_nav
+
+# --- 4. FILE PATHS ---
 BASE_DIR = os.getcwd() 
 FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
 TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv") 
@@ -391,9 +401,23 @@ tab_nav = st.radio("Navigation", tabs, index=tabs.index(st.session_state.active_
 st.session_state.active_tab = tab_nav
 
 # --- TAB LOGIC ---
+# --- TAB: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
-    st.subheader("Search and Edit Projects")
-    # ... (Your Search Code Here) ...
+    raw_search = st.text_input("Search Pre-Prod No.", key="search_input_box").strip()
+    search_no = pad_preprod_id(raw_search) if raw_search else ""
+
+    # --- THIS IS WHERE THE LOGIC GOES ---
+    if search_no != st.session_state.get("last_search_no", ""):
+        # The user typed a NEW number, so we clear the old "Edit" data
+        st.session_state.last_search_no = search_no
+        # Clear specific keys so the form refreshes for the new ID
+        for key in list(st.session_state.keys()):
+            if key.startswith("ed_"): 
+                del st.session_state[key]
+    # ------------------------------------
+
+    # Now continue with your matching logic
+    match = df[df['Pre-Prod No.'] == search_no] if not df.empty else pd.DataFrame()
 
 elif tab_nav == "➕ Add New Job":
     st.subheader("Add a New Project")
