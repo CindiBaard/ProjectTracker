@@ -66,6 +66,22 @@ if 'last_search_no' not in st.session_state:
 
 # --- 4. UTILITY FUNCTIONS ---
 
+def get_auto_next_no(df):
+    if df is None or df.empty or 'Pre-Prod No.' not in df.columns: return "00001"
+    try:
+        # Extract numbers, get max, and increment
+        nums = df['Pre-Prod No.'].str.extract(r'(\d+)').dropna().astype(int)
+        if nums.empty: return "00001"
+        return str(nums.max() + 1).zfill(5)
+    except: return "00001"
+
+def get_next_available_id(search_no, existing_ids):
+    base = str(search_no).split('_')[0]
+    for char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+        candidate = f"{base}_{char}"
+        if candidate not in existing_ids.values: return candidate
+    return f"{base}_NEW"
+
 def pad_preprod_id(val):
     if pd.isna(val) or str(val).strip() == '': return ""
     val_str = str(val).strip().split('.')[0]
@@ -126,24 +142,37 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
                 suffixes=('', '_dig')
             )
 
-        combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
-        
-        if 'Date' in combined.columns:
-            results = combined.apply(calculate_age_category, axis=1)
-            combined['Age Category'] = [r[0] for r in results]
-            combined['Project Age (Open and Closed)'] = [r[1] for r in results]
-        
-        # --- ADD THIS LINE HERE ---
-        if 'Project Age (Open and Closed)' in combined.columns:
-            combined['Project Age (Open and Closed)'] = pd.to_numeric(combined['Project Age (Open and Closed)'], errors='coerce').fillna(0)
-        # --------------------------
+            # ALL OF THIS MUST BE INDENTED TO STAY INSIDE THE TRY BLOCK
+            combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
+            
+            if 'Date' in combined.columns:
+                results = combined.apply(calculate_age_category, axis=1)
+                combined['Age Category'] = [r[0] for r in results]
+                combined['Project Age (Open and Closed)'] = [r[1] for r in results]
+            
+            if 'Project Age (Open and Closed)' in combined.columns:
+                combined['Project Age (Open and Closed)'] = pd.to_numeric(combined['Project Age (Open and Closed)'], errors='coerce').fillna(0)
 
-        combined.to_parquet(parquet_path, index=False)
-        return combined
+            combined.to_parquet(parquet_path, index=False)
+            return combined
             
         except Exception as e: 
             st.error(f"Merge Error: {e}")
             return pd.DataFrame()
+                
+    # Loading from existing parquet
+    if os.path.exists(parquet_path):
+        df = pd.read_parquet(parquet_path)
+        if 'Date' in df.columns and 'Age Category' not in df.columns:
+            results = df.apply(calculate_age_category, axis=1)
+            df['Age Category'], df['Project Age (Open and Closed)'] = [r[0] for r in results], [r[1] for r in results]
+        
+        # Ensure numeric type on load
+        if 'Project Age (Open and Closed)' in df.columns:
+            df['Project Age (Open and Closed)'] = pd.to_numeric(df['Project Age (Open and Closed)'], errors='coerce').fillna(0)
+        return df
+    
+    return pd.DataFrame()
                 
     # If file exists and we aren't forcing a refresh, load from parquet
     if os.path.exists(parquet_path):
