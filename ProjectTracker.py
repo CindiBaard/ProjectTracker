@@ -135,7 +135,14 @@ def save_db(df):
 
 @st.cache_data(show_spinner="Refreshing Database...")
 def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
-    if force_refresh or not os.path.exists(parquet_path):
+    # 1. If Parquet exists AND we aren't forcing a hard rebuild from CSV...
+    if os.path.exists(parquet_path) and not force_refresh:
+        df = pd.read_parquet(parquet_path)
+        # (Keep your existing age calculation logic here...)
+        return df
+
+    # 2. ONLY if the file is missing or we click "Rebuild", do the CSV merge
+    try:
         try:
             df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig')
             df_d = pd.read_csv(digital_file, sep=None, engine='python', encoding='utf-8-sig')
