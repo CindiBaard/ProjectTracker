@@ -21,7 +21,7 @@ try:
 except ImportError:
     st.error("Missing dependency: Please run 'pip install pyarrow'")
 
-# Google Auth Imports
+# RESTORED: Google Auth Imports
 try:
     import gspread
     from google.oauth2.service_account import Credentials
@@ -74,20 +74,6 @@ def pad_preprod_id(val):
         return f"{parts[0].zfill(5)}_{parts[1]}"
     return val_str.zfill(5)
 
-def get_auto_next_no(df):
-    if df.empty or 'Pre-Prod No.' not in df.columns: return "00001"
-    nums = []
-    for i in df['Pre-Prod No.'].tolist():
-        match = re.match(r"(\d+)", str(i))
-        if match: nums.append(int(match.group(1)))
-    return str(max(nums) + 1).zfill(5) if nums else "00001"
-
-def get_next_available_id(requested_id, existing_ids):
-    base_id = str(requested_id).split('_')[0].zfill(5)
-    pattern = re.compile(rf"^{re.escape(base_id)}(_(\d+))?$")
-    suffixes = [int(m.group(2)) if m.group(2) else 0 for eid in existing_ids if (m := pattern.match(str(eid)))]
-    return f"{base_id}_{max(suffixes) + 1 if suffixes else 1}"
-
 def clean_column_names(df):
     df.columns = [str(c).strip().replace('\ufeff', '').replace('ï»¿', '').replace('"', '').replace('/', '_') for c in df.columns]
     return df
@@ -123,21 +109,15 @@ def save_db(df):
 def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
     if force_refresh or not os.path.exists(parquet_path):
         try:
-            # 1. Load the files
             df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig')
             df_d = pd.read_csv(digital_file, sep=None, engine='python', encoding='utf-8-sig')
-            
-            # 2. Standardize column names
             df_d, df_t = clean_column_names(df_d), clean_column_names(df_t)
             df_d = df_d.rename(columns={'Pre-Prod No': 'Pre-Prod No.', 'Pre Prod No.': 'Pre-Prod No.'})
             
-            # --- CRITICAL FIX START ---
-            # Force both join keys to strings and remove decimals (like .0)
+            # Preserve the Merge Fix
             df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-            # --- CRITICAL FIX END ---
 
-            # 3. Perform the merge
             combined = pd.merge(
                 df_t.dropna(subset=['Pre-Prod No.']), 
                 df_d.dropna(subset=['Pre-Prod No.']), 
@@ -145,28 +125,24 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
                 how='outer', 
                 suffixes=('', '_dig')
             )
-            
-            # 4. Final cleaning and padding
             combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
             combined.to_parquet(parquet_path, index=False)
-            
         except Exception as e: 
             st.error(f"Merge Error: {e}")
             return pd.DataFrame()
                 
-    if not os.path.exists(parquet_path): 
-        return pd.DataFrame()
-        
+    if not os.path.exists(parquet_path): return pd.DataFrame()
     df = pd.read_parquet(parquet_path)
     if 'Date' in df.columns:
         results = df.apply(calculate_age_category, axis=1)
         df['Age Category'], df['Project Age (Open and Closed)'] = [r[0] for r in results], [r[1] for r in results]
     return df
+
+# RESTORED: Google Sheets Loading logic
 def load_from_google_sheets():
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
-        # DNS Fix: ensure private key formatting
         if isinstance(creds_info, dict) and "private_key" in creds_info:
              creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
@@ -183,6 +159,7 @@ def display_combination_table(key_prefix):
     if os.path.exists(COMBINATIONS_FILE):
         with st.expander("📂 Browse Tube & Cap Combinations", expanded=False):
             try:
+                # Note: Sep is ';' per old code
                 combo_df = clean_column_names(pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig'))
                 search = st.text_input(f"🔍 Filter List", key=f"{key_prefix}_search")
                 if search:
@@ -202,6 +179,7 @@ def display_combination_table(key_prefix):
 # --- 7. MAIN LOGIC ---
 df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=st.sidebar.button("🔄 Rebuild Local DB"))
 
+# --- NEW: RESTORED DROPDOWN CONFIGURATION ---
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
     "Orifice": "Orifice.csv", "Diameter": "TubeDia.csv", "Foiling": "Foiling.csv",
@@ -212,12 +190,12 @@ DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
 if not df.empty:
     DROPDOWN_DATA['Client'] = sorted([str(c) for c in df['Client'].unique() if str(c).strip() and str(c).lower() != 'nan'])
 
-# Navigation
+# --- NAVIGATION ---
 tabs_list = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"]
 tab_nav = st.radio("Navigation", tabs_list, index=tabs_list.index(st.session_state.active_tab), horizontal=True)
 st.session_state.active_tab = tab_nav
 
-# --- TAB: SEARCH & EDIT ---
+# --- 1. TAB: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
     c_s, c_cl = st.columns([4, 1])
     raw_search = c_s.text_input("Search Pre-Prod No.", key="search_input_box").strip()
@@ -234,11 +212,15 @@ if tab_nav == "🔍 Search & Edit":
     if search_no and not match.empty:
         idx, row = match.index[0], match.iloc[0]
         
-        # Actions
         btn_col1, btn_col2 = st.columns(2)
         if btn_col1.button("👯 Clone for Repeat Order", use_container_width=True):
+            # Cloning logic uses get_next_available_id from utility functions
             new_clone = row.to_dict()
-            new_clone.update({'Pre-Prod No.': get_next_available_id(search_no, df['Pre-Prod No.']), 'Date': datetime.now().strftime('%d/%m/%Y'), 'Completion date': ""})
+            new_clone.update({
+                'Pre-Prod No.': get_next_available_id(search_no, df['Pre-Prod No.']), 
+                'Date': datetime.now().strftime('%d/%m/%Y'), 
+                'Completion date': ""
+            })
             st.session_state.form_data = new_clone
             st.session_state.active_tab = "➕ Add New Job"
             st.rerun()
@@ -254,7 +236,7 @@ if tab_nav == "🔍 Search & Edit":
                 if col == "Age Category": continue
                 cur_val = selected.get(col, str(row.get(col, "")).replace('nan', ''))
                 with edit_cols[i % 3]:
-                    if col == 'Completion date' or col == 'Date':
+                    if col in ['Completion date', 'Date']:
                         try: d_val = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
                         except: d_val = None
                         d_input = st.date_input(col, value=d_val, key=f"ed_{col}")
@@ -274,10 +256,11 @@ if tab_nav == "🔍 Search & Edit":
                 st.success("Saved!")
                 st.rerun()
 
-# --- TAB: ADD NEW JOB ---
+# --- 2. TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
     selected = st.session_state.get("selected_combo", {})
+    # get_auto_next_no handles the ID incrementing logic
     default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
     
     with st.form("new_job_form"):
@@ -307,14 +290,44 @@ elif tab_nav == "➕ Add New Job":
             st.session_state.selected_combo = {}
             st.success("Job Added!")
 
-# --- TAB: GOOGLE VIEW ---
+# --- 3. TAB: DETAILED AGE ANALYSIS ---
+elif tab_nav == "📊 Detailed Age Analysis":
+    if not df.empty:
+        open_only = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("**Open Projects by Age Category**")
+            age_dist = open_only['Age Category'].value_counts().reindex(["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"], fill_value=0)
+            st.bar_chart(age_dist)
+        with c2:
+            st.markdown("**Top Clients with Open Projects**")
+            st.bar_chart(open_only['Client'].value_counts().head(10))
+
+# --- 4. TAB: TRIAL TRENDS ---
+elif tab_nav == "🧪 Trial Trends":
+    st.subheader("🧪 Trial Turnaround Time (2026)")
+    df_trials = load_trial_data()
+    if not df_trials.empty:
+        weekly_stats = df_trials.dropna(subset=['Days_Taken']).groupby('Week_Num')['Days_Taken'].mean().sort_index()
+        if not weekly_stats.empty:
+            fig, ax = plt.subplots(figsize=(10, 4))
+            ax.plot(weekly_stats.index, weekly_stats.values, marker='o', color='#2ca02c')
+            ax.set_ylabel("Average Days")
+            ax.set_xlabel("Week Number")
+            st.pyplot(fig)
+            
+            m1, m2 = st.columns(2)
+            m1.metric("Latest Week Avg", f"{weekly_stats.iloc[-1]:.1f} Days")
+            m2.metric("Overall 2026 Avg", f"{df_trials['Days_Taken'].mean():.1f} Days")
+
+# --- 5. TAB: GOOGLE VIEW ---
 elif tab_nav == "🌐 Google DB View":
     if st.button("🔄 Fetch Cloud Data"):
         st.session_state.google_data = load_from_google_sheets()
     if "google_data" in st.session_state:
         st.dataframe(st.session_state.google_data, use_container_width=True)
 
-# Summary Metrics (Bottom)
+# --- SUMMARY METRICS (FOOTER) ---
 if not df.empty:
     st.divider()
     open_jobs = df[df['Open or closed'].str.lower().str.contains('open', na=False)]
