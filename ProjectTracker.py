@@ -125,16 +125,21 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
                 how='outer', 
                 suffixes=('', '_dig')
             )
-            combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
-            
-            # Calculate Age Categories for the new combined data
-            if 'Date' in combined.columns:
-                results = combined.apply(calculate_age_category, axis=1)
-                combined['Age Category'] = [r[0] for r in results]
-                combined['Project Age (Open and Closed)'] = [r[1] for r in results]
-            
-            combined.to_parquet(parquet_path, index=False)
-            return combined  # <--- CRITICAL: Return the data after merging
+
+        combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
+        
+        if 'Date' in combined.columns:
+            results = combined.apply(calculate_age_category, axis=1)
+            combined['Age Category'] = [r[0] for r in results]
+            combined['Project Age (Open and Closed)'] = [r[1] for r in results]
+        
+        # --- ADD THIS LINE HERE ---
+        if 'Project Age (Open and Closed)' in combined.columns:
+            combined['Project Age (Open and Closed)'] = pd.to_numeric(combined['Project Age (Open and Closed)'], errors='coerce').fillna(0)
+        # --------------------------
+
+        combined.to_parquet(parquet_path, index=False)
+        return combined
             
         except Exception as e: 
             st.error(f"Merge Error: {e}")
