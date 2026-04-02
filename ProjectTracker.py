@@ -385,8 +385,22 @@ elif tab_nav == "🌐 Google DB View":
 # --- SUMMARY METRICS (FOOTER) ---
 if not df.empty:
     st.divider()
-    open_jobs = df[df['Open or closed'].str.lower().str.contains('open', na=False)]
+    
+    # 1. First, define what "open_jobs" is
+    open_jobs = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
+    
+    # 2. Create the layout columns
     m1, m2, m3 = st.columns(3)
-    m1.metric("Total Open Jobs", len(open_jobs))
-    m2.metric("Critical (>12w)", len(open_jobs[open_jobs['Age Category'] == "> 12 Weeks"]))
-    m3.metric("Avg Age (Days)", int(open_jobs['Project Age (Open and Closed)'].mean()) if not open_jobs.empty else 0)
+    
+    # 3. Calculate the metrics safely
+    total_open = len(open_jobs)
+    critical_jobs = len(open_jobs[open_jobs['Age Category'] == "> 12 Weeks"])
+    
+    # Convert to numeric to avoid the "string dtype" error
+    avg_age_series = pd.to_numeric(open_jobs['Project Age (Open and Closed)'], errors='coerce')
+    avg_age_val = avg_age_series.mean()
+    
+    # 4. Display the metrics
+    m1.metric("Total Open Jobs", total_open)
+    m2.metric("Critical (>12w)", critical_jobs)
+    m3.metric("Avg Age (Days)", int(avg_age_val) if not pd.isna(avg_age_val) else 0)
