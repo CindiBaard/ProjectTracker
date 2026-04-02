@@ -123,22 +123,45 @@ def save_db(df):
 def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
     if force_refresh or not os.path.exists(parquet_path):
         try:
+            # 1. Load the files
             df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig')
             df_d = pd.read_csv(digital_file, sep=None, engine='python', encoding='utf-8-sig')
+            
+            # 2. Standardize column names
             df_d, df_t = clean_column_names(df_d), clean_column_names(df_t)
             df_d = df_d.rename(columns={'Pre-Prod No': 'Pre-Prod No.', 'Pre Prod No.': 'Pre-Prod No.'})
-            combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), df_d.dropna(subset=['Pre-Prod No.']), on='Pre-Prod No.', how='outer', suffixes=('', '_dig'))
-            combined['Pre-Prod No.'] = combined['Pre-Prod No.'].astype(str).apply(pad_preprod_id)
+            
+            # --- CRITICAL FIX START ---
+            # Force both join keys to strings and remove decimals (like .0)
+            df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            # --- CRITICAL FIX END ---
+
+            # 3. Perform the merge
+            combined = pd.merge(
+                df_t.dropna(subset=['Pre-Prod No.']), 
+                df_d.dropna(subset=['Pre-Prod No.']), 
+                on='Pre-Prod No.', 
+                how='outer', 
+                suffixes=('', '_dig')
+            )
+            
+            # 4. Final cleaning and padding
+            combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
             combined.to_parquet(parquet_path, index=False)
-        except Exception as e: st.error(f"Merge Error: {e}")
+            
+        except Exception as e: 
+            st.error(f"Merge Error: {e}")
+            return pd.DataFrame()
                 
-    if not os.path.exists(parquet_path): return pd.DataFrame()
+    if not os.path.exists(parquet_path): 
+        return pd.DataFrame()
+        
     df = pd.read_parquet(parquet_path)
     if 'Date' in df.columns:
         results = df.apply(calculate_age_category, axis=1)
         df['Age Category'], df['Project Age (Open and Closed)'] = [r[0] for r in results], [r[1] for r in results]
     return df
-
 def load_from_google_sheets():
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
