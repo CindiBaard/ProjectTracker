@@ -167,13 +167,6 @@ def load_trial_data():
     else:
         # Silently return empty DF if file isn't there yet to avoid crashing the app
         return pd.DataFrame()
-                
-    if not os.path.exists(parquet_path): return pd.DataFrame()
-    df = pd.read_parquet(parquet_path)
-    if 'Date' in df.columns:
-        results = df.apply(calculate_age_category, axis=1)
-        df['Age Category'], df['Project Age (Open and Closed)'] = [r[0] for r in results], [r[1] for r in results]
-    return df
 
 # RESTORED: Google Sheets Loading logic
 def load_from_google_sheets():
