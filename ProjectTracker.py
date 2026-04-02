@@ -132,15 +132,30 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
 
 def load_from_google_sheets():
     try:
-        scope = ["https://www.googleapis.com/auth/spreadsheets"]
-        # Use Streamlit Secrets for Auth
-        creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
+        # Define scope
+        scope = ["https://www.googleapis.com/auth/spreadsheets", 
+                 "https://www.googleapis.com/auth/drive"]
+        
+        # Pull secrets
+        if "gcp_service_account" in st.secrets:
+            creds_info = st.secrets["gcp_service_account"]
+        else:
+            # Fallback for the specific way gspread-streamlit sometimes looks
+            creds_info = st.secrets["connections"]["gsheets"]
+
+        # Re-initialize credentials every time the function is called 
+        # to avoid stale DNS cache issues
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
+        
         spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
-        return pd.DataFrame(spreadsheet.get_worksheet(0).get_all_records())
+        worksheet = spreadsheet.get_worksheet(0)
+        return pd.DataFrame(worksheet.get_all_records())
+        
     except Exception as e:
-        st.error(f"❌ Google Sheet Error: {e}")
+        # This catches the NameResolutionError
+        st.error(f"🌐 Network/DNS Error: {e}")
+        st.info("💡 Try 'Rebooting' the app from the Streamlit Cloud dashboard.")
         return pd.DataFrame()
 
 # --- 6. UI CONFIGURATION ---
