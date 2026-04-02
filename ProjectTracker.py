@@ -130,6 +130,37 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
         except Exception as e: 
             st.error(f"Merge Error: {e}")
             return pd.DataFrame()
+
+@st.cache_data
+def load_trial_data():
+    """Loads and processes the weekly trial CSV file for turnaround analysis."""
+    trials_path = os.path.join(BASE_DIR, TRIALS_FILE_CURRENT)
+    if os.path.exists(trials_path):
+        try:
+            # Read the CSV (adjust encoding if you get a UnicodeDecodeError)
+            df = pd.read_csv(trials_path)
+            
+            # Convert date columns to datetime objects
+            df['Date_Log'] = pd.to_datetime(df['Date_Log'], dayfirst=True, errors='coerce')
+            df['Completion_Date'] = pd.to_datetime(df['Completion_Date'], dayfirst=True, errors='coerce')
+            
+            # Calculate the turnaround time in days
+            df['Days_Taken'] = (df['Completion_Date'] - df['Date_Log']).dt.days
+            
+            # Extract the Week Number for the trend chart
+            # This looks for a column with 'week' in the name (e.g., 'Week No')
+            wk_col = next((c for c in df.columns if 'week' in c.lower()), None)
+            if wk_col:
+                df['Week_Num'] = df[wk_col].astype(str).str.extract(r'(\d+)').fillna(0).astype(int)
+            else:
+                df['Week_Num'] = 0
+                
+            return df
+        except Exception as e:
+            st.error(f"Error processing trial dates: {e}")
+    else:
+        # Silently return empty DF if file isn't there yet to avoid crashing the app
+        return pd.DataFrame()
                 
     if not os.path.exists(parquet_path): return pd.DataFrame()
     df = pd.read_parquet(parquet_path)
