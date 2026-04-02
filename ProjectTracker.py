@@ -1,9 +1,9 @@
 import os
+import re
+import io
 import pandas as pd
 import streamlit as st
 from datetime import datetime
-import io
-import re
 
 # --- 1. INITIAL SETUP & DEPENDENCIES ---
 try:
@@ -21,94 +21,45 @@ try:
 except ImportError:
     st.error("Missing dependency: Please run 'pip install pyarrow'")
 
-# Page Config must be one of the first Streamlit commands called
+# Google Auth Imports
+try:
+    import gspread
+    from google.oauth2.service_account import Credentials
+except ImportError:
+    st.error("Google Auth dependencies missing. Run: pip install gspread google-auth")
+
+# Page Config
 st.set_page_config(page_title="Project Tracker Dashboard", layout="wide")
 pd.set_option("styler.render.max_elements", 1000000)
 
-# --- 2. SESSION STATE INITIALIZATION ---
+# --- 2. FILE PATHS ---
+BASE_DIR = os.getcwd() 
+FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
+TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv") 
+DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
+COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
+TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
+
+# --- 3. SESSION STATE INITIALIZATION ---
 if 'active_tab' not in st.session_state:
     st.session_state.active_tab = "🔍 Search & Edit"
 if 'form_data' not in st.session_state:
     st.session_state.form_data = {}
 if 'selected_combo' not in st.session_state:
     st.session_state.selected_combo = {}
+if 'last_search_no' not in st.session_state:
+    st.session_state.last_search_no = ""
 
-# --- 4. NAVIGATION & TAB SELECTION ---
-# We place this here so 'tab_nav' is ready before the UI starts rendering tabs below
-tabs = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"]
-
-if 'active_tab' not in st.session_state:
-    st.session_state.active_tab = tabs[0]
-
-tab_nav = st.radio(
-    "Navigation", 
-    tabs, 
-    index=tabs.index(st.session_state.active_tab) if st.session_state.active_tab in tabs else 0, 
-    horizontal=True,
-    key="main_nav_radio" 
-)
-st.session_state.active_tab = tab_nav
-
-# --- 4. FILE PATHS ---
-BASE_DIR = os.getcwd() 
-FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
-TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv") 
-DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
-COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
-
-# Updated Trial Data File
-TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
+# --- 4. UTILITY FUNCTIONS ---
 
 def pad_preprod_id(val):
-    """Standardizes IDs: '9143' -> '09143' and '9143_1' -> '09143_1'."""
     if pd.isna(val) or str(val).strip() == '': 
         return ""
     val_str = str(val).strip().split('.')[0]
     if '_' in val_str:
         parts = val_str.split('_', 1)
-        base = parts[0]
-        suffix = parts[1]
-        return f"{base.zfill(5)}_{suffix}"
-    else:
-        return val_str.zfill(5)
-
-def reset_form_state():
-    """Clears form data and resets the UI state."""
-    st.session_state.form_data = {}
-    st.session_state.selected_combo = {}
-    for key in list(st.session_state.keys()):
-        if key.startswith("txt_") or key.startswith("sel_") or key.startswith("ed_"):
-            del st.session_state[key]
-    st.rerun()
-
-def get_auto_next_no(df):
-    """Generates the next logical integer ID with 5-digit padding."""
-    if df.empty or 'Pre-Prod No.' not in df.columns: 
-        return "00001"
-    nums = []
-    for i in df['Pre-Prod No.'].tolist():
-        match = re.match(r"(\d+)", str(i))
-        if match: 
-            nums.append(int(match.group(1)))
-    if not nums:
-        return "00001"
-    next_val = max(nums) + 1
-    return str(next_val).zfill(5)
-
-def get_next_available_id(requested_id, existing_ids):
-    requested_id = str(requested_id).strip()
-    if requested_id not in existing_ids:
-        return requested_id
-    base_id = requested_id.split('_')[0]
-    pattern = re.compile(rf"^{re.escape(base_id)}(_(\d+))?$")
-    suffixes = []
-    for eid in existing_ids:
-        m = pattern.match(str(eid))
-        if m:
-            if m.group(2): suffixes.append(int(m.group(2)))
-            else: suffixes.append(0)
-    next_s = max(suffixes) + 1 if suffixes else 1
-    return f"{base_id}_{next_s}"
+        return f"{parts[0].zfill(5)}_{parts[1]}"
+    return val_str.zfill(5)
 
 def clean_column_names(df):
     df.columns = [str(c).strip().replace('\ufeff', '').replace('ï»¿', '').replace('"', '').replace('/', '_') for c in df.columns]
@@ -137,143 +88,62 @@ def clean_key(val):
 
 @st.cache_data
 def get_options(filename):
-    """Reads a CSV file and returns a sorted list of unique values for dropdowns."""
     path = os.path.join(BASE_DIR, filename)
     if os.path.exists(path):
         try:
             with open(path, 'r', encoding='latin1', errors='ignore') as f:
                 lines = [line.strip().replace('"', '') for line in f.readlines() if line.strip()]
                 return sorted(list(set([l.split(';')[0].split(',')[0].strip() for l in lines if l])))
-        except Exception as e:
-            st.error(f"Error loading {filename}: {e}")
-            return []
+        except: return []
     return []
 
-def save_db(df):
-    """Saves the dataframe to parquet for performance."""
-    df.to_parquet(FILENAME_PARQUET, index=False)
+# --- 5. DATA LOADING ---
 
 @st.cache_data(show_spinner="Loading High-Performance Database...")
 def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
     if force_refresh or not os.path.exists(parquet_path):
         if os.path.exists(tracker_file) and os.path.exists(digital_file):
             try:
-                df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig', on_bad_lines='warn')
-                df_d = pd.read_csv(digital_file, sep=None, engine='python', encoding='utf-8-sig', on_bad_lines='warn')
+                df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig')
+                df_d = pd.read_csv(digital_file, sep=None, engine='python', encoding='utf-8-sig')
+                df_d, df_t = clean_column_names(df_d), clean_column_names(df_t)
                 
-                df_d = clean_column_names(df_d)
-                df_t = clean_column_names(df_t)
-                
-                if 'Pre-Prod No' in df_d.columns: df_d = df_d.rename(columns={'Pre-Prod No': 'Pre-Prod No.'})
-                elif 'Pre Prod No.' in df_d.columns: df_d = df_d.rename(columns={'Pre Prod No.': 'Pre-Prod No.'})
+                # Align Column Names
+                rename_map = {'Pre-Prod No': 'Pre-Prod No.', 'Pre Prod No.': 'Pre-Prod No.'}
+                df_d = df_d.rename(columns=rename_map)
                 
                 df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].apply(clean_key)
                 df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].apply(clean_key)
                 
-                combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), df_d.dropna(subset=['Pre-Prod No.']), on='Pre-Prod No.', how='outer', suffixes=('', '_digital_info'))
+                combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), 
+                                    df_d.dropna(subset=['Pre-Prod No.']), 
+                                    on='Pre-Prod No.', how='outer', suffixes=('', '_digital_info'))
                 
-                if 'Pre-Prod No.' in combined.columns: combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
-                
-                for col in combined.columns:
-                    if combined[col].dtype == 'object' or col == 'Diameter': 
-                        combined[col] = combined[col].astype(str).replace('nan', '')
-                
+                combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
                 combined.to_parquet(parquet_path, index=False)
-            except Exception as e: 
-                st.error(f"Merge Error: {e}")
+            except Exception as e: st.error(f"Merge Error: {e}")
                 
-    if not os.path.exists(parquet_path): 
-        return pd.DataFrame()
-        
+    if not os.path.exists(parquet_path): return pd.DataFrame()
     df = pd.read_parquet(parquet_path)
-    df = clean_column_names(df)
-    
-    if 'Pre-Prod No.' in df.columns:
-        df['Pre-Prod No.'] = df['Pre-Prod No.'].apply(pad_preprod_id)
-        df = df.sort_values(by='Pre-Prod No.', ascending=True).reset_index(drop=True)
-    
     if 'Date' in df.columns:
         results = df.apply(calculate_age_category, axis=1)
-        df['Age Category'] = [r[0] for r in results]
-        df['Project Age (Open and Closed)'] = [r[1] for r in results]
-        df['Project Age (Open and Closed)'] = pd.to_numeric(df['Project Age (Open and Closed)'], errors='coerce').fillna(0)
+        df['Age Category'], df['Project Age (Open and Closed)'] = [r[0] for r in results], [r[1] for r in results]
     return df
 
 def load_from_google_sheets():
-    """
-    Connects to Google Sheets and returns the data as a DataFrame.
-    """
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets"]
-        
-        # Re-use your existing auth logic
-        if "gcp_service_account" in st.secrets:
-            creds_info = st.secrets["gcp_service_account"]
-        else:
-            creds_info = {
-                "type": st.secrets["connections.gsheets"]["type"],
-                "project_id": st.secrets["connections.gsheets"]["project_id"],
-                "private_key_id": st.secrets["connections.gsheets"]["private_key_id"],
-                "private_key": st.secrets["connections.gsheets"]["private_key"],
-                "client_email": st.secrets["connections.gsheets"]["client_email"],
-                "client_id": st.secrets["connections.gsheets"]["client_id"],
-                "auth_uri": st.secrets["connections.gsheets"]["auth_uri"],
-                "token_uri": st.secrets["connections.gsheets"]["token_uri"],
-                "auth_provider_x509_cert_url": st.secrets["connections.gsheets"]["auth_provider_x509_cert_url"],
-                "client_x509_cert_url": st.secrets["connections.gsheets"]["client_x509_cert_url"]
-}
-
+        # Use Streamlit Secrets for Auth
+        creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
-
-        sheet_id = "1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M"
-        spreadsheet = client.open_by_key(sheet_id)
-        worksheet = spreadsheet.get_worksheet(0)
-        
-        # Get all records and convert to DataFrame
-        data = worksheet.get_all_records()
-        return pd.DataFrame(data)
-        
+        spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
+        return pd.DataFrame(spreadsheet.get_worksheet(0).get_all_records())
     except Exception as e:
-        st.error(f"❌ Could not read Google Sheet: {e}")
+        st.error(f"❌ Google Sheet Error: {e}")
         return pd.DataFrame()
 
-# --- 4. TRIAL DATA CONFIG ---
-TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
-
-@st.cache_data
-def load_trial_data():
-    """Helper to load and process the trials trending data."""
-    if os.path.exists(TRIALS_FILE_CURRENT):
-        try:
-            # Added sep=None and engine='python' so it detects semicolons OR commas automatically
-            df = pd.read_csv(TRIALS_FILE_CURRENT, sep=None, engine='python', encoding='utf-8-sig')
-            df = clean_column_names(df)
-            
-            # Convert dates - ensuring the column names match your CSV exactly
-            # If your CSV uses 'Date Log' (with a space), clean_column_names changes it to 'Date_Log'
-            df['Date_Log'] = pd.to_datetime(df['Date_Log'], dayfirst=True, errors='coerce')
-            df['Completion_Date'] = pd.to_datetime(df['Completion_Date'], dayfirst=True, errors='coerce')
-            
-            # Remove rows where dates failed to parse
-            df = df.dropna(subset=['Date_Log', 'Completion_Date'])
-            
-            # Calculate metrics
-            df['Days_Taken'] = (df['Completion_Date'] - df['Date_Log']).dt.days
-            df['Week_Num'] = df['Date_Log'].dt.isocalendar().week
-            
-            # Sort by date so the line chart flows chronologically
-            df = df.sort_values('Date_Log')
-            
-            return df
-        except Exception as e:
-            st.error(f"Error loading trial data: {e}")
-            return pd.DataFrame()
-    else:
-        st.warning(f"File not found: {TRIALS_FILE_CURRENT}")
-        return pd.DataFrame()
-
-# --- 5. CONFIGURATIONS & DROPDOWN DATA ---
+# --- 6. UI CONFIGURATION ---
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
     "Orifice": "Orifice.csv", "Diameter": "TubeDia.csv", "Foiling": "Foiling.csv",
@@ -281,157 +151,80 @@ DROPDOWN_CONFIG = {
     "Sales Rep": "Sales Rep.csv", 
     "Cap_Lid Material": "Cap_Material.csv", "Cap_Lid Diameter": "Cap_Lid Diameter.csv"
 }
-
 DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
 
-DESIRED_ORDER = [
-    "Date", "Age Category", "Client", "Project Description", "New Mould_Client or Product", 
-    "Product Code", "Machine", "Sales Rep", "Category", "Status", "Open or closed", 
-    "Completion date", "Material", "Product Material Colour (tube, jar etc.)", 
-    "Artwork Required", "Artwork Received", "Order Qty x1000", "Unit Order No", 
-    "Length", "Cap_Lid Style", "Cap_Lid Material", "Cap_Lid Diameter", "Orifice", "Other Cap_Lid Info", 
-    "Tube Shoulder colour", "Dust Controlled Area", "Date Sent on Proof", "Size of Eyemark", 
-    "Proof Approved (Conventional)", "Proof Approved (Digital)", "Ordered Plates", 
-    "Plates Arrived", "Sent on Trial", "Digital trial received", 
-    "Revised Artwork After Trialling", "Masterbatch received", "Extrusion requested", 
-    "Extrusion received", "Injection trial requested", "Injection Trial Received", 
-    "Blowmould trial requested", "Blowmould trial received", "Comments"
-]
-
-# --- 6. INITIALIZE DATA & UI HELPERS ---
-
-def display_combination_table(key_prefix):
-    """The expandable helper for Tube & Cap combinations."""
-    if os.path.exists(COMBINATIONS_FILE):
-        with st.expander("📂 Browse Tube & Cap Combinations", expanded=False):
-            try:
-                # FIX: Added sep=';' to correctly split the columns
-                combo_df = pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig')
-                
-                # Clean column names to remove any invisible characters
-                combo_df = clean_column_names(combo_df)
-                
-                search = st.text_input(f"🔍 Filter List", key=f"{key_prefix}_search")
-                if search:
-                    mask = combo_df.apply(lambda row: row.astype(str).str.contains(search, case=False).any(), axis=1)
-                    combo_df = combo_df[mask]
-                
-                # Display as a clean, interactive table
-                event = st.dataframe(
-                    combo_df, 
-                    use_container_width=True, 
-                    hide_index=True, 
-                    on_select="rerun", 
-                    selection_mode="single-row", 
-                    key=f"{key_prefix}_table"
-                )
-                
-                if event.selection.rows:
-                    sel_row = combo_df.iloc[event.selection.rows[0]].to_dict()
-                    
-                    # Logic: Map the CSV columns to your app's internal keys
-                    # Ensure the keys here match your DESIRED_ORDER list exactly
-                    st.session_state.selected_combo = {
-                        "Diameter": str(sel_row.get("Diameter", "")),
-                        "Cap_Lid Style": str(sel_row.get("Cap_Lid Style", "")),
-                        "Cap_Lid Diameter": str(sel_row.get("Cap_Lid Diameter", "")),
-                        "Cap_Lid Material": str(sel_row.get("Cap_Lid Material", ""))
-                    }
-                    st.toast("✅ Combination Selected")
-                    
-            except Exception as e: 
-                st.error(f"Error loading combos: {e}")
-
-# FIX: Corrected variable name TRACKER_ADJ_FILE
-if st.sidebar.button("🔄 Force Refresh from CSVs"):
+# --- 7. MAIN LOGIC ---
+if st.sidebar.button("🔄 Force Refresh Database"):
     df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=True)
     st.sidebar.success("Database Rebuilt!")
 else:
     df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
 
-if not df.empty and 'Client' in df.columns:
-    client_list = sorted([str(c) for c in df['Client'].unique() if str(c).strip() and str(c).lower() != 'nan'])
-    DROPDOWN_DATA['Client'] = client_list
+# Navigation
+tabs = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"]
+tab_nav = st.radio("Navigation", tabs, index=tabs.index(st.session_state.active_tab) if st.session_state.active_tab in tabs else 0, horizontal=True)
+st.session_state.active_tab = tab_nav
 
-# --- 7. UI: DASHBOARD SUMMARY ---
-col_title, col_export = st.columns([4, 1])
-with col_title:
-    st.title("🚀 Project Tracker Dashboard")
+st.title("🚀 Project Tracker Dashboard")
 
-if not df.empty:
-    pp_open = df[df['Open or closed'].str.lower().str.contains('open', na=False)].copy()
-    
-    with st.container():
-        st.subheader("📊 Pre-Prod Age Analysis Summary")
-        total_open_pp = len(pp_open)
-        critical_pp = len(pp_open[pp_open['Age Category'] == "> 12 Weeks"])
-        mid_pp = len(pp_open[pp_open['Age Category'] == "6-12 Weeks"])
-        
-        c1, c2, c3, c4 = st.columns([1, 1, 1, 2])
-        with c1: st.metric("Total Open PP", total_open_pp)
-        with c2: 
-            pct_crit = (critical_pp / total_open_pp * 100) if total_open_pp > 0 else 0
-            st.metric("Critical (>12w)", critical_pp, delta=f"{pct_crit:.1f}%", delta_color="inverse")
-        with c3: st.metric("Mid-Term (6-12w)", mid_pp)
-        with c4:
-            age_dist = pp_open['Age Category'].value_counts().reindex(["< 6 Weeks", "6-12 Weeks", "> 12 Weeks"], fill_value=0)
-            st.bar_chart(age_dist, height=150)
-
-        if critical_pp > 0:
-            with st.expander(f"⚠️ View {critical_pp} Critical Projects (>12 Weeks Old)", expanded=False):
-                critical_list = pp_open[pp_open['Age Category'] == "> 12 Weeks"][['Pre-Prod No.', 'Client', 'Project Age (Open and Closed)', 'Sales Rep']]
-                st.table(critical_list.sort_values('Project Age (Open and Closed)', ascending=False))
-
-with col_export:
-    if not df.empty:
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-            df.to_excel(writer, index=False, sheet_name='Projects')
-        st.download_button(label="📥 Download Excel", data=output.getvalue(), file_name=f"Project_Database_{datetime.now().strftime('%Y%m%d')}.xlsx")
-
-st.divider()
-
-# --- 8. UI: TABS & NAVIGATION ---
-
-# --- TAB LOGIC ---
 # --- TAB: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
-    raw_search = st.text_input("Search Pre-Prod No.", key="search_input_box").strip()
-    search_no = pad_preprod_id(raw_search) if raw_search else ""
+    raw_search = st.text_input("Enter Pre-Prod No. (e.g. 9143)", key="search_box").strip()
+    search_no = pad_preprod_id(raw_search)
 
-    # --- THIS IS WHERE THE LOGIC GOES ---
-    if search_no != st.session_state.get("last_search_no", ""):
-        # The user typed a NEW number, so we clear the old "Edit" data
+    if search_no != st.session_state.last_search_no:
         st.session_state.last_search_no = search_no
-        # Clear specific keys so the form refreshes for the new ID
         for key in list(st.session_state.keys()):
-            if key.startswith("ed_"): 
-                del st.session_state[key]
-    # ------------------------------------
+            if key.startswith("ed_"): del st.session_state[key]
 
-    # Now continue with your matching logic
-    match = df[df['Pre-Prod No.'] == search_no] if not df.empty else pd.DataFrame()
+    if search_no and not df.empty:
+        match = df[df['Pre-Prod No.'] == search_no]
+        if not match.empty:
+            row = match.iloc[0]
+            st.success(f"Found: {row.get('Client', 'Unknown Client')} - {row.get('Project Description', '')}")
+            
+            with st.form("edit_form"):
+                c1, c2 = st.columns(2)
+                with c1:
+                    st.text_input("Client", value=str(row.get('Client', '')), key="ed_client")
+                    st.selectbox("Status", ["Open", "Closed", "On Hold"], index=0, key="ed_status")
+                with c2:
+                    st.text_input("Project Description", value=str(row.get('Project Description', '')), key="ed_desc")
+                
+                if st.form_submit_button("💾 Save Changes"):
+                    st.info("Database saving logic (CSV/Parquet Write) would trigger here.")
+        else:
+            st.warning("No record found with that ID.")
 
+# --- TAB: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
-    st.subheader("Add a New Project")
-    # ... (Your Add Job Code Here) ...
+    st.subheader("Register New Manufacturing Trial")
+    with st.form("add_job_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            st.text_input("Client Name", key="new_client")
+            st.selectbox("Machine", DROPDOWN_DATA.get("Machine", []), key="new_machine")
+        with col2:
+            st.date_input("Start Date", value=datetime.now(), key="new_date")
+            st.selectbox("Sales Rep", DROPDOWN_DATA.get("Sales Rep", []), key="new_sales")
+        
+        if st.form_submit_button("➕ Create Project"):
+            st.success("Project added to queue (Local Preview Only)")
 
-elif tab_nav == "📊 Detailed Age Analysis":
-    st.subheader("Project Age Analysis")
-    # ... (Your Analysis Code Here) ...
-
-elif tab_nav == "🧪 Trial Trends":
-    st.subheader("Trial Turnaround Trends")
-    # ... (Your Trial Trends Code Here) ...
-
+# --- TAB: GOOGLE DB VIEW ---
 elif tab_nav == "🌐 Google DB View":
-    st.subheader("🌐 Live Google Sheets Database")
     if st.button("🔄 Fetch Latest from Google"):
-        with st.spinner("Connecting to Google..."):
-            gs_df = load_from_google_sheets()
-            if not gs_df.empty:
-                st.session_state.google_data = gs_df
-                st.success("Data fetched!")
-
+        with st.spinner("Connecting..."):
+            st.session_state.google_data = load_from_google_sheets()
+    
     if "google_data" in st.session_state:
         st.dataframe(st.session_state.google_data, use_container_width=True)
+
+# --- GLOBAL SUMMARY METRICS ---
+if not df.empty:
+    st.divider()
+    open_jobs = df[df['Open or closed'].str.lower().str.contains('open', na=False)]
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Total Open Jobs", len(open_jobs))
+    m2.metric("Critical (>12w)", len(open_jobs[open_jobs['Age Category'] == "> 12 Weeks"]))
+    m3.metric("Database Rows", len(df))
