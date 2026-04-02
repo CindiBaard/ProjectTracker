@@ -67,13 +67,25 @@ if 'last_search_no' not in st.session_state:
 # --- 4. UTILITY FUNCTIONS ---
 
 def get_auto_next_no(df):
-    if df is None or df.empty or 'Pre-Prod No.' not in df.columns: return "00001"
+    if df is None or df.empty or 'Pre-Prod No.' not in df.columns: 
+        return "00001"
     try:
-        # Extract numbers, get max, and increment
-        nums = df['Pre-Prod No.'].str.extract(r'(\d+)').dropna().astype(int)
-        if nums.empty: return "00001"
-        return str(nums.max() + 1).zfill(5)
-    except: return "00001"
+        # 1. Extract digits into a Series
+        # squeeze=True ensures we get a Series back, not a 1-column DataFrame
+        nums = df['Pre-Prod No.'].str.extract(r'(\d+)')[0].dropna().astype(int)
+        
+        if nums.empty: 
+            return "00001"
+            
+        # 2. Get the actual integer value using .max()
+        # .max() on a Series returns a single number
+        next_val = int(nums.max()) + 1
+        
+        # 3. Format it back to 5 digits
+        return str(next_val).zfill(5)
+    except Exception as e:
+        # Optional: st.write(f"Debug ID Error: {e}") 
+        return "00001"
 
 def get_next_available_id(search_no, existing_ids):
     base = str(search_no).split('_')[0]
