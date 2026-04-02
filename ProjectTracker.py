@@ -142,7 +142,7 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
         return df
 
     # 2. ONLY if the file is missing or we click "Rebuild", do the CSV merge
-    try:
+    
         try:
             df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig')
             df_d = pd.read_csv(digital_file, sep=None, engine='python', encoding='utf-8-sig')
