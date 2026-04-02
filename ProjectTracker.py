@@ -126,10 +126,30 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
                 suffixes=('', '_dig')
             )
             combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
+            
+            # Calculate Age Categories for the new combined data
+            if 'Date' in combined.columns:
+                results = combined.apply(calculate_age_category, axis=1)
+                combined['Age Category'] = [r[0] for r in results]
+                combined['Project Age (Open and Closed)'] = [r[1] for r in results]
+            
             combined.to_parquet(parquet_path, index=False)
+            return combined  # <--- CRITICAL: Return the data after merging
+            
         except Exception as e: 
             st.error(f"Merge Error: {e}")
             return pd.DataFrame()
+                
+    # If file exists and we aren't forcing a refresh, load from parquet
+    if os.path.exists(parquet_path):
+        df = pd.read_parquet(parquet_path)
+        # Ensure age categories exist even when loading from cache
+        if 'Date' in df.columns and 'Age Category' not in df.columns:
+            results = df.apply(calculate_age_category, axis=1)
+            df['Age Category'], df['Project Age (Open and Closed)'] = [r[0] for r in results], [r[1] for r in results]
+        return df
+    
+    return pd.DataFrame()
 
 
 # 1. Define the filename at the top with your other file paths
