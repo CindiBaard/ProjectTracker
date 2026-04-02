@@ -320,7 +320,28 @@ if tab_nav == "🔍 Search & Edit":
             st.session_state.form_data = new_clone
             st.session_state.active_tab = "➕ Add New Job"
             st.rerun()
-        
+
+        pass
+
+        # --- NEW: DELETE SECTION ---
+        with btn_col2:
+            st.markdown("---") # Visual separator
+            confirm_delete = st.checkbox(f"Confirm Delete {search_no}")
+            if st.button("🗑️ Delete Project", use_container_width=True, type="primary", disabled=not confirm_delete):
+                # 1. Remove the row from the current dataframe
+                df = df.drop(idx)
+                
+                # 2. Save the updated dataframe to the Parquet file
+                save_db(df)
+                
+                # 3. Clear cache so the app doesn't remember the deleted row
+                st.cache_data.clear()
+                
+                # 4. Reset search and refresh
+                st.session_state.last_search_no = ""
+                st.success(f"Project {search_no} has been deleted.")
+                st.rerun()
+                
         display_combination_table("edit")
         with st.form("edit_form"):
             st.subheader(f"Editing: {search_no}")
