@@ -356,7 +356,6 @@ if tab_nav == "🔍 Search & Edit":
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
     selected = st.session_state.get("selected_combo", {})
-    # get_auto_next_no handles the ID incrementing logic
     default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
     
     with st.form("new_job_form"):
@@ -376,7 +375,9 @@ elif tab_nav == "➕ Add New Job":
                     new_entry[col] = st.selectbox(col, opts, index=opts.index(val) if val in opts else 0)
                 else:
                     new_entry[col] = st.text_input(col, value=val)
-    if st.form_submit_button("➕ Create Project", use_container_width=True):
+
+        # THIS BUTTON MUST BE INDENTED INSIDE THE "WITH" BLOCK
+        if st.form_submit_button("➕ Create Project", use_container_width=True):
             status = "Closed" if new_entry.get("Completion date") else "Open"
             new_entry.update({"Status": status, "Open or closed": status})
             
@@ -386,7 +387,7 @@ elif tab_nav == "➕ Add New Job":
             # 2. Save to file
             save_db(df)
             
-            # 3. CRITICAL: Clear the cache so load_db() sees the new file
+            # 3. Clear the cache so load_db() sees the new file
             st.cache_data.clear() 
             
             # 4. Clean up session state
@@ -395,7 +396,6 @@ elif tab_nav == "➕ Add New Job":
             
             st.success("Job Added! Re-loading database...")
             st.rerun()
-
 
 # --- 3. TAB: DETAILED AGE ANALYSIS ---
 elif tab_nav == "📊 Detailed Age Analysis":
