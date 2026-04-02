@@ -131,6 +131,11 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
             st.error(f"Merge Error: {e}")
             return pd.DataFrame()
 
+
+# 1. Define the filename at the top with your other file paths
+TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
+
+# 2. Define the loading function in your DATA LOADING section
 @st.cache_data
 def load_trial_data():
     """Loads and processes the weekly trial CSV file for turnaround analysis."""
@@ -158,6 +163,7 @@ def load_trial_data():
             return df
         except Exception as e:
             st.error(f"Error processing trial dates: {e}")
+            return pd.DataFrame()
     else:
         # Silently return empty DF if file isn't there yet to avoid crashing the app
         return pd.DataFrame()
