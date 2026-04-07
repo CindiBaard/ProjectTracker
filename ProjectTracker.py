@@ -336,22 +336,30 @@ elif tab_nav == "📊 Detailed Age Analysis":
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("Trial Turnaround Performance")
     trial_df = load_trial_data()
+    
     if not trial_df.empty:
+        # Group data by week and calculate the mean of Days_Taken
         weekly_stats = trial_df.groupby('Week_Num')['Days_Taken'].mean().sort_index()
+        
         col1, col2 = st.columns([1, 3])
         with col1:
             avg_val = trial_df['Days_Taken'].mean()
             st.metric("Avg Turnaround (Total)", f"{avg_val:.1f} Days")
+            st.write("Weekly Averages:")
             st.dataframe(weekly_stats.rename("Avg Days"), use_container_width=True)
+        
         with col2:
             fig, ax = plt.subplots(figsize=(10, 4))
-            ax.plot(weekly_stats.index, weekly_stats.values, marker='o', color='#2ca02c')
+            ax.plot(weekly_stats.index, weekly_stats.values, marker='o', linestyle='-', color='#2ca02c')
             ax.set_title("Average Days Taken per Week")
             ax.set_ylabel("Days")
             ax.set_xlabel("Week Number")
+            ax.grid(True, alpha=0.3)
             st.pyplot(fig)
     else:
-        st.info("No trial data found to analyze.")_Taken'].mean().sort_index()
+        st.info("No trial data found to analyze.")
+
+# --- END OF FILE ---_Taken'].mean().sort_index()
         if not weekly_stats.empty:
             fig, ax = plt.subplots(figsize=(10, 4))
             ax.plot(weekly_stats.index, weekly_stats.values, marker='o', color='#2ca02c')
