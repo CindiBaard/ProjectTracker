@@ -161,12 +161,7 @@ def display_combination_table(key_prefix):
                         "Diameter": str(sel_row.get("Diameter", "")),
                         "Cap_Lid Style": str(sel_row.get("Cap_Lid Style", "")),
                         "Cap_Lid Diameter": str(sel_row.get("Cap_Lid Diameter", "")),
-                        "Cap_Lid Material": str(sel_row.get("Cap_Lid Material", ""))
-                    }
-                    st.toast("✅ Specs Selected")
-            except Exception as e: st.error(f"Combo Error: {e}")
-
-# --- 7. MAIN LOGIC ---
+                        "Cap_Lid Material": str(sel_row.get# --- 7. MAIN LOGIC ---
 df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=st.sidebar.button("🔄 Rebuild Local DB"))
 
 DROPDOWN_CONFIG = {
@@ -175,7 +170,14 @@ DROPDOWN_CONFIG = {
     "Cap_Lid Style": "Cap_Lid Style.csv", "Machine": "Machine.csv", 
     "Sales Rep": "Sales Rep.csv", "Cap_Lid Material": "Cap_Material.csv", "Cap_Lid Diameter": "Cap_Lid Diameter.csv"
 }
-DROPDOWN_DATA = {k: get_options(v) fo# --- NAVIGATION ---
+
+# Fix for Line 178: Correctly closing the dictionary
+DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
+
+if not df.empty:
+    DROPDOWN_DATA['Client'] = sorted([str(c) for c in df['Client'].unique() if str(c).strip() and str(c).lower() != 'nan'])
+
+# --- NAVIGATION ---
 tabs_list = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Cloud Sync"]
 tab_nav = st.radio("Navigation", tabs_list, index=tabs_list.index(st.session_state.active_tab), horizontal=True)
 st.session_state.active_tab = tab_nav
@@ -293,7 +295,6 @@ elif tab_nav == "➕ Add New Job":
 # --- TAB 5: GOOGLE CLOUD SYNC ---
 elif tab_nav == "🌐 Cloud Sync":
     st.subheader("🌐 Google Sheets Database Sync")
-    
     col_a, col_b = st.columns(2)
     
     if col_a.button("📥 Fetch from Google (Read Only)", use_container_width=True):
@@ -304,7 +305,6 @@ elif tab_nav == "🌐 Cloud Sync":
 
     if col_b.button("📤 Push Local Data to Google", use_container_width=True, type="primary"):
         try:
-            # Re-authorize and open sheet
             scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
             creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
             if isinstance(creds_info, dict) and "private_key" in creds_info:
@@ -313,10 +313,7 @@ elif tab_nav == "🌐 Cloud Sync":
             client = gspread.authorize(creds)
             spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
             worksheet = spreadsheet.get_worksheet(0)
-            
-            # Clear and update with current local 'df'
             worksheet.clear()
-            # Handle NaNs and convert to list for Gspread
             export_df = df.fillna("")
             worksheet.update([export_df.columns.values.tolist()] + export_df.values.tolist())
             st.success("Successfully synced local database to Google Sheets!")
@@ -324,8 +321,6 @@ elif tab_nav == "🌐 Cloud Sync":
             st.error(f"Sync failed: {e}")
 
     if "google_data" in st.session_state:
-        st.write("### Preview: Cloud Data")
-       if "google_data" in st.session_state:
         st.write("### Preview: Cloud Data")
         st.dataframe(st.session_state.google_data, use_container_width=True)
 
@@ -341,30 +336,22 @@ elif tab_nav == "📊 Detailed Age Analysis":
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("Trial Turnaround Performance")
     trial_df = load_trial_data()
-    
     if not trial_df.empty:
-        # Group data by week and calculate the mean of Days_Taken
         weekly_stats = trial_df.groupby('Week_Num')['Days_Taken'].mean().sort_index()
-        
         col1, col2 = st.columns([1, 3])
         with col1:
             avg_val = trial_df['Days_Taken'].mean()
             st.metric("Avg Turnaround (Total)", f"{avg_val:.1f} Days")
-            st.write("Weekly Averages:")
             st.dataframe(weekly_stats.rename("Avg Days"), use_container_width=True)
-        
         with col2:
             fig, ax = plt.subplots(figsize=(10, 4))
-            ax.plot(weekly_stats.index, weekly_stats.values, marker='o', linestyle='-', color='#2ca02c')
+            ax.plot(weekly_stats.index, weekly_stats.values, marker='o', color='#2ca02c')
             ax.set_title("Average Days Taken per Week")
             ax.set_ylabel("Days")
             ax.set_xlabel("Week Number")
-            ax.grid(True, alpha=0.3)
             st.pyplot(fig)
     else:
-        st.info("No trial data found to analyze.")
-
-# --- END OF FILE ---_Taken'].mean().sort_index()
+        st.info("No trial data found to analyze.")_Taken'].mean().sort_index()
         if not weekly_stats.empty:
             fig, ax = plt.subplots(figsize=(10, 4))
             ax.plot(weekly_stats.index, weekly_stats.values, marker='o', color='#2ca02c')
