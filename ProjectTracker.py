@@ -295,8 +295,10 @@ if not df.empty:
 
 # --- NAVIGATION ---
 tabs_list = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"]
-tab_nav = st.radio("Navigation", tabs_list, index=tabs_list.index(st.session_state.active_tab), horizontal=True)
+# To this (adding a unique key):
+tab_nav = st.radio("Navigation", tabs_list, index=tabs_list.index(st.session_state.active_tab), horizontal=True, key="main_nav_radio")
 st.session_state.active_tab = tab_nav
+
 
 # --- 1. TAB: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
