@@ -154,14 +154,17 @@ def display_combination_table(key_prefix):
                 search = st.text_input(f"🔍 Filter List", key=f"{key_prefix}_search")
                 if search:
                     combo_df = combo_df[combo_df.apply(lambda r: r.astype(str).str.contains(search, case=False).any(), axis=1)]
-                event = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table")
-                if event.selection.rows:
+                         if event.selection.rows:
                     sel_row = combo_df.iloc[event.selection.rows[0]].to_dict()
                     st.session_state.selected_combo = {
                         "Diameter": str(sel_row.get("Diameter", "")),
                         "Cap_Lid Style": str(sel_row.get("Cap_Lid Style", "")),
                         "Cap_Lid Diameter": str(sel_row.get("Cap_Lid Diameter", "")),
-                        "Cap_Lid Material": str(sel_row.get# --- 7. MAIN LOGIC ---
+                        "Cap_Lid Material": str(sel_row.get("Cap_Lid Material", ""))
+                    }
+                    st.toast("✅ Specs Selected")
+            except Exception as e: 
+                st.error(f"Combo Error: {e}")et# --- 7. MAIN LOGIC ---
 df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=st.sidebar.button("🔄 Rebuild Local DB"))
 
 DROPDOWN_CONFIG = {
