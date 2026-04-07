@@ -325,7 +325,41 @@ elif tab_nav == "🌐 Cloud Sync":
 
     if "google_data" in st.session_state:
         st.write("### Preview: Cloud Data")
-        st.dataframe(st.session_state.google_data, use_container_width=True)_Taken'].mean().sort_index()
+       if "google_data" in st.session_state:
+        st.write("### Preview: Cloud Data")
+        st.dataframe(st.session_state.google_data, use_container_width=True)
+
+# --- TAB 3: AGE ANALYSIS ---
+elif tab_nav == "📊 Detailed Age Analysis":
+    st.subheader("Project Age Distribution")
+    if not df.empty and 'Age Category' in df.columns:
+        age_counts = df['Age Category'].value_counts()
+        st.bar_chart(age_counts)
+        st.dataframe(df[['Pre-Prod No.', 'Client', 'Project Description', 'Age Category', 'Project Age (Open and Closed)']], use_container_width=True)
+
+# --- TAB 4: TRIAL TRENDS ---
+elif tab_nav == "🧪 Trial Trends":
+    st.subheader("Trial Turnaround Performance")
+    trial_df = load_trial_data()
+    if not trial_df.empty:
+        # Calculate weekly average of Days_Taken
+        weekly_stats = trial_df.groupby('Week_Num')['Days_Taken'].mean().sort_index()
+        
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            st.metric("Avg Turnaround (Total)", f"{trial_df['Days_Taken'].mean():.1f} Days")
+            st.dataframe(weekly_stats.rename("Avg Days"), use_container_width=True)
+        
+        with col2:
+            fig, ax = plt.subplots(figsize=(10, 4))
+            ax.plot(weekly_stats.index, weekly_stats.values, marker='o', linestyle='-', color='#2ca02c')
+            ax.set_title("Average Days Taken per Week")
+            ax.set_ylabel("Days")
+            ax.set_xlabel("Week Number")
+            ax.grid(True, alpha=0.3)
+            st.pyplot(fig)
+    else:
+        st.info("No trial data found to analyze.")_Taken'].mean().sort_index()
         if not weekly_stats.empty:
             fig, ax = plt.subplots(figsize=(10, 4))
             ax.plot(weekly_stats.index, weekly_stats.values, marker='o', color='#2ca02c')
