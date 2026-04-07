@@ -361,12 +361,10 @@ elif tab_nav == "🧪 Trial Trends":
             ax.set_xlabel("Week Number")
             ax.grid(True, alpha=0.3)
             st.pyplot(fig)
-        else:
+    else:
         st.info("No trial data found to analyze.")
 
-
-# --- END OF FILE ---
-        _Taken'].mean().sort_index()
+# --- END OF FILE ---_Taken'].mean().sort_index()
         if not weekly_stats.empty:
             fig, ax = plt.subplots(figsize=(10, 4))
             ax.plot(weekly_stats.index, weekly_stats.values, marker='o', color='#2ca02c')
