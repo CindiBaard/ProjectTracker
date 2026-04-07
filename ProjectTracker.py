@@ -1,4 +1,4 @@
-import os
+import oimport os
 import re
 import io
 import pandas as pd
@@ -483,4 +483,6 @@ if not df.empty:
     # 4. Display the metrics
     m1.metric("Total Open Jobs", total_open)
     m2.metric("Critical (>12w)", critical_jobs)
-    m3.metric("Avg Age (Days)", int(avg_age_val) if not pd.isna(avg_age_val) else 0)
+    m3.metric("Avg Age (Days)", int(avg_age_val) if not p
+    if "google_data" in st.session_state:
+        st.dataframe(st.session_state.google_data, use_container_width=True)
