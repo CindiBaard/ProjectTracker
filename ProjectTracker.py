@@ -138,9 +138,16 @@ def load_trial_data():
         df = pd.read_csv(trials_path)
         df['Date_Log'] = pd.to_datetime(df['Date_Log'], dayfirst=True, errors='coerce')
         df['Completion_Date'] = pd.to_datetime(df['Completion_Date'], dayfirst=True, errors='coerce')
-        df['Days_Taken'] = (df['Completion_Date'] - df['Date_Log']).dt.days
-        wk_col = next((c for c in df.columns if 'week' in c.lower()), None)
-        df['Week_Num'] = df[wk_col].astype(stdef display_combination_table(key_prefix):
+        df['# This was the merged line - now separated and fixed
+        df['Week_Num'] = df[wk_col].astype(str).str.extract(r'(\d+)').fillna(0).astype(int) if wk_col else 0
+        return df
+    except: 
+        return pd.DataFrame()
+
+# --- 6. UI HELPERS ---
+
+def display_combination_table(key_prefix):
+    if os.path.exists(COMBINATIONS_FILE):m'] = df[wk_col].astype(stdef display_combination_table(key_prefix):
     if os.path.exists(COMBINATIONS_FILE):
         with st.expander("📂 Browse Tube & Cap Combinations", expanded=False):
             try:
