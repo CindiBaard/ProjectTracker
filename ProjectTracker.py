@@ -341,13 +341,16 @@ elif tab_nav == "📊 Detailed Age Analysis":
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("Trial Turnaround Performance")
     trial_df = load_trial_data()
+    
     if not trial_df.empty:
-        # Calculate weekly average of Days_Taken
+        # Group data by week and calculate the mean of Days_Taken
         weekly_stats = trial_df.groupby('Week_Num')['Days_Taken'].mean().sort_index()
         
         col1, col2 = st.columns([1, 3])
         with col1:
-            st.metric("Avg Turnaround (Total)", f"{trial_df['Days_Taken'].mean():.1f} Days")
+            avg_val = trial_df['Days_Taken'].mean()
+            st.metric("Avg Turnaround (Total)", f"{avg_val:.1f} Days")
+            st.write("Weekly Averages:")
             st.dataframe(weekly_stats.rename("Avg Days"), use_container_width=True)
         
         with col2:
