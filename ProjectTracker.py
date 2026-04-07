@@ -729,29 +729,43 @@ if not df.empty:
 
 # --- NAVIGATION ---
 tabs_list = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"]
-tab_nav = st.radio("Navigation", tabs_list, index=tabs_list.index(st.session_state.active_tab), horizontal=True)
+
+# Added a unique key here to prevent DuplicateElement errors
+tab_nav = st.radio(
+    "Navigation", 
+    tabs_list, 
+    index=tabs_list.index(st.session_state.active_tab), 
+    horizontal=True,
+    key="main_navigation_radio"
+)
 st.session_state.active_tab = tab_nav
 
 # --- 1. TAB: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
     c_s, c_cl = st.columns([4, 1])
     raw_search = c_s.text_input("Search Pre-Prod No.", key="search_input_box").strip()
+    
     if c_cl.button("♻️ Clear", use_container_width=True):
         st.session_state.last_search_no = ""
         st.rerun()
 
     search_no = pad_preprod_id(raw_search)
+    
+    # Check if search has changed
     if search_no != st.session_state.last_search_no:
         st.session_state.last_search_no = search_no
         st.rerun()
 
+    # Look for the project in the database
     match = df[df['Pre-Prod No.'] == search_no] if not df.empty else pd.DataFrame()
+
+    # --- START OF PROJECT MATCH BLOCK ---
     if search_no and not match.empty:
         idx, row = match.index[0], match.iloc[0]
         
         btn_col1, btn_col2 = st.columns(2)
+        
         if btn_col1.button("👯 Clone for Repeat Order", use_container_width=True):
-            # Cloning logic uses get_next_available_id from utility functions
             new_clone = row.to_dict()
             new_clone.update({
                 'Pre-Prod No.': get_next_available_id(search_no, df['Pre-Prod No.']), 
@@ -762,7 +776,22 @@ if tab_nav == "🔍 Search & Edit":
             st.session_state.active_tab = "➕ Add New Job"
             st.rerun()
 
-        pass
+        # Visual selection of specs
+        display_combination_table("edit")
+        
+        # The actual editing form
+        with st.form("edit_form"):
+            st.subheader(f"Editing: {search_no}")
+            
+            # ... rest of your form fields (edit_cols, selectboxes, etc.) ...
+            
+            if st.form_submit_button("💾 Save Changes", use_container_width=True):
+                # Save logic here
+                pass 
+    
+    # Optional: message if searching but nothing found
+    elif search_no:
+        st.warning(f"No project found for number: {search_no}")
 
         # --- NEW: DELETE SECTION ---
         with btn_col2:
