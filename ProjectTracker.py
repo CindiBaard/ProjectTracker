@@ -124,27 +124,30 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
             combined['Age Category'] = [r[0] for r in results]
             combined['Project Age (Open and Closed)'] = [r[1] for r in results]
         
-        combined.to_parquet(parquet_path, index=False)
-        return combined
-    except Exception as e:
-        st.error(f"Merge Error: {e}")
-        return pd.DataFrame(trials_path = os.path.join(BASE_DIR, TRIALS_FILE_CURRENT)
-    if not os.path.exists(trials_path): return pd.DataFrame()
+        combined.to_parquet(parquet_path, index=F@st.cache_data
+def load_trial_data():
+    trials_path = os.path.join(BASE_DIR, TRIALS_FILE_CURRENT)
+    if not os.path.exists(trials_path): 
+        return pd.DataFrame()
     try:
         df = pd.read_csv(trials_path)
         df['Date_Log'] = pd.to_datetime(df['Date_Log'], dayfirst=True, errors='coerce')
         df['Completion_Date'] = pd.to_datetime(df['Completion_Date'], dayfirst=True, errors='coerce')
+        
+        # Calculate Days_Taken correctly
         df['Days_Taken'] = (df['Completion_Date'] - df['Date_Log']).dt.days
+        
+        # Identify the week column safely
         wk_col = next((c for c in df.columns if 'week' in c.lower()), None)
         
-        # FIXED: Correcting the Week_Num calculation
         if wk_col:
             df['Week_Num'] = df[wk_col].astype(str).str.extract(r'(\d+)').fillna(0).astype(int)
         else:
             df['Week_Num'] = 0
             
         return df
-    except: 
+    except Exception as e:
+        st.error(f"Trial Data Load Error: {e}")
         return pd.DataFrame()
 
 # --- 6. UI HELPERS ---
