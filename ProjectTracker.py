@@ -82,18 +82,22 @@ def calculate_age_category(row):
         end_date = pd.to_datetime(comp_date, dayfirst=True, errors='coerce') if comp_date and comp_date.lower() != 'nan' else pd.to_datetime(datetime.now().date())
         if pd.isnull(start_date): return "N/A", 0
         days = (end_date - start_date).days
-        cat = "< 6 Weeks" if days < 42 else "6-12 Weeks" if days < 84 else "> 12 Weeks"
-        return cat, max(0, days)
-    except: return "Error", 0
-
-@st.cache_data
+        cat = "< 6 Weeks" if days < 42 else "6-12 Weeks" if days < 8@st.cache_data
 def get_options(filename):
+    """Reads dropdown options from a local CSV file."""
     path = os.path.join(BASE_DIR, filename)
     if os.path.exists(path):
         try:
             with open(path, 'r', encoding='latin1', errors='ignore') as f:
+                # FIXED: Corrected the list comprehension and closed all brackets
                 lines = [line.strip().replace('"', '') for line in f.readlines() if line.strip()]
-                return sorted(list(set([l.split(# --- 5. DATA LOADING ---
+                return sorted(list(set([l.split(';')[0].split(',')[0].strip() for l in lines if l])))
+        except Exception as e:
+            st.error(f"Error reading {filename}: {e}")
+            return []
+    return []
+
+# --- 5. DATA LOADING ---
 
 def save_db(df):
     """Saves the current dataframe to a local Parquet file."""
