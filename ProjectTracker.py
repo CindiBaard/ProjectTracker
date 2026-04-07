@@ -293,44 +293,6 @@ DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
 if not df.empty:
     DROPDOWN_DATA['Client'] = sorted([str(c) for c in df['Client'].unique() if str(c).strip() and str(c).lower() != 'nan'])
 
-# --- NAVIGATION ---
-tabs_list = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Google DB View"]
-# To this (adding a unique key):
-tab_nav = st.radio("Navigation", tabs_list, index=tabs_list.index(st.session_state.active_tab), horizontal=True, key="main_nav_radio")
-st.session_state.active_tab = tab_nav
-
-
-# --- 1. TAB: SEARCH & EDIT ---
-if tab_nav == "🔍 Search & Edit":
-    c_s, c_cl = st.columns([4, 1])
-    raw_search = c_s.text_input("Search Pre-Prod No.", key="search_input_box").strip()
-    if c_cl.button("♻️ Clear", use_container_width=True):
-        st.session_state.last_search_no = ""
-        st.rerun()
-
-    search_no = pad_preprod_id(raw_search)
-    if search_no != st.session_state.last_search_no:
-        st.session_state.last_search_no = search_no
-        st.rerun()
-
-    match = df[df['Pre-Prod No.'] == search_no] if not df.empty else pd.DataFrame()
-    if search_no and not match.empty:
-        idx, row = match.index[0], match.iloc[0]
-        
-        btn_col1, btn_col2 = st.columns(2)
-        if btn_col1.button("👯 Clone for Repeat Order", use_container_width=True):
-            # Cloning logic uses get_next_available_id from utility functions
-            new_clone = row.to_dict()
-            new_clone.update({
-                'Pre-Prod No.': get_next_available_id(search_no, df['Pre-Prod No.']), 
-                'Date': datetime.now().strftime('%d/%m/%Y'), 
-                'Completion date': ""
-            })
-            st.session_state.form_data = new_clone
-            st.session_state.active_tab = "➕ Add New Job"
-            st.rerun()
-
-        pass
 
         # --- NEW: DELETE SECTION ---
         with btn_col2:
