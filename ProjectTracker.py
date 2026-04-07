@@ -320,22 +320,59 @@ elif tab_nav == "➕ Add New Job":
 # --- TAB 5: GOOGLE CLOUD SYNC ---
 elif tab_nav == "🌐 Cloud Sync":
     st.subheader("🌐 Google Sheets Database Sync")
+    
+    # 1. Credentials Setup (Directly in the script)
+    import gspread
+    from google.oauth2.service_account import Credentials
+    
     col_a, col_b = st.columns(2)
     
-    # Assuming load_from_google_sheets exists in your actual environment
+    # --- PULL DATA ---
     if col_a.button("📥 Fetch from Google (Read Only)", use_container_width=True):
         try:
-            from google_sync import load_from_google_sheets
-            cloud_df = load_from_google_sheets()
-            if not cloud_df.empty:
-                st.session_state.google_data = cloud_df
-                st.success("Data fetched from Google Sheets!")
-        except:
-            st.error("Google sync module not found or configured.")
+            scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+            creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
+            if isinstance(creds_info, dict) and "private_key" in creds_info:
+                 creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+            
+            creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+            client = gspread.authorize(creds)
+            
+            # Using your specific Spreadsheet ID
+            spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
+            worksheet = spreadsheet.get_worksheet(0)
+            
+            cloud_data = pd.DataFrame(worksheet.get_all_records())
+            if not cloud_data.empty:
+                st.session_state.google_data = cloud_data
+                st.success("Successfully fetched data from Google Sheets!")
+        except Exception as e:
+            st.error(f"Fetch failed: {e}")
 
+    # --- PUSH DATA ---
     if col_b.button("📤 Push Local Data to Google", use_container_width=True, type="primary"):
-        st.info("Syncing process started...")
-        # Add your gspread logic here
+        try:
+            scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+            creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
+            if isinstance(creds_info, dict) and "private_key" in creds_info:
+                 creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+            
+            creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+            client = gspread.authorize(creds)
+            
+            spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
+            worksheet = spreadsheet.get_worksheet(0)
+            
+            worksheet.clear()
+            export_df = df.fillna("")
+            worksheet.update([export_df.columns.values.tolist()] + export_df.values.tolist())
+            st.success("Successfully synced local database to Google Sheets!")
+        except Exception as e:
+            st.error(f"Push failed: {e}")
+
+    if "google_data" in st.session_state:
+        st.write("### Preview: Cloud Data")
+        st.dataframe(st.session_state.google_data, use_container_width=True)
 
 # --- TAB 3: AGE ANALYSIS ---
 elif tab_nav == "📊 Detailed Age Analysis":
