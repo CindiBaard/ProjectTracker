@@ -128,18 +128,21 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
         return combined
     except Exception as e:
         st.error(f"Merge Error: {e}")
-        return pd.DataFrame()
-
-@st.cache_data
-def load_trial_data():
-    trials_path = os.path.join(BASE_DIR, TRIALS_FILE_CURRENT)
+        return pd.DataFrame(trials_path = os.path.join(BASE_DIR, TRIALS_FILE_CURRENT)
     if not os.path.exists(trials_path): return pd.DataFrame()
     try:
         df = pd.read_csv(trials_path)
         df['Date_Log'] = pd.to_datetime(df['Date_Log'], dayfirst=True, errors='coerce')
         df['Completion_Date'] = pd.to_datetime(df['Completion_Date'], dayfirst=True, errors='coerce')
-        df['# This was the merged line - now separated and fixed
-        df['Week_Num'] = df[wk_col].astype(str).str.extract(r'(\d+)').fillna(0).astype(int) if wk_col else 0
+        df['Days_Taken'] = (df['Completion_Date'] - df['Date_Log']).dt.days
+        wk_col = next((c for c in df.columns if 'week' in c.lower()), None)
+        
+        # FIXED: Correcting the Week_Num calculation
+        if wk_col:
+            df['Week_Num'] = df[wk_col].astype(str).str.extract(r'(\d+)').fillna(0).astype(int)
+        else:
+            df['Week_Num'] = 0
+            
         return df
     except: 
         return pd.DataFrame()
@@ -147,8 +150,7 @@ def load_trial_data():
 # --- 6. UI HELPERS ---
 
 def display_combination_table(key_prefix):
-    if os.path.exists(COMBINATIONS_FILE):m'] = df[wk_col].astype(stdef display_combination_table(key_prefix):
-    if os.path.exists(COMBINATIONS_FILE):
+    if os.path.exists(COMBINATIONS_FILE):ATIONS_FILE):
         with st.expander("📂 Browse Tube & Cap Combinations", expanded=False):
             try:
                 combo_df = clean_column_names(pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig'))
