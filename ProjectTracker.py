@@ -351,7 +351,9 @@ elif tab_nav == "🧪 Trial Trends":
     trial_df = load_trial_data()
     
     if not trial_df.empty:
+        # Group data by week and calculate the mean of Days_Taken
         weekly_stats = trial_df.groupby('Week_Num')['Days_Taken'].mean().sort_index()
+        
         col1, col2 = st.columns([1, 3])
         with col1:
             avg_val = trial_df['Days_Taken'].mean()
@@ -368,7 +370,9 @@ elif tab_nav == "🧪 Trial Trends":
             ax.grid(True, alpha=0.3)
             st.pyplot(fig)
     else:
-        st.info("No trial data found to analyze.")D OF FILE ---_Taken'].mean().sort_index()
+        st.info("No trial data found to analyze.")
+
+# --- END OF FILE ---D OF FILE ---_Taken'].mean().sort_index()
         if not weekly_stats.empty:
             fig, ax = plt.subplots(figsize=(10, 4))
             ax.plot(weekly_stats.index, weekly_stats.values, marker='o', color='#2ca02c')
