@@ -93,23 +93,26 @@ def get_options(filename):
         try:
             with open(path, 'r', encoding='latin1', errors='ignore') as f:
                 lines = [line.strip().replace('"', '') for line in f.readlines() if line.strip()]
-                return sorted(list(set([l.split(';')[0].split(',')[0].strip() for l in lines if l])))
-        except: return []
-    return []
-
-# --- 5. DATA LOADING ---
+                return sorted(list(set([l.split(# --- 5. DATA LOADING ---
 
 def save_db(df):
-    df.to_parquet(FILENAME_PARQUET, index=False)
+    """Saves the current dataframe to a local Parquet file."""
+    try:
+        df.to_parquet(FILENAME_PARQUET, index=False)
+    except Exception as e:
+        st.error(f"Error saving database: {e}")
 
 @st.cache_data(show_spinner="Refreshing Database...")
 def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
+    """Loads and merges the local CSV files into a single Parquet database."""
     if os.path.exists(parquet_path) and not force_refresh:
         return pd.read_parquet(parquet_path)
     
     try:
+        # Loading CSVs with explicit encoding to avoid errors
         df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig')
         df_d = pd.read_csv(digital_file, sep=None, engine='python', encoding='utf-8-sig')
+        
         df_d, df_t = clean_column_names(df_d), clean_column_names(df_t)
         df_d = df_d.rename(columns={'Pre-Prod No': 'Pre-Prod No.', 'Pre Prod No.': 'Pre-Prod No.'})
         
@@ -124,7 +127,13 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
             combined['Age Category'] = [r[0] for r in results]
             combined['Project Age (Open and Closed)'] = [r[1] for r in results]
         
-        combined.to_parquet(parquet_path, index=F@st.cache_data
+        combined.to_parquet(parquet_path, index=False)
+        return combined
+    except Exception as e:
+        st.error(f"Merge Error: {e}")
+        return pd.DataFrame()
+
+# --- 6. TRIAL DATA LOADING ---=F@st.cache_data
 def load_trial_data():
     trials_path = os.path.join(BASE_DIR, TRIALS_FILE_CURRENT)
     if not os.path.exists(trials_path): 
