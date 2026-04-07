@@ -140,21 +140,27 @@ def load_trial_data():
         df['Completion_Date'] = pd.to_datetime(df['Completion_Date'], dayfirst=True, errors='coerce')
         df['Days_Taken'] = (df['Completion_Date'] - df['Date_Log']).dt.days
         wk_col = next((c for c in df.columns if 'week' in c.lower()), None)
-        df['Week_Num'] = df[wk_col].astype(str).str.extract(r'(\d+)').fillna(0).astype(int) if wk_col else 0
-        return df
-    except: return pd.DataFrame()
-
-# --- 6. UI HELPERS ---
-
-def display_combination_table(key_prefix):
+        df['Week_Num'] = df[wk_col].astype(stdef display_combination_table(key_prefix):
     if os.path.exists(COMBINATIONS_FILE):
         with st.expander("📂 Browse Tube & Cap Combinations", expanded=False):
             try:
                 combo_df = clean_column_names(pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig'))
                 search = st.text_input(f"🔍 Filter List", key=f"{key_prefix}_search")
+                
                 if search:
                     combo_df = combo_df[combo_df.apply(lambda r: r.astype(str).str.contains(search, case=False).any(), axis=1)]
-                         if event.selection.rows:
+                
+                event = st.dataframe(
+                    combo_df, 
+                    use_container_width=True, 
+                    hide_index=True, 
+                    on_select="rerun", 
+                    selection_mode="single-row", 
+                    key=f"{key_prefix}_table"
+                )
+                
+                # This is where the IndentationError was:
+                if event.selection.rows:
                     sel_row = combo_df.iloc[event.selection.rows[0]].to_dict()
                     st.session_state.selected_combo = {
                         "Diameter": str(sel_row.get("Diameter", "")),
@@ -164,7 +170,7 @@ def display_combination_table(key_prefix):
                     }
                     st.toast("✅ Specs Selected")
             except Exception as e: 
-                st.error(f"Combo Error: {e}")et# --- 7. MAIN LOGIC ---
+                st.error(f"Combo Error: {e}")t# --- 7. MAIN LOGIC ---
 df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=st.sidebar.button("🔄 Rebuild Local DB"))
 
 DROPDOWN_CONFIG = {
