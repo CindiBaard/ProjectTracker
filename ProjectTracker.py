@@ -280,13 +280,7 @@ def display_combination_table(key_prefix):
             except Exception as e: st.error(f"Combo Error: {e}")
 
 # --- 7. MAIN LOGIC ---
-# Added 'key="rebuild_db_btn"' to make the ID unique
-df = load_db(
-    TRACKER_ADJ_FILE, 
-    DIGITALPREPROD_FILE, 
-    FILENAME_PARQUET, 
-    force_refresh=st.sidebar.button("🔄 Rebuild Local DB", key="rebuild_db_btn")
-)
+df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=st.sidebar.button("🔄 Rebuild Local DB"))
 
 # --- NEW: RESTORED DROPDOWN CONFIGURATION ---
 DROPDOWN_CONFIG = {
@@ -750,7 +744,13 @@ def display_combination_table(key_prefix):
             except Exception as e: st.error(f"Combo Error: {e}")
 
 # --- 7. MAIN LOGIC ---
-df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=st.sidebar.button("🔄 Rebuild Local DB"))
+# Added 'key="rebuild_db_btn"' to make the ID unique
+df = load_db(
+    TRACKER_ADJ_FILE, 
+    DIGITALPREPROD_FILE, 
+    FILENAME_PARQUET, 
+    force_refresh=st.sidebar.button("🔄 Rebuild Local DB", key="rebuild_db_btn")
+)
 
 # --- NEW: RESTORED DROPDOWN CONFIGURATION ---
 DROPDOWN_CONFIG = {
