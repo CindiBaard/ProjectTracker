@@ -294,8 +294,8 @@ if not df.empty:
     DROPDOWN_DATA['Client'] = sorted([str(c) for c in df['Client'].unique() if str(c).strip() and str(c).lower() != 'nan'])
 
 
-        # --- NEW: DELETE SECTION ---
-        with btn_col2:
+# --- NEW: DELETE SECTION ---
+with btn_col2:
             st.markdown("---") # Visual separator
             confirm_delete = st.checkbox(f"Confirm Delete {search_no}")
             if st.button("🗑️ Delete Project", use_container_width=True, type="primary", disabled=not confirm_delete):
