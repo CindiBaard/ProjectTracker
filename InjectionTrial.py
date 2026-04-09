@@ -56,27 +56,34 @@ def display_trial_history(pre_prod_no):
             st.write("No previous trial history found.")
 
 def update_tracker_status(pre_prod_no):
-    from datetime import datetime
-    import os
+    import gspread
+    from google.oauth2.service_account import Credentials
     import pandas as pd
-    import streamlit as st
+    from datetime import datetime
+    import time
 
-    csv_path = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
-    parquet_path = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
-    
-    if not os.path.exists(csv_path):
-        st.error(f"FATAL: Tracker CSV not found at {csv_path}")
-        return
-
+    # 1. Setup Credentials (using your existing secrets)
     try:
-        # Load and immediately clean column names
-        df = pd.read_csv(csv_path)
-        df.columns = df.columns.str.strip() 
+        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
+        if isinstance(creds_info, dict) and "private_key" in creds_info:
+             creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
         
+        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+        client = gspread.authorize(creds)
+        
+        # 2. Open the Spreadsheet
+        spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
+        worksheet = spreadsheet.get_worksheet(0) # Assumes data is in the first tab
+        
+        # 3. Pull the data from Google Sheets to find the row
+        data = worksheet.get_all_records()
+        df_cloud = pd.DataFrame(data)
+        
+        # Standardize IDs for matching
         col_id = "Pre-Prod No."
         col_status = "Injection trial requested"
-
-        # Padding logic
+        
         def pad_preprod_id(val):
             if pd.isna(val) or str(val).strip() == '': return ""
             val_str = str(val).strip().split('.')[0]
@@ -86,38 +93,32 @@ def update_tracker_status(pre_prod_no):
             return val_str.zfill(5)
 
         search_term = pad_preprod_id(pre_prod_no)
-        
-        # Clean the ID column in the dataframe to ensure a match
-        df[col_id] = df[col_id].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-        
-        if search_term in df[col_id].values:
-            current_date = datetime.now().strftime('%d/%m/%Y')
+        df_cloud[col_id] = df_cloud[col_id].astype(str).str.strip()
+
+        # 4. Find the row index and update
+        if search_term in df_cloud[col_id].values:
+            # gspread is 1-indexed, and we add 1 for the header row
+            row_idx = df_cloud.index[df_cloud[col_id] == search_term].tolist()[0] + 2
             
-            # Perform the update
-            df.loc[df[col_id] == search_term, col_status] = current_date
-            
-            # Save the CSV
-            df.to_csv(csv_path, index=False)
-            
-            # IMPORTANT: Force-delete the parquet cache file
-            if os.path.exists(parquet_path):
-                try:
-                    os.remove(parquet_path)
-                    st.info("Cache file cleared.")
-                except Exception as e:
-                    st.warning(f"Could not delete cache file: {e}")
-            
-            # Clear Streamlit's internal memory cache
-            st.cache_data.clear()
-            
-            st.success(f"✅ SUCCESS: {search_term} updated with date {current_date}")
+            # Find the column number for "Injection trial requested"
+            headers = worksheet.row_values(1)
+            try:
+                col_idx = headers.index(col_status) + 1
+                current_date = datetime.now().strftime('%d/%m/%Y')
+                
+                # Update the specific cell in Google Sheets
+                worksheet.update_cell(row_idx, col_idx, current_date)
+                
+                st.success(f"✅ Cloud Sync Successful: {search_term} updated with {current_date}")
+                time.sleep(2) # Show message before rerun
+            except ValueError:
+                st.error(f"Column '{col_status}' not found in Google Sheet.")
         else:
-            st.error(f"❌ NOT FOUND: Could not find ID '{search_term}' in the CSV.")
-            # Print available IDs to the console to help you debug
-            print(f"DEBUG: Search term was '{search_term}'. First 5 IDs in CSV: {df[col_id].head().tolist()}")
+            st.warning(f"ID {search_term} not found in Google Sheet.")
 
     except Exception as e:
-        st.error(f"Error during update: {e}")
+        st.error(f"Cloud Update Failed: {e}")
+        
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
 st.subheader("Search Project Tracker")
