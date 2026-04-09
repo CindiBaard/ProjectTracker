@@ -237,44 +237,48 @@ if search_input:
         submit_trial = st.form_submit_button("Submit Trial Entry")
 
         if submit_trial:
-            new_submission = {
-                "Trial Ref": current_trial_ref,
-                "Pre-Prod No.": search_input,
-                "Date": trial_date.strftime("%Y-%m-%d"),
-                "Sales Rep": sales_rep,
-                "Client": client,
-                "Operator": operator,
-                "Machine Prod": machine_prod,
-                "Machine Trial": machine_trial,
-                "Observations": notes,
-                "Cycle Time": cyc_t,
-                "Inj Pressure": inj_p,
-                "Tinuvin": tinuvin_val,
-                "Dosing Unit Fitted": dosing_fitted,
-                "Dosing Calibrated": dosing_calib
-            }
+            with st.status("Processing submission...", expanded=True) as status:
+                st.write("Creating submission record...")
+                new_submission = {
+                    "Trial Ref": current_trial_ref,
+                    "Pre-Prod No.": search_input,
+                    "Date": trial_date.strftime("%Y-%m-%d"),
+                    "Sales Rep": sales_rep,
+                    "Client": client,
+                    "Operator": operator,
+                    "Machine Prod": machine_prod,
+                    "Machine Trial": machine_trial,
+                    "Observations": notes,
+                    "Cycle Time": cyc_t,
+                    "Inj Pressure": inj_p,
+                    "Tinuvin": tinuvin_val,
+                    "Dosing Unit Fitted": dosing_fitted,
+                    "Dosing Calibrated": dosing_calib
+                }
 
-            # 1. Update Trial History Parquet
-            df_new = pd.DataFrame([new_submission])
-            if os.path.exists(SUBMISSIONS_FILE):
-                df_existing = pd.read_parquet(SUBMISSIONS_FILE)
-                df_final = pd.concat([df_existing, df_new], ignore_index=True)
-            else:
-                df_final = df_new
-            df_final.to_parquet(SUBMISSIONS_FILE)
+                # 1. Update Trial History Parquet
+                st.write("Updating local history...")
+                df_new = pd.DataFrame([new_submission])
+                if os.path.exists(SUBMISSIONS_FILE):
+                    df_existing = pd.read_parquet(SUBMISSIONS_FILE)
+                    df_final = pd.concat([df_existing, df_new], ignore_index=True)
+                else:
+                    df_final = df_new
+                df_final.to_parquet(SUBMISSIONS_FILE)
+                
+                # 2. Update Google Sheets
+                st.write("Connecting to Google Sheets...")
+                update_tracker_status(search_input)
+                
+                status.update(label="Trial Recorded Successfully!", state="complete", expanded=False)
             
-            # 2. Update the main Tracker CSV (The crucial link)
-            # We move this BEFORE the success message
-            update_tracker_status(search_input)
+            # --- CRITICAL: TEMPORARILY COMMENT OUT RERUN ---
+            # st.session_state.lookup_data = {}
+            # st.rerun() 
             
-            # 3. Use a st.toast or a status message that persists slightly
-            st.success(f"Success! {current_trial_ref} recorded and Tracker updated.")
-            
-            # 4. Clear search to reset the form
-            st.session_state.lookup_data = {}
-            
-            # IMPORTANT: Remove st.rerun() for a moment to see if the Success message stays.
-            # If you want to keep rerun, add a small delay or remove it to confirm it's working.
-            # st.rerun()
+            # Add a manual reset button instead so you can see the success
+            if st.button("Clear Form & Start New Entry"):
+                st.session_state.lookup_data = {}
+                st.rerun()
 else:
     st.info("Enter a Pre-Prod Number to begin.")
