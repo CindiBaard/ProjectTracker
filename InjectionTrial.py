@@ -239,10 +239,15 @@ if search_input:
         if submit_trial:
             with st.status("Processing submission...", expanded=True) as status:
                 st.write("Creating submission record...")
+                
+                # Create the formatted date string once
+                formatted_date = trial_date.strftime("%d/%m/%Y") 
+
                 new_submission = {
                     "Trial Ref": current_trial_ref,
                     "Pre-Prod No.": search_input,
                     "Date": trial_date.strftime("%Y-%m-%d"),
+                    "Injection trial requested": formatted_date,  # <--- ADD THIS LINE
                     "Sales Rep": sales_rep,
                     "Client": client,
                     "Operator": operator,
@@ -255,7 +260,7 @@ if search_input:
                     "Dosing Unit Fitted": dosing_fitted,
                     "Dosing Calibrated": dosing_calib
                 }
-
+                
                 # 1. Update Trial History Parquet
                 st.write("Updating local history...")
                 df_new = pd.DataFrame([new_submission])
