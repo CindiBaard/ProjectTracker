@@ -246,7 +246,7 @@ if search_input:
                 "Dosing Calibrated": dosing_calib
             }
 
-            # 2. Append to Parquet
+            # 1. Update Trial History Parquet
             df_new = pd.DataFrame([new_submission])
             if os.path.exists(SUBMISSIONS_FILE):
                 df_existing = pd.read_parquet(SUBMISSIONS_FILE)
@@ -255,11 +255,18 @@ if search_input:
                 df_final = df_new
             df_final.to_parquet(SUBMISSIONS_FILE)
             
-            # 3. Update Tracker CSV
+            # 2. Update the main Tracker CSV (The crucial link)
+            # We move this BEFORE the success message
             update_tracker_status(search_input)
             
-            st.success(f"Success! {current_trial_ref} recorded.")
+            # 3. Use a st.toast or a status message that persists slightly
+            st.success(f"Success! {current_trial_ref} recorded and Tracker updated.")
+            
+            # 4. Clear search to reset the form
             st.session_state.lookup_data = {}
-            st.rerun()
+            
+            # IMPORTANT: Remove st.rerun() for a moment to see if the Success message stays.
+            # If you want to keep rerun, add a small delay or remove it to confirm it's working.
+            # st.rerun()
 else:
     st.info("Enter a Pre-Prod Number to begin.")
