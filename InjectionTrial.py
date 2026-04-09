@@ -61,6 +61,7 @@ def update_tracker_status(pre_prod_no):
     import pandas as pd
     from datetime import datetime
     import time
+    import streamlit as st
 
     # 1. Setup Credentials (using your existing secrets)
     try:
@@ -80,7 +81,9 @@ def update_tracker_status(pre_prod_no):
         data = worksheet.get_all_records()
         df_cloud = pd.DataFrame(data)
         
-        # Standardize IDs for matching
+        # Standardize column names for the dataframe
+        df_cloud.columns = df_cloud.columns.str.strip()
+        
         col_id = "Pre-Prod No."
         col_status = "Injection trial requested"
         
@@ -97,22 +100,26 @@ def update_tracker_status(pre_prod_no):
 
         # 4. Find the row index and update
         if search_term in df_cloud[col_id].values:
-            # gspread is 1-indexed, and we add 1 for the header row
+            # gspread is 1-indexed, and we add 2 (1 for header, 1 for 0-indexing)
             row_idx = df_cloud.index[df_cloud[col_id] == search_term].tolist()[0] + 2
             
-            # Find the column number for "Injection trial requested"
+            # --- CLEANED HEADER LOGIC START ---
             headers = worksheet.row_values(1)
-            try:
-                col_idx = headers.index(col_status) + 1
+            clean_headers = [h.strip() for h in headers]
+
+            if col_status in clean_headers:
+                col_idx = clean_headers.index(col_status) + 1 # +1 because gspread is 1-indexed
                 current_date = datetime.now().strftime('%d/%m/%Y')
                 
-                # Update the specific cell in Google Sheets
+                # This actually writes to the cloud
                 worksheet.update_cell(row_idx, col_idx, current_date)
                 
-                st.success(f"✅ Cloud Sync Successful: {search_term} updated with {current_date}")
-                time.sleep(2) # Show message before rerun
-            except ValueError:
-                st.error(f"Column '{col_status}' not found in Google Sheet.")
+                st.success(f"✅ Cloud Sync Successful: {search_term} updated in Row {row_idx}")
+                time.sleep(2) 
+            else:
+                st.error(f"Column '{col_status}' not found. Found: {clean_headers}")
+            # --- CLEANED HEADER LOGIC END ---
+            
         else:
             st.warning(f"ID {search_term} not found in Google Sheet.")
 
