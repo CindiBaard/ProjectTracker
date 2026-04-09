@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime
 import os
 
+
 # --- PAGE CONFIGURATION ---
 st.set_page_config(layout="wide", page_title="Injection Trial Data Entry")
 
@@ -104,6 +105,7 @@ def update_tracker_status(pre_prod_no):
 
     except Exception as e:
         st.error(f"Error updating CSV: {e}")
+        
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
 st.subheader("Search Project Tracker")
