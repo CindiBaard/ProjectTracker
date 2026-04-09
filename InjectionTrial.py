@@ -56,21 +56,27 @@ def display_trial_history(pre_prod_no):
             st.write("No previous trial history found.")
 
 def update_tracker_status(pre_prod_no):
-    # Ensure datetime is imported
-    from datetime import datetime 
-    
+    from datetime import datetime
+    import os
+    import pandas as pd
+    import streamlit as st
+
     csv_path = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
     parquet_path = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
     
     if not os.path.exists(csv_path):
-        st.error(f"Tracker CSV not found at: {csv_path}")
+        st.error(f"FATAL: Tracker CSV not found at {csv_path}")
         return
 
     try:
+        # Load and immediately clean column names
         df = pd.read_csv(csv_path)
+        df.columns = df.columns.str.strip() 
+        
         col_id = "Pre-Prod No."
         col_status = "Injection trial requested"
 
+        # Padding logic
         def pad_preprod_id(val):
             if pd.isna(val) or str(val).strip() == '': return ""
             val_str = str(val).strip().split('.')[0]
@@ -80,32 +86,38 @@ def update_tracker_status(pre_prod_no):
             return val_str.zfill(5)
 
         search_term = pad_preprod_id(pre_prod_no)
-
-        # Standardize the CSV column to strings for comparison
+        
+        # Clean the ID column in the dataframe to ensure a match
         df[col_id] = df[col_id].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         
         if search_term in df[col_id].values:
-            # --- UPDATED LINE START ---
-            # Get current date in the same format ProjectTracker.py expects
             current_date = datetime.now().strftime('%d/%m/%Y')
             
-            # Change "Submitted" to the actual date variable
+            # Perform the update
             df.loc[df[col_id] == search_term, col_status] = current_date
-            # --- UPDATED LINE END ---
             
+            # Save the CSV
             df.to_csv(csv_path, index=False)
             
-            # Delete the parquet to force ProjectTracker.py to reload fresh CSV data
+            # IMPORTANT: Force-delete the parquet cache file
             if os.path.exists(parquet_path):
-                os.remove(parquet_path)
-                
-            st.success(f"Updated {search_term} with date {current_date} in Tracker.")
+                try:
+                    os.remove(parquet_path)
+                    st.info("Cache file cleared.")
+                except Exception as e:
+                    st.warning(f"Could not delete cache file: {e}")
+            
+            # Clear Streamlit's internal memory cache
+            st.cache_data.clear()
+            
+            st.success(f"✅ SUCCESS: {search_term} updated with date {current_date}")
         else:
-            st.warning(f"ID {search_term} not found in {csv_path}.")
+            st.error(f"❌ NOT FOUND: Could not find ID '{search_term}' in the CSV.")
+            # Print available IDs to the console to help you debug
+            print(f"DEBUG: Search term was '{search_term}'. First 5 IDs in CSV: {df[col_id].head().tolist()}")
 
     except Exception as e:
-        st.error(f"Error updating CSV: {e}")
-        
+        st.error(f"Error during update: {e}")
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
 st.subheader("Search Project Tracker")
