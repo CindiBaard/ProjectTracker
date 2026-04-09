@@ -56,23 +56,49 @@ def display_trial_history(pre_prod_no):
 
 def update_tracker_status(pre_prod_no):
     csv_path = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
-    parquet_path = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet") # Add this
+    parquet_path = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
     
-    # ... your existing loading and updating code ...
-    
-    if search_term in df[col_id].values:
-        df.loc[df[col_id] == search_term, col_status] = "Submitted"
-        df.to_csv(csv_path, index=False)
-        
-        # KEY ADDITION: Force the tracker to refresh by removing the old cached parquet
-        if os.path.exists(parquet_path):
-            os.remove(parquet_path)
-            
-        st.success("CSV updated and cache cleared!")
-# --- INITIALIZE SESSION STATE ---
-if 'lookup_data' not in st.session_state:
-    st.session_state.lookup_data = {}
+    if not os.path.exists(csv_path):
+        st.error(f"Tracker CSV not found at: {csv_path}")
+        return
 
+    try:
+        df = pd.read_csv(csv_path)
+        col_id = "Pre-Prod No."
+        col_status = "Injection trial requested"
+
+        # --- INSERTED CODE START ---
+        # 1. First, define the helper function inside or outside this function
+        def pad_preprod_id(val):
+            if pd.isna(val) or str(val).strip() == '': return ""
+            val_str = str(val).strip().split('.')[0]
+            if '_' in val_str:
+                parts = val_str.split('_', 1)
+                return f"{parts[0].zfill(5)}_{parts[1]}"
+            return val_str.zfill(5)
+
+        # 2. Format the search term so it matches the CSV (e.g., "1" becomes "00001")
+        search_term = pad_preprod_id(pre_prod_no)
+        # --- INSERTED CODE END ---
+
+        # Standardize the CSV column to strings for comparison
+        df[col_id] = df[col_id].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+        
+        # Now search using the padded ID
+        if search_term in df[col_id].values:
+            df.loc[df[col_id] == search_term, col_status] = "Submitted"
+            df.to_csv(csv_path, index=False)
+            
+            # Delete the parquet to force ProjectTracker.py to reload
+            if os.path.exists(parquet_path):
+                os.remove(parquet_path)
+                
+            st.success(f"Updated {search_term} to 'Submitted' in Tracker.")
+        else:
+            st.warning(f"ID {search_term} not found in {csv_path}.")
+
+    except Exception as e:
+        st.error(f"Error updating CSV: {e}")
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
 st.subheader("Search Project Tracker")
