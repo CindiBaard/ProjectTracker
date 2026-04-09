@@ -56,23 +56,19 @@ def display_trial_history(pre_prod_no):
 
 def update_tracker_status(pre_prod_no):
     csv_path = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
-    if not os.path.exists(csv_path):
-        st.error(f"Tracker CSV not found at: {csv_path}")
-        return
-    try:
-        df = pd.read_csv(csv_path)
-        col_id = "Pre-Prod No."
-        col_status = "Injection trial requested"
-        search_term = str(pre_prod_no).strip()
-        df[col_id] = df[col_id].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-        if search_term in df[col_id].values:
-            df.loc[df[col_id] == search_term, col_status] = "Submitted"
-            df.to_csv(csv_path, index=False)
-        else:
-            st.warning(f"Pre-Prod No. {search_term} not found in CSV to update.")
-    except Exception as e:
-        st.error(f"Error updating CSV: {e}")
-
+    parquet_path = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet") # Add this
+    
+    # ... your existing loading and updating code ...
+    
+    if search_term in df[col_id].values:
+        df.loc[df[col_id] == search_term, col_status] = "Submitted"
+        df.to_csv(csv_path, index=False)
+        
+        # KEY ADDITION: Force the tracker to refresh by removing the old cached parquet
+        if os.path.exists(parquet_path):
+            os.remove(parquet_path)
+            
+        st.success("CSV updated and cache cleared!")
 # --- INITIALIZE SESSION STATE ---
 if 'lookup_data' not in st.session_state:
     st.session_state.lookup_data = {}
