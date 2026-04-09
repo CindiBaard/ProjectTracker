@@ -58,13 +58,12 @@ def display_trial_history(pre_prod_no):
 def update_tracker_status(pre_prod_no):
     import gspread
     from google.oauth2.service_account import Credentials
-    import pandas as pd
     from datetime import datetime
     import time
     import streamlit as st
 
-    # 1. Setup Credentials (using your existing secrets)
     try:
+        # 1. Credentials Setup
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
         if isinstance(creds_info, dict) and "private_key" in creds_info:
@@ -73,58 +72,48 @@ def update_tracker_status(pre_prod_no):
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
         
-        # 2. Open the Spreadsheet
+        # 2. Open Sheet
         spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
-        worksheet = spreadsheet.get_worksheet(0) # Assumes data is in the first tab
+        worksheet = spreadsheet.get_worksheet(0) 
         
-        # 3. Pull the data from Google Sheets to find the row
-        data = worksheet.get_all_records()
-        df_cloud = pd.DataFrame(data)
-        
-        # Standardize column names for the dataframe
-        df_cloud.columns = df_cloud.columns.str.strip()
-        
-        col_id = "Pre-Prod No."
-        col_status = "Injection trial requested"
-        
-        def pad_preprod_id(val):
-            if pd.isna(val) or str(val).strip() == '': return ""
+        # 3. Padding logic for ID matching
+        def pad_id(val):
             val_str = str(val).strip().split('.')[0]
             if '_' in val_str:
                 parts = val_str.split('_', 1)
                 return f"{parts[0].zfill(5)}_{parts[1]}"
             return val_str.zfill(5)
 
-        search_term = pad_preprod_id(pre_prod_no)
-        df_cloud[col_id] = df_cloud[col_id].astype(str).str.strip()
+        search_id = pad_id(pre_prod_no)
+        st.write(f"🔍 Searching for ID: **{search_id}**...")
 
-        # 4. Find the row index and update
-        if search_term in df_cloud[col_id].values:
-            # gspread is 1-indexed, and we add 2 (1 for header, 1 for 0-indexing)
-            row_idx = df_cloud.index[df_cloud[col_id] == search_term].tolist()[0] + 2
-            
-            # --- CLEANED HEADER LOGIC START ---
-            headers = worksheet.row_values(1)
-            clean_headers = [h.strip() for h in headers]
+        # 4. Find the Row (Direct Search)
+        # This looks in Column A (index 1) for your Pre-Prod No.
+        try:
+            cell = worksheet.find(search_id, in_column=1)
+            row_idx = cell.row
+            st.write(f"✅ Found at Row: {row_idx}")
+        except:
+            st.error(f"❌ ID '{search_id}' not found in Column A of the Google Sheet.")
+            return
 
-            if col_status in clean_headers:
-                col_idx = clean_headers.index(col_status) + 1 # +1 because gspread is 1-indexed
-                current_date = datetime.now().strftime('%d/%m/%Y')
-                
-                # This actually writes to the cloud
-                worksheet.update_cell(row_idx, col_idx, current_date)
-                
-                st.success(f"✅ Cloud Sync Successful: {search_term} updated in Row {row_idx}")
-                time.sleep(2) 
-            else:
-                st.error(f"Column '{col_status}' not found. Found: {clean_headers}")
-            # --- CLEANED HEADER LOGIC END ---
+        # 5. Find the Column Header
+        headers = [h.strip() for h in worksheet.row_values(1)]
+        col_name = "Injection trial requested"
+        
+        if col_name in headers:
+            col_idx = headers.index(col_name) + 1
+            current_date = datetime.now().strftime('%d/%m/%Y')
             
+            # 6. PERFORM THE UPDATE
+            worksheet.update_cell(row_idx, col_idx, current_date)
+            st.success(f"🚀 Google Sheet Updated! Row {row_idx}, Col {col_idx}")
+            time.sleep(2)
         else:
-            st.warning(f"ID {search_term} not found in Google Sheet.")
+            st.error(f"❌ Could not find column '{col_name}' in headers: {headers}")
 
     except Exception as e:
-        st.error(f"Cloud Update Failed: {e}")
+        st.error(f"⚠️ Google Sheets Error: {e}")
         
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
