@@ -55,6 +55,9 @@ def display_trial_history(pre_prod_no):
             st.write("No previous trial history found.")
 
 def update_tracker_status(pre_prod_no):
+    # Ensure datetime is imported
+    from datetime import datetime 
+    
     csv_path = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
     parquet_path = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
     
@@ -67,8 +70,6 @@ def update_tracker_status(pre_prod_no):
         col_id = "Pre-Prod No."
         col_status = "Injection trial requested"
 
-        # --- INSERTED CODE START ---
-        # 1. First, define the helper function inside or outside this function
         def pad_preprod_id(val):
             if pd.isna(val) or str(val).strip() == '': return ""
             val_str = str(val).strip().split('.')[0]
@@ -77,23 +78,27 @@ def update_tracker_status(pre_prod_no):
                 return f"{parts[0].zfill(5)}_{parts[1]}"
             return val_str.zfill(5)
 
-        # 2. Format the search term so it matches the CSV (e.g., "1" becomes "00001")
         search_term = pad_preprod_id(pre_prod_no)
-        # --- INSERTED CODE END ---
 
         # Standardize the CSV column to strings for comparison
         df[col_id] = df[col_id].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         
-        # Now search using the padded ID
         if search_term in df[col_id].values:
-            df.loc[df[col_id] == search_term, col_status] = "Submitted"
+            # --- UPDATED LINE START ---
+            # Get current date in the same format ProjectTracker.py expects
+            current_date = datetime.now().strftime('%d/%m/%Y')
+            
+            # Change "Submitted" to the actual date variable
+            df.loc[df[col_id] == search_term, col_status] = current_date
+            # --- UPDATED LINE END ---
+            
             df.to_csv(csv_path, index=False)
             
-            # Delete the parquet to force ProjectTracker.py to reload
+            # Delete the parquet to force ProjectTracker.py to reload fresh CSV data
             if os.path.exists(parquet_path):
                 os.remove(parquet_path)
                 
-            st.success(f"Updated {search_term} to 'Submitted' in Tracker.")
+            st.success(f"Updated {search_term} with date {current_date} in Tracker.")
         else:
             st.warning(f"ID {search_term} not found in {csv_path}.")
 
