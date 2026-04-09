@@ -273,7 +273,11 @@ if search_input:
                 
                 # 2. Update Google Sheets
                 st.write("Connecting to Google Sheets...")
-                update_tracker_status(search_input)
+                try:
+                    update_tracker_status(search_input)
+                    st.write("✅ Google Sheets updated!")
+                except Exception as e:
+                    st.error(f"❌ Google Update Failed: {e}")
                 
                 status.update(label="Trial Recorded Successfully!", state="complete", expanded=False)
             
