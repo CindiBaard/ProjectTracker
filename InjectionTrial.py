@@ -237,17 +237,15 @@ if search_input:
         submit_trial = st.form_submit_button("Submit Trial Entry")
 
         if submit_trial:
-            with st.status("Processing submission...", expanded=True) as status:
-                st.write("Creating submission record...")
+            # We use a status container to see progress
+            with st.status("Saving Data...", expanded=True) as status:
+                st.write("📝 Writing to local history (Parquet)...")
                 
-                # Create the formatted date string once
-                formatted_date = trial_date.strftime("%d/%m/%Y") 
-
                 new_submission = {
                     "Trial Ref": current_trial_ref,
                     "Pre-Prod No.": search_input,
                     "Date": trial_date.strftime("%Y-%m-%d"),
-                    "Injection trial requested": formatted_date,  # <--- ADD THIS LINE
+                    "Injection trial requested": trial_date.strftime("%d/%m/%Y"), # Fixed key
                     "Sales Rep": sales_rep,
                     "Client": client,
                     "Operator": operator,
@@ -260,9 +258,8 @@ if search_input:
                     "Dosing Unit Fitted": dosing_fitted,
                     "Dosing Calibrated": dosing_calib
                 }
-                
-                # 1. Update Trial History Parquet
-                st.write("Updating local history...")
+
+                # Save to Parquet (This part is working for you)
                 df_new = pd.DataFrame([new_submission])
                 if os.path.exists(SUBMISSIONS_FILE):
                     df_existing = pd.read_parquet(SUBMISSIONS_FILE)
@@ -271,22 +268,23 @@ if search_input:
                     df_final = df_new
                 df_final.to_parquet(SUBMISSIONS_FILE)
                 
-                # 2. Update Google Sheets
-                st.write("Connecting to Google Sheets...")
+                # --- GOOGLE SHEETS UPDATE WITH ERROR CATCHING ---
+                st.write("🌐 Attempting Cloud Sync (Google Sheets)...")
                 try:
                     update_tracker_status(search_input)
-                    st.write("✅ Google Sheets updated!")
+                    st.write("✅ Cloud Sync Complete!")
                 except Exception as e:
-                    st.error(f"❌ Google Update Failed: {e}")
-                
-                status.update(label="Trial Recorded Successfully!", state="complete", expanded=False)
+                    # This prevents the app from crashing if Google fails
+                    st.error(f"❌ Cloud Sync Failed: {str(e)}")
+                    st.info("The local trial was saved, but the Project Tracker wasn't updated.")
+
+                status.update(label="Submission Processed!", state="complete", expanded=False)
+
+            # Do NOT use st.rerun() here yet, or the message will vanish!
+            st.success(f"Final Success: {current_trial_ref} recorded.")
             
-            # --- CRITICAL: TEMPORARILY COMMENT OUT RERUN ---
-            # st.session_state.lookup_data = {}
-            # st.rerun() 
-            
-            # Add a manual reset button instead so you can see the success
-            if st.button("Clear Form & Start New Entry"):
+            # Use a button to reset the form manually so you can read the messages
+            if st.button("Start Next Entry"):
                 st.session_state.lookup_data = {}
                 st.rerun()
 else:
