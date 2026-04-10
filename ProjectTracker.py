@@ -210,69 +210,43 @@ tabs_list = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysi
 tab_nav = st.radio("Navigation", tabs_list, index=tabs_list.index(st.session_state.active_tab), horizontal=True)
 st.session_state.active_tab = tab_nav
 
-# --- TAB 1: SEARCH & EDIT ---
-if tab_nav == "🔍 Search & Edit":
-    c_s, c_cl = st.columns([4, 1])
-    raw_search = c_s.text_input("Search Pre-Prod No.", key="search_input_box").strip()
-    if c_cl.button("♻️ Clear", use_container_width=True):
-        st.session_state.last_search_no = ""
-        st.rerun()
-
-    search_no = pad_preprod_id(raw_search)
-    if search_no != st.session_state.last_search_no:
-        st.session_state.last_search_no = search_no
-        st.rerun()
-
-    match = df[df['Pre-Prod No.'] == search_no] if not df.empty else pd.DataFrame()
+# --- Inside TAB 1: SEARCH & EDIT ---
+with st.form("edit_form"):
+    st.subheader(f"Editing: {search_no}")
+    edit_cols = st.columns(3)
+    updated_vals = {}
+    selected = st.session_state.get("selected_combo", {})
     
-    if search_no and not match.empty:
-        idx, row = match.index[0], match.iloc[0]
-        btn_col1, btn_col2 = st.columns(2)
+    for i, col in enumerate(DESIRED_ORDER):
+        if col == "Age Category": continue
+        cur_val = selected.get(col, str(row.get(col, "")).replace('nan', ''))
         
-        with btn_col1:
-            if st.button("👯 Clone for Repeat Order", use_container_width=True):
-                new_clone = row.to_dict()
-                new_clone.update({
-                    'Pre-Prod No.': get_next_available_id(search_no, df['Pre-Prod No.']), 
-                    'Date': datetime.now().strftime('%d/%m/%Y'), 
-                    'Completion date': ""
-                })
-                st.session_state.form_data = new_clone
-                st.session_state.active_tab = "➕ Add New Job"
-                st.rerun()
-        
-        with btn_col2:
-            confirm_delete = st.checkbox(f"Confirm Delete {search_no}")
-            if st.button("🗑️ Delete Project", type="primary", disabled=not confirm_delete, use_container_width=True):
-                df = df.drop(idx)
-                save_db(df)
-                st.cache_data.clear()
-                st.session_state.last_search_no = ""
-                st.success("Deleted!")
-                st.rerun()
+        with edit_cols[i % 3]:
+            # --- SPECIAL HANDLING FOR TRIAL REQUESTED ---
+            if col == "Injection trial requested":
+                # Instead of a text_input, we just print the text
+                st.write(f"**{col}**")
+                if cur_val:
+                    st.info(cur_val)
+                else:
+                    st.write("No trials recorded.")
+                # We still keep the value in updated_vals so it doesn't get deleted on save
+                updated_vals[col] = cur_val
 
-        display_combination_table("edit")
-        
-        with st.form("edit_form"):
-            st.subheader(f"Editing: {search_no}")
-            edit_cols = st.columns(3)
-            updated_vals = {}
-            selected = st.session_state.get("selected_combo", {})
-            
-            for i, col in enumerate(DESIRED_ORDER):
-                if col == "Age Category": continue
-                cur_val = selected.get(col, str(row.get(col, "")).replace('nan', ''))
-                with edit_cols[i % 3]:
-                    if col in ['Completion date', 'Date']:
-                        try: d_val = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
-                        except: d_val = None
-                        d_input = st.date_input(col, value=d_val, key=f"ed_{col}")
-                        updated_vals[col] = d_input.strftime('%d/%m/%Y') if d_input else ""
-                    elif col in DROPDOWN_DATA:
-                        opts = sorted(list(set([""] + DROPDOWN_DATA[col] + [cur_val])))
-                        updated_vals[col] = st.selectbox(col, opts, index=opts.index(cur_val), key=f"sel_{col}")
-                    else:
-                        updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_{col}")
+            elif col in ['Completion date', 'Date']:
+                # ... (keep your existing date logic)
+                try: d_val = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
+                except: d_val = None
+                d_input = st.date_input(col, value=d_val, key=f"ed_{col}")
+                updated_vals[col] = d_input.strftime('%d/%m/%Y') if d_input else ""
+                
+            elif col in DROPDOWN_DATA:
+                # ... (keep your existing dropdown logic)
+                opts = sorted(list(set([""] + DROPDOWN_DATA[col] + [cur_val])))
+                updated_vals[col] = st.selectbox(col, opts, index=opts.index(cur_val), key=f"sel_{col}")
+                
+            else:
+                updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_{col}")
 
             if st.form_submit_button("💾 Save Changes", use_container_width=True):
                 status = "Closed" if updated_vals.get("Completion date") else "Open"
@@ -324,33 +298,46 @@ elif tab_nav == "➕ Add New Job":
 elif tab_nav == "🌐 Cloud Sync":
     st.subheader("🌐 Google Sheets Database Sync")
     
-    # 1. Credentials Setup (Directly in the script)
     import gspread
     from google.oauth2.service_account import Credentials
     
     col_a, col_b = st.columns(2)
     
-    # --- PULL DATA ---
-    if col_a.button("📥 Fetch from Google (Read Only)", use_container_width=True):
-        try:
-            scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-            creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
-            if isinstance(creds_info, dict) and "private_key" in creds_info:
-                 creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
-            
-            creds = Credentials.from_service_account_info(creds_info, scopes=scope)
-            client = gspread.authorize(creds)
-            
-            # Using your specific Spreadsheet ID
-            spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
-            worksheet = spreadsheet.get_worksheet(0)
-            
-            cloud_data = pd.DataFrame(worksheet.get_all_records())
-            if not cloud_data.empty:
-                st.session_state.google_data = cloud_data
-                st.success("Successfully fetched data from Google Sheets!")
-        except Exception as e:
-            st.error(f"Fetch failed: {e}")
+    # --- UPDATED PULL DATA ---
+    if col_a.button("📥 Fetch & Sync from Google", use_container_width=True):
+        with st.status("Syncing with Google Sheets...", expanded=True) as status:
+            try:
+                scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+                creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
+                if isinstance(creds_info, dict) and "private_key" in creds_info:
+                     creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+                
+                creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+                client = gspread.authorize(creds)
+                
+                # Fetch the Spreadsheet
+                spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
+                worksheet = spreadsheet.get_worksheet(0)
+                
+                # 1. Download Data
+                st.write("Reading from Cloud...")
+                cloud_data = pd.DataFrame(worksheet.get_all_records())
+                
+                if not cloud_data.empty:
+                    # 2. OVERWRITE THE LOCAL DATABASE
+                    st.write("Updating Local Parquet File...")
+                    cloud_data.to_parquet(FILENAME_PARQUET, index=False)
+                    
+                    # 3. CLEAR CACHE & REFRESH
+                    st.cache_data.clear()
+                    status.update(label="Sync Complete!", state="complete", expanded=False)
+                    st.success("Successfully updated local database. You can now search for updated entries.")
+                    st.rerun() # This reloads the app with the new data
+                else:
+                    st.warning("Google Sheet was empty.")
+            except Exception as e:
+                st.error(f"Fetch failed: {e}")
+Why this fixes it:
 
     # --- PUSH DATA ---
     if col_b.button("📤 Push Local Data to Google", use_container_width=True, type="primary"):
