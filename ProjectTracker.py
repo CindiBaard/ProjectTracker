@@ -288,12 +288,7 @@ elif tab_nav == "➕ Add New Job":
             st.success("Job Added!")
             st.rerun()
 
-# --- TAB 5: GOOGLE CLOUD SYNC ---
-elif tab_nav == "🌐 Cloud Sync":
-    st.subheader("🌐 Google Sheets Database Sync")
-    import gspread
-    from google.oauth2.service_account import Credentials
-    col_a, col_b = st.columns(2)
+# --- UPDATED PULL DATA WITH TYPE FIX ---
     if col_a.button("📥 Fetch & Sync from Google", use_container_width=True):
         with st.status("Syncing with Google Sheets...", expanded=True) as status:
             try:
@@ -301,22 +296,32 @@ elif tab_nav == "🌐 Cloud Sync":
                 creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
                 if isinstance(creds_info, dict) and "private_key" in creds_info:
                      creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+                
                 creds = Credentials.from_service_account_info(creds_info, scopes=scope)
                 client = gspread.authorize(creds)
+                
                 spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
                 worksheet = spreadsheet.get_worksheet(0)
+                
                 st.write("Reading from Cloud...")
                 cloud_data = pd.DataFrame(worksheet.get_all_records())
+                
                 if not cloud_data.empty:
+                    # --- THE FIX: Convert all columns to string to avoid Parquet errors ---
+                    # This prevents "Expected bytes, got int" errors for columns like Cap_Lid Colour
+                    cloud_data = cloud_data.astype(str).replace('nan', '')
+                    
                     st.write("Updating Local Parquet File...")
                     cloud_data.to_parquet(FILENAME_PARQUET, index=False)
+                    
                     st.cache_data.clear()
                     status.update(label="Sync Complete!", state="complete", expanded=False)
                     st.success("Successfully updated local database.")
                     st.rerun()
-                else: st.warning("Google Sheet was empty.")
-            except Exception as e: st.error(f"Fetch failed: {e}")
-
+                else:
+                    st.warning("Google Sheet was empty.")
+            except Exception as e:
+                st.error(f"Fetch failed: {e}")
     if col_b.button("📤 Push Local Data to Google", use_container_width=True, type="primary"):
         try:
             scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
