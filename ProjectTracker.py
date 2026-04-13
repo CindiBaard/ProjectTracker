@@ -224,7 +224,10 @@ elif tab_nav == "🌐 Cloud Sync":
                 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
                 creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
                 if isinstance(creds_info, dict) and "private_key" in creds_info:
-                     creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+                    # Remove any literal quotes that might have been accidentally saved
+                    raw_key = creds_info["private_key"].strip().strip('"').strip("'")
+                    # Convert escaped newlines to real newlines
+                    creds_info["private_key"] = raw_key.replace("\\n", "\n")
                 
                 creds = Credentials.from_service_account_info(creds_info, scopes=scope)
                 client = gspread.authorize(creds)
