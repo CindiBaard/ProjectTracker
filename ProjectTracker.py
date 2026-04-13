@@ -97,7 +97,8 @@ def display_combination_table(key_prefix):
                 search = st.text_input(f"🔍 Filter Specs", key=f"{key_prefix}_search")
                 if search:
                     combo_df = combo_df[combo_df.apply(lambda r: r.astype(str).str.contains(search, case=False).any(), axis=1)]
-                event = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table")
+                # FIXED: Added quotes around "stretch"
+                event = st.dataframe(combo_df, width="stretch", hide_index=True, on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table")
                 if event.selection.rows:
                     sel_row = combo_df.iloc[event.selection.rows[0]].to_dict()
                     st.session_state.selected_combo = {
@@ -131,7 +132,7 @@ if tab_nav == "🔍 Search & Edit":
     st.subheader("Search & Update Projects")
     c1, c2 = st.columns([4, 1])
     raw_search = c1.text_input("Enter Pre-Prod No.", value=st.session_state.last_search_no).strip()
-    if c2.button("Clear Search", use_container_width=True):
+    if c2.button("Clear Search", width="stretch"):
         st.session_state.last_search_no = ""
         st.rerun()
 
@@ -162,7 +163,8 @@ if tab_nav == "🔍 Search & Edit":
                             else: st.write("No trials recorded.")
                             updated_vals[col] = cur_val
                         elif col in ['Completion date', 'Date']:
-                            try: d_val = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
+                            # FIXED: More robust date parsing for 2026
+                            try: d_val = pd.to_datetime(cur_val, dayfirst=False, errors='coerce').date() if cur_val else None
                             except: d_val = None
                             d_input = st.date_input(col, value=d_val, key=f"ed_{col}")
                             updated_vals[col] = d_input.strftime('%d/%m/%Y') if d_input else ""
@@ -172,7 +174,7 @@ if tab_nav == "🔍 Search & Edit":
                         else:
                             updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_{col}")
 
-                if st.form_submit_button("💾 Save Changes", use_container_width=True):
+                if st.form_submit_button("💾 Save Changes", width="stretch"):
                     for k, v in updated_vals.items(): df.at[idx, k] = v
                     save_db(df)
                     st.session_state.selected_combo = {}
@@ -204,7 +206,7 @@ elif tab_nav == "➕ Add New Job":
                 else:
                     new_entry[col] = st.text_input(col, value=val)
 
-        if st.form_submit_button("➕ Create Project", use_container_width=True):
+        if st.form_submit_button("➕ Create Project", width="stretch"):
             df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
             save_db(df)
             st.session_state.selected_combo = {}
@@ -217,12 +219,10 @@ elif tab_nav == "🌐 Cloud Sync":
     
     col_a, col_b = st.columns(2)
     
-    if col_a.button("📥 Fetch & Sync from Google", use_container_width=True):
+    if col_a.button("📥 Fetch & Sync from Google", width="stretch"):
         with st.status("Fetching from Cloud...") as status:
             try:
                 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-                
-                # Identify which secret key is being used
                 if "gcp_service_account" in st.secrets:
                     creds_dict = dict(st.secrets["gcp_service_account"])
                 else:
@@ -238,7 +238,6 @@ elif tab_nav == "🌐 Cloud Sync":
 
                 creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
                 client = gspread.authorize(creds)
-                
                 spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
                 worksheet = spreadsheet.get_worksheet(0)
                 
@@ -255,11 +254,10 @@ elif tab_nav == "🌐 Cloud Sync":
             except Exception as e:
                 st.error(f"Sync Error: {e}")
 
-    if col_b.button("📤 Push Local Data to Google", use_container_width=True, type="primary"):
+    if col_b.button("📤 Push Local Data to Google", width="stretch", type="primary"):
         with st.spinner("Pushing to Cloud..."):
             try:
                 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-                
                 if "gcp_service_account" in st.secrets:
                     creds_dict = dict(st.secrets["gcp_service_account"])
                 else:
@@ -271,7 +269,6 @@ elif tab_nav == "🌐 Cloud Sync":
 
                 creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
                 client = gspread.authorize(creds)
-                
                 spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
                 worksheet = spreadsheet.get_worksheet(0)
                 
@@ -288,13 +285,13 @@ elif tab_nav == "📊 Detailed Age Analysis":
     if not df.empty and 'Age Category' in df.columns:
         age_counts = df['Age Category'].value_counts()
         st.bar_chart(age_counts)
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, width="stretch")
 
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("Trial Turnaround Performance")
     if os.path.exists(TRIALS_FILE_CURRENT):
         trial_df = pd.read_csv(TRIALS_FILE_CURRENT)
         st.write("Trial Data Preview")
-        st.dataframe(trial_df.head(), use_container_width=True)
+        st.dataframe(trial_df.head(), width="stretch")
     else:
         st.info("Trial trends data file not found.")
