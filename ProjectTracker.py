@@ -153,7 +153,6 @@ if tab_nav == "🔍 Search & Edit":
                 for i, col in enumerate(DESIRED_ORDER):
                     if col == "Age Category": continue
                     
-                    # Pull from selected specs or existing row, cleaning 'None' values
                     cur_val = selected.get(col, str(row.get(col, ""))).replace('None', '').replace('nan', '').strip()
                     
                     with edit_cols[i % 3]:
@@ -221,37 +220,30 @@ elif tab_nav == "🌐 Cloud Sync":
     if col_a.button("📥 Fetch & Sync from Google", use_container_width=True):
         with st.status("Fetching from Cloud...") as status:
             try:
-    scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    
-    # Identify which secret key is being used
-    if "gcp_service_account" in st.secrets:
-        creds_dict = dict(st.secrets["gcp_service_account"])
-    else:
-        creds_dict = dict(st.secrets["connections"]["gsheets"])
+                scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+                
+                # Identify which secret key is being used
+                if "gcp_service_account" in st.secrets:
+                    creds_dict = dict(st.secrets["gcp_service_account"])
+                else:
+                    creds_dict = dict(st.secrets["connections"]["gsheets"])
 
-    if "private_key" in creds_dict:
-        # 1. Strip any accidental whitespace or surrounding quotes
-        pk = creds_dict["private_key"].strip().strip('"').strip("'")
-        
-        # 2. Fix the newline escaping
-        pk = pk.replace("\\n", "\n")
-        
-        # 3. Ensure it starts and ends correctly (fixes MalformedFraming)
-        if not pk.startswith("-----BEGIN PRIVATE KEY-----"):
-            pk = "-----BEGIN PRIVATE KEY-----\n" + pk
-        if not pk.endswith("-----END PRIVATE KEY-----"):
-            pk = pk + "\n-----END PRIVATE KEY-----"
-            
-        creds_dict["private_key"] = pk
+                if "private_key" in creds_dict:
+                    pk = creds_dict["private_key"].strip().strip('"').strip("'").replace("\\n", "\n")
+                    if not pk.startswith("-----BEGIN PRIVATE KEY-----"):
+                        pk = "-----BEGIN PRIVATE KEY-----\n" + pk
+                    if not pk.endswith("-----END PRIVATE KEY-----"):
+                        pk = pk + "\n-----END PRIVATE KEY-----"
+                    creds_dict["private_key"] = pk
 
-    creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
-    client = gspread.authorize(creds)
+                creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
+                client = gspread.authorize(creds)
+                
                 spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
                 worksheet = spreadsheet.get_worksheet(0)
                 
                 cloud_data = pd.DataFrame(worksheet.get_all_records())
                 if not cloud_data.empty:
-                    # CLEAN DATA BEFORE SAVING
                     cloud_data = clean_data_types(cloud_data)
                     cloud_data.to_parquet(FILENAME_PARQUET, index=False)
                     st.cache_data.clear()
@@ -267,12 +259,19 @@ elif tab_nav == "🌐 Cloud Sync":
         with st.spinner("Pushing to Cloud..."):
             try:
                 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-                creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
-                if isinstance(creds_info, dict) and "private_key" in creds_info:
-                     creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
                 
-                creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+                if "gcp_service_account" in st.secrets:
+                    creds_dict = dict(st.secrets["gcp_service_account"])
+                else:
+                    creds_dict = dict(st.secrets["connections"]["gsheets"])
+
+                if "private_key" in creds_dict:
+                    pk = creds_dict["private_key"].strip().strip('"').strip("'").replace("\\n", "\n")
+                    creds_dict["private_key"] = pk
+
+                creds = Credentials.from_service_account_info(creds_dict, scopes=scope)
                 client = gspread.authorize(creds)
+                
                 spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
                 worksheet = spreadsheet.get_worksheet(0)
                 
@@ -293,7 +292,6 @@ elif tab_nav == "📊 Detailed Age Analysis":
 
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("Trial Turnaround Performance")
-    # This tab requires the CSV file to exist
     if os.path.exists(TRIALS_FILE_CURRENT):
         trial_df = pd.read_csv(TRIALS_FILE_CURRENT)
         st.write("Trial Data Preview")
