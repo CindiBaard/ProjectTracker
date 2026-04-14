@@ -205,6 +205,59 @@ DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
 if not df.empty:
     DROPDOWN_DATA['Client'] = sorted([str(c) for c in df['Client'].unique() if str(c).strip() and str(c).lower() != 'nan'])
 
+def update_tracker_status_single(pre_prod_no, trial_ref):
+    """Updates only the specific row in Google Sheets when a trial is saved"""
+    import gspread
+    from google.oauth2.service_account import Credentials
+    
+    try:
+        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
+        if isinstance(creds_info, dict) and "private_key" in creds_info:
+            creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+        
+        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+        client = gspread.authorize(creds)
+        
+        # Open your sheet
+        spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
+        worksheet = spreadsheet.get_worksheet(0)
+        
+        # Clean the ID to match (No leading zeros)
+        search_id = str(pre_prod_no).strip().split('.')[0]
+        
+        # Find the row
+        cell = worksheet.find(search_id, in_column=1)
+        
+        # Find the column for "Injection trial requested"
+        headers = worksheet.row_values(1)
+        if "Injection trial requested" in headers:
+            col_idx = headers.index("Injection trial requested") + 1
+            # Update the cell with "T1 - Date"
+            worksheet.update_cell(cell.row, col_idx, trial_ref)
+            return True
+    except Exception as e:
+        st.error(f"Background Cloud Sync failed: {e}")
+        return False
+
+            if st.form_submit_button("💾 Save Changes", use_container_width=True):
+                status = "Closed" if updated_vals.get("Completion date") else "Open"
+                updated_vals.update({"Status": status, "Open or closed": status})
+                
+                # 1. Update Local Parquet
+                for k, v in updated_vals.items(): df.at[idx, k] = v
+                save_db(df)
+                
+                # 2. Trigger Cloud Sync for the Trial Status
+                trial_status = updated_vals.get("Injection trial requested", "")
+                if trial_status:
+                    with st.spinner("Syncing Trial to Google..."):
+                        update_tracker_status_single(search_no, trial_status)
+                
+                st.session_state.selected_combo = {}
+                st.success("Saved locally & Synced to Cloud!")
+                st.rerun()
+                
 # --- NAVIGATION ---
 tabs_list = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Cloud Sync"]
 tab_nav = st.radio("Navigation", tabs_list, index=tabs_list.index(st.session_state.active_tab), horizontal=True)
