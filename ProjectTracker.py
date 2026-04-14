@@ -1,8 +1,3 @@
-I have corrected the indentation throughout the script.
-
-The primary issue was a duplicate st.form_submit_button block appearing on lines 188–205 that was not inside a function or a form, which would cause an immediate crash. I have removed the misplaced duplicate and ensured the correct button logic is properly nested inside the with st.form("edit_form"): block in Tab 1.
-
-Python
 import os
 import re
 import io
