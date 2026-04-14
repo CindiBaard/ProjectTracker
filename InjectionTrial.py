@@ -76,16 +76,21 @@ def update_tracker_status(pre_prod_no, current_trial_ref):
         tracker_spreadsheet = client.open_by_key(TRACKER_FILE_ID)
         tracker_worksheet = tracker_spreadsheet.get_worksheet(0) 
         
-        def pad_id(val):
-            if pd.isna(val) or str(val).strip() == '': 
+# FIX STARTS HERE
+        def pad_id(input_val):
+            if pd.isna(input_val) or str(input_val).strip() == '': 
                 return ""
-        val_str = str(val).strip().split('.')[0]
-        # If there is an underscore (like 12345_A), keep the suffix but don't pad the front
-        if '_' in val_str:
-            parts = val_str.split('_', 1)
-            return f"{parts[0]}_{parts[1]}"
-        # Return the number exactly as it is (e.g., "9999")
-        return val_str
+            val_str = str(input_val).strip().split('.')[0]
+            if '_' in val_str:
+                parts = val_str.split('_', 1)
+                return f"{parts[0]}_{parts[1]}"
+            return val_str
+
+        # Pass the pre_prod_no into the helper function
+        search_id = pad_id(pre_prod_no) 
+        
+        st.write(f"Searching for ID: {search_id}") # Helpful for debugging
+        cell = tracker_worksheet.find(search_id, in_column=1)
 
         search_id = pad_id(pre_prod_no)
         cell = tracker_worksheet.find(search_id, in_column=1)
