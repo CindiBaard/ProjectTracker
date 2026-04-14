@@ -2,10 +2,14 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
-
+import time
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(layout="wide", page_title="Injection Trial Data Entry")
+
+# ---- CONFIGURATION
+# The ID of your Project Tracker spreadsheet
+TRACKER_FILE_ID = "1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M"
 
 # --- DIRECTORY SETUP ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -55,15 +59,12 @@ def display_trial_history(pre_prod_no):
         else:
             st.write("No previous trial history found.")
 
-def update_tracker_status(pre_prod_no):
+def update_tracker_status(pre_prod_no, current_trial_ref):
+    """Updates the Project Tracker Google Sheet with 'T# - Date'"""
     import gspread
     from google.oauth2.service_account import Credentials
-    from datetime import datetime
-    import time
-    import streamlit as st
-
+    
     try:
-        # 1. Credentials Setup
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
         if isinstance(creds_info, dict) and "private_key" in creds_info:
@@ -72,49 +73,41 @@ def update_tracker_status(pre_prod_no):
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
         
-        # 2. Open Sheet
-        spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
-        worksheet = spreadsheet.get_worksheet(0) 
+        tracker_spreadsheet = client.open_by_key(TRACKER_FILE_ID)
+        tracker_worksheet = tracker_spreadsheet.get_worksheet(0) 
         
-        # 3. Padding logic for ID matching
         def pad_id(val):
-            val_str = str(val).strip().split('.')[0]
-            if '_' in val_str:
-                parts = val_str.split('_', 1)
-                return f"{parts[0].zfill(5)}_{parts[1]}"
-            return val_str.zfill(5)
+            if pd.isna(val) or str(val).strip() == '': 
+                return ""
+        val_str = str(val).strip().split('.')[0]
+        # If there is an underscore (like 12345_A), keep the suffix but don't pad the front
+        if '_' in val_str:
+            parts = val_str.split('_', 1)
+            return f"{parts[0]}_{parts[1]}"
+        # Return the number exactly as it is (e.g., "9999")
+        return val_str
 
         search_id = pad_id(pre_prod_no)
-        st.write(f"🔍 Searching for ID: **{search_id}**...")
+        cell = tracker_worksheet.find(search_id, in_column=1)
+        row_idx = cell.row
 
-        # 4. Find the Row (Direct Search)
-        # This looks in Column A (index 1) for your Pre-Prod No.
-        try:
-            cell = worksheet.find(search_id, in_column=1)
-            row_idx = cell.row
-            st.write(f"✅ Found at Row: {row_idx}")
-        except:
-            st.error(f"❌ ID '{search_id}' not found in Column A of the Google Sheet.")
-            return
+        # Construct: T1 - 10/04/2026
+        trial_suffix = current_trial_ref.split('_')[-1] if '_' in current_trial_ref else current_trial_ref
+        current_date = datetime.now().strftime('%d/%m/%Y')
+        combined_value = f"{trial_suffix} - {current_date}"
 
-        # 5. Find the Column Header
-        headers = [h.strip() for h in worksheet.row_values(1)]
+        headers = [h.strip() for h in tracker_worksheet.row_values(1)]
         col_name = "Injection trial requested"
         
         if col_name in headers:
             col_idx = headers.index(col_name) + 1
-            current_date = datetime.now().strftime('%d/%m/%Y')
-            
-            # 6. PERFORM THE UPDATE
-            worksheet.update_cell(row_idx, col_idx, current_date)
-            st.success(f"🚀 Google Sheet Updated! Row {row_idx}, Col {col_idx}")
-            time.sleep(2)
+            tracker_worksheet.update_cell(row_idx, col_idx, combined_value)
+            return True, combined_value
         else:
-            st.error(f"❌ Could not find column '{col_name}' in headers: {headers}")
-
+            return False, f"Column '{col_name}' not found."
     except Exception as e:
-        st.error(f"⚠️ Google Sheets Error: {e}")
-        
+        return False, str(e)
+
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
 st.subheader("Search Project Tracker")
@@ -142,7 +135,7 @@ if search_input:
     st.divider()
 
 if search_input:
-    ld = st.session_state.lookup_data
+    ld = st.session_state.get('lookup_data', {})
     current_trial_ref = get_next_trial_reference(search_input)
 
     with st.form("injection_xlsm_form", clear_on_submit=True):
@@ -222,33 +215,31 @@ if search_input:
         st.subheader("5. Trial Observations")
         notes = st.text_area("Observations")
 
-        # SUBMIT BUTTON (Only one instance inside the form)
         submit_trial = st.form_submit_button("Submit Trial Entry")
 
         if submit_trial:
-            # We use a status container to see progress
             with st.status("Saving Data...", expanded=True) as status:
-                st.write("📝 Writing to local history (Parquet)...")
+                st.write("📝 Writing to trial history...")
                 
+                # 1. Create the submission record
                 new_submission = {
                     "Trial Ref": current_trial_ref,
                     "Pre-Prod No.": search_input,
                     "Date": trial_date.strftime("%Y-%m-%d"),
-                    "Injection trial requested": trial_date.strftime("%d/%m/%Y"), # Fixed key
                     "Sales Rep": sales_rep,
                     "Client": client,
                     "Operator": operator,
-                    "Machine Prod": machine_prod,
-                    "Machine Trial": machine_trial,
                     "Observations": notes,
                     "Cycle Time": cyc_t,
                     "Inj Pressure": inj_p,
                     "Tinuvin": tinuvin_val,
                     "Dosing Unit Fitted": dosing_fitted,
-                    "Dosing Calibrated": dosing_calib
+                    "Dosing Calibrated": dosing_calib,
+                    "Colour Set": colour_set,
+                    "Shot Weight": shot_w
                 }
 
-                # Save to Parquet (This part is working for you)
+                # Save to Trial_Submissions.parquet (History)
                 df_new = pd.DataFrame([new_submission])
                 if os.path.exists(SUBMISSIONS_FILE):
                     df_existing = pd.read_parquet(SUBMISSIONS_FILE)
@@ -256,25 +247,49 @@ if search_input:
                 else:
                     df_final = df_new
                 df_final.to_parquet(SUBMISSIONS_FILE)
-                
-                # --- GOOGLE SHEETS UPDATE WITH ERROR CATCHING ---
+
+                # --- NEW STEP: UPDATE LOCAL TRACKER FILE ---
+                st.write("💾 Updating local Project Tracker file...")
+                if os.path.exists(FILENAME_PARQUET):
+                    df_tracker = pd.read_parquet(FILENAME_PARQUET)
+                    
+                    def pad_id(val):
+                        val_str = str(val).strip().split('.')[0]
+                        return val_str.zfill(5)
+                    
+                    search_id = pad_id(search_input)
+                    df_tracker['Pre-Prod No.'] = df_tracker['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().apply(lambda x: x.zfill(5))
+                    
+                    trial_suffix = current_trial_ref.split('_')[-1] if '_' in current_trial_ref else current_trial_ref
+                    combined_value = f"{trial_suffix} - {datetime.now().strftime('%d/%m/%Y')}"
+                    
+                    mask = df_tracker['Pre-Prod No.'] == search_id
+                    if mask.any():
+                        df_tracker.loc[mask, 'Injection trial requested'] = combined_value
+                        df_tracker.to_parquet(FILENAME_PARQUET, index=False)
+                        st.write("✅ Local Parquet Updated.")
+                    else:
+                        st.warning("Could not find ID in local Parquet to update.")
+
+                # --- 2. GOOGLE SHEETS UPDATE ---
                 st.write("🌐 Attempting Cloud Sync (Google Sheets)...")
-                try:
-                    update_tracker_status(search_input)
-                    st.write("✅ Cloud Sync Complete!")
-                except Exception as e:
-                    # This prevents the app from crashing if Google fails
-                    st.error(f"❌ Cloud Sync Failed: {str(e)}")
-                    st.info("The local trial was saved, but the Project Tracker wasn't updated.")
+                success, msg = update_tracker_status(search_input, current_trial_ref)
+                
+                if success:
+                    st.write(f"✅ Cloud Sync Complete: {msg}")
+                    status.update(label="Submission Processed & Synced!", state="complete", expanded=False)
+                    st.session_state.submitted = True
+                    st.cache_data.clear() 
+                else:
+                    st.error(f"❌ Cloud Sync Failed: {msg}")
+                    status.update(label="Local Saved, Cloud Sync Failed", state="error", expanded=True)
 
-                status.update(label="Submission Processed!", state="complete", expanded=False)
-
-            # Do NOT use st.rerun() here yet, or the message will vanish!
-            st.success(f"Final Success: {current_trial_ref} recorded.")
-            
-            # Use a button to reset the form manually so you can read the messages
-            if st.button("Start Next Entry"):
-                st.session_state.lookup_data = {}
-                st.rerun()
+    # THIS MUST BE OUTSIDE THE st.form BLOCK BUT INSIDE THE if search_input BLOCK
+    if st.session_state.get('submitted', False):
+        st.success("Entry Saved Successfully!")
+        if st.button("Start Next Entry"):
+            st.session_state.lookup_data = {}
+            st.session_state.submitted = False 
+            st.rerun()
 else:
     st.info("Enter a Pre-Prod Number to begin.")

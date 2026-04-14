@@ -61,12 +61,15 @@ def get_next_available_id(search_no, existing_ids):
     return f"{base}_NEW"
 
 def pad_preprod_id(val):
-    if pd.isna(val) or str(val).strip() == '': return ""
+    if pd.isna(val) or str(val).strip() == '': 
+        return ""
     val_str = str(val).strip().split('.')[0]
+    # If there is an underscore (like 12345_A), keep the suffix but don't pad the front
     if '_' in val_str:
         parts = val_str.split('_', 1)
-        return f"{parts[0].zfill(5)}_{parts[1]}"
-    return val_str.zfill(5)
+        return f"{parts[0]}_{parts[1]}"
+    # Return the number exactly as it is (e.g., "9999")
+    return val_str
 
 def clean_column_names(df):
     df.columns = [str(c).strip().replace('\ufeff', '').replace('ï»¿', '').replace('"', '').replace('/', '_') for c in df.columns]
