@@ -243,23 +243,23 @@ if not df.empty:
 
 
 if st.form_submit_button("💾 Save Changes", use_container_width=True):
-    status = "Closed" if updated_vals.get("Completion date") else "Open"
-    updated_vals.update({"Status": status, "Open or closed": status})
+                status = "Closed" if updated_vals.get("Completion date") else "Open"
+                updated_vals.update({"Status": status, "Open or closed": status})
                 
-    # 1. Update Local Parquet
-    for k, v in updated_vals.items(): 
-        df.at[idx, k] = v
-    save_db(df)
+                # 1. Update Local Parquet
+                for k, v in updated_vals.items(): 
+                    df.at[idx, k] = v
+                save_db(df)
                 
-    # 2. Trigger Cloud Sync for the Trial Status
-    trial_status = updated_vals.get("Injection trial requested", "")
-    if trial_status:
-        with st.spinner("Syncing Trial to Google..."):
-            update_tracker_status_single(search_no, trial_status)
+                # 2. Trigger Cloud Sync for the Trial Status
+                trial_status = updated_vals.get("Injection trial requested", "")
+                if trial_status:
+                    with st.spinner("Syncing Trial to Google..."):
+                        update_tracker_status_single(search_no, trial_status)
                 
-    st.session_state.selected_combo = {}
-    st.success("Saved locally & Synced to Cloud!")
-    st.rerun()
+                st.session_state.selected_combo = {}
+                st.success("Saved locally & Synced to Cloud!")
+                st.rerun()
                 
 # --- NAVIGATION ---
 tabs_list = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Cloud Sync"]
