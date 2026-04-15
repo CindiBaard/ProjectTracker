@@ -326,11 +326,13 @@ if tab_nav == "🔍 Search & Edit":
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
     selected = st.session_state.get("selected_combo", {})
+    
+    # Suggest the next number but allow user to change it
     default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
     
     with st.form("new_job_form"):
         st.subheader("New Project Entry")
-        new_id = st.text_input("Pre-Prod No.", value=default_id)
+        new_id = st.text_input("Pre-Prod No.", value=default_id).strip()
         new_cols = st.columns(3)
         new_entry = {"Pre-Prod No.": new_id}
         
@@ -347,15 +349,24 @@ elif tab_nav == "➕ Add New Job":
                     new_entry[col] = st.text_input(col, value=val)
 
         if st.form_submit_button("➕ Create Project", use_container_width=True):
-            status = "Closed" if new_entry.get("Completion date") else "Open"
-            new_entry.update({"Status": status, "Open or closed": status})
-            df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
-            save_db(df)
-            st.cache_data.clear() 
-            st.session_state.form_data = {}
-            st.session_state.selected_combo = {}
-            st.success("Job Added!")
-            st.rerun()
+            # --- DUPLICATE CHECK LOGIC ---
+            if new_id == "":
+                st.error("Pre-Prod No. cannot be empty.")
+            elif not df.empty and new_id in df['Pre-Prod No.'].astype(str).values:
+                st.error(f"🚨 Duplicate Error: Pre-Prod No. **{new_id}** already exists in the database!")
+                st.info("Please use a unique number or edit the existing entry in the Search tab.")
+            else:
+                # Proceed with saving if unique
+                status = "Closed" if new_entry.get("Completion date") else "Open"
+                new_entry.update({"Status": status, "Open or closed": status})
+                
+                df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
+                save_db(df)
+                st.cache_data.clear() 
+                st.session_state.form_data = {}
+                st.session_state.selected_combo = {}
+                st.success(f"✅ Job {new_id} Added Successfully!")
+                st.rerun()
 
 # --- TAB 5: GOOGLE CLOUD SYNC ---
 elif tab_nav == "🌐 Cloud Sync":
