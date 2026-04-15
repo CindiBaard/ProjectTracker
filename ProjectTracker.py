@@ -239,16 +239,45 @@ st.session_state.active_tab = tab_nav
 
 # --- TAB 1: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
-    c_s, c_cl = st.columns([4, 1])
+    # 1. Header with Search, Clear, and Sync buttons
+    c_s, c_cl, c_sy = st.columns([3, 1, 1])
+    
     raw_search = c_s.text_input("Search Pre-Prod No.", key="search_input_box").strip()
+    
     if c_cl.button("♻️ Clear", use_container_width=True):
         st.session_state.last_search_no = ""
+        st.session_state.search_input_box = "" # Reset the widget state
         st.rerun()
 
+    if c_sy.button("🔄 Sync Cloud", use_container_width=True):
+        st.cache_data.clear()
+        # Force the database to ignore the parquet and re-read source files
+        df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=True)
+        st.success("Cloud Data Pulled!")
+        st.rerun()
+
+    # 2. Search Logic
     search_no = pad_preprod_id(raw_search)
-    if search_no != st.session_state.last_search_no:
+    
+    # Only rerun if the search number has actually changed to avoid infinite loops
+    if search_no and search_no != st.session_state.get('last_search_no', ''):
         st.session_state.last_search_no = search_no
         st.rerun()
+
+    # 3. Display Results (This only runs if a search_no exists in session state)
+    current_search = st.session_state.get('last_search_no', '')
+    match = df[df['Pre-Prod No.'] == current_search] if not df.empty else pd.DataFrame()
+    
+    if current_search and not match.empty:
+        idx, row = match.index[0], match.iloc[0]
+        
+        # --- Continue with your existing Edit Form code ---
+        st.info(f"Viewing Project: {current_search}")
+        
+        # (Rest of your form logic: btn_col1, btn_col2, st.form("edit_form"), etc.)
+        
+    elif current_search:
+        st.warning(f"No project found for '{current_search}'. Try clicking 'Sync Cloud' if it was recently added.")
 
     match = df[df['Pre-Prod No.'] == search_no] if not df.empty else pd.DataFrame()
     
