@@ -217,8 +217,8 @@ def display_combination_table(key_prefix):
                 st.error(f"Combo Error: {e}")
 
 # --- 7. MAIN LOGIC ---
-# Force a refresh once to clear the old hardcoded path from the parquet cache
-df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=True)
+# Place the line here:
+df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=st.sidebar.button("🔄 Rebuild Local DB"))
 
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
