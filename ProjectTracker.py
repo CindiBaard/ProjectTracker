@@ -217,7 +217,6 @@ def display_combination_table(key_prefix):
                 st.error(f"Combo Error: {e}")
 
 # --- 7. MAIN LOGIC ---
-# Place the line here:
 df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=st.sidebar.button("🔄 Rebuild Local DB"))
 
 DROPDOWN_CONFIG = {
@@ -246,39 +245,21 @@ if tab_nav == "🔍 Search & Edit":
     
     if c_cl.button("♻️ Clear", use_container_width=True):
         st.session_state.last_search_no = ""
-        st.session_state.search_input_box = "" # Reset the widget state
         st.rerun()
 
     if c_sy.button("🔄 Sync Cloud", use_container_width=True):
         st.cache_data.clear()
-        # Force the database to ignore the parquet and re-read source files
         df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=True)
         st.success("Cloud Data Pulled!")
         st.rerun()
 
-    # 2. Search Logic
+    # 2. Search Identification
     search_no = pad_preprod_id(raw_search)
-    
-    # Only rerun if the search number has actually changed to avoid infinite loops
-    if search_no and search_no != st.session_state.get('last_search_no', ''):
+    if search_no != st.session_state.last_search_no:
         st.session_state.last_search_no = search_no
         st.rerun()
 
-    # 3. Display Results (This only runs if a search_no exists in session state)
-    current_search = st.session_state.get('last_search_no', '')
-    match = df[df['Pre-Prod No.'] == current_search] if not df.empty else pd.DataFrame()
-    
-    if current_search and not match.empty:
-        idx, row = match.index[0], match.iloc[0]
-        
-        # --- Continue with your existing Edit Form code ---
-        st.info(f"Viewing Project: {current_search}")
-        
-        # (Rest of your form logic: btn_col1, btn_col2, st.form("edit_form"), etc.)
-        
-    elif current_search:
-        st.warning(f"No project found for '{current_search}'. Try clicking 'Sync Cloud' if it was recently added.")
-
+    # 3. Match Logic
     match = df[df['Pre-Prod No.'] == search_no] if not df.empty else pd.DataFrame()
     
     if search_no and not match.empty:
@@ -334,30 +315,27 @@ if tab_nav == "🔍 Search & Edit":
                 status = "Closed" if updated_vals.get("Completion date") else "Open"
                 updated_vals.update({"Status": status, "Open or closed": status})
                 
-                # 1. Update Local Parquet
                 for k, v in updated_vals.items(): 
                     df.at[idx, k] = v
                 save_db(df)
                 
-                # 2. Trigger Cloud Sync for the Trial Status
                 trial_status = updated_vals.get("Injection trial requested", "")
                 if trial_status:
                     with st.spinner("Syncing Trial to Google..."):
                         update_tracker_status_single(search_no, trial_status)
                 
                 st.session_state.selected_combo = {}
+                st.cache_data.clear()
                 st.success("Saved locally & Synced to Cloud!")
                 st.rerun()
 
     elif search_no:
-        st.warning("No project found.")
+        st.warning(f"No project found for '{search_no}'. Try 'Sync Cloud' if it was recently added.")
 
 # --- TAB 2: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
     selected = st.session_state.get("selected_combo", {})
-    
-    # Suggest the next number but allow user to change it
     default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
     
     with st.form("new_job_form"):
@@ -379,23 +357,19 @@ elif tab_nav == "➕ Add New Job":
                     new_entry[col] = st.text_input(col, value=val)
 
         if st.form_submit_button("➕ Create Project", use_container_width=True):
-            # --- DUPLICATE CHECK LOGIC ---
             if new_id == "":
                 st.error("Pre-Prod No. cannot be empty.")
             elif not df.empty and new_id in df['Pre-Prod No.'].astype(str).values:
-                st.error(f"🚨 Duplicate Error: Pre-Prod No. **{new_id}** already exists in the database!")
-                st.info("Please use a unique number or edit the existing entry in the Search tab.")
+                st.error(f"🚨 Duplicate Error: Pre-Prod No. **{new_id}** already exists!")
             else:
-                # Proceed with saving if unique
                 status = "Closed" if new_entry.get("Completion date") else "Open"
                 new_entry.update({"Status": status, "Open or closed": status})
-                
                 df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
                 save_db(df)
                 st.cache_data.clear() 
                 st.session_state.form_data = {}
                 st.session_state.selected_combo = {}
-                st.success(f"✅ Job {new_id} Added Successfully!")
+                st.success(f"✅ Job {new_id} Added!")
                 st.rerun()
 
 # --- TAB 5: GOOGLE CLOUD SYNC ---
@@ -403,7 +377,6 @@ elif tab_nav == "🌐 Cloud Sync":
     st.subheader("🌐 Google Sheets Database Sync")
     import gspread
     from google.oauth2.service_account import Credentials
-    
     col_a, col_b = st.columns(2)
     
     if col_a.button("📥 Fetch from Google (Read Only)", use_container_width=True):
@@ -412,17 +385,14 @@ elif tab_nav == "🌐 Cloud Sync":
             creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
             if isinstance(creds_info, dict) and "private_key" in creds_info:
                  creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
-            
             creds = Credentials.from_service_account_info(creds_info, scopes=scope)
             client = gspread.authorize(creds)
-            
             spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
             worksheet = spreadsheet.get_worksheet(0)
-            
             cloud_data = pd.DataFrame(worksheet.get_all_records())
             if not cloud_data.empty:
                 st.session_state.google_data = cloud_data
-                st.success("Successfully fetched data from Google Sheets!")
+                st.success("Successfully fetched data!")
         except Exception as e:
             st.error(f"Fetch failed: {e}")
 
@@ -432,17 +402,14 @@ elif tab_nav == "🌐 Cloud Sync":
             creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
             if isinstance(creds_info, dict) and "private_key" in creds_info:
                  creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
-            
             creds = Credentials.from_service_account_info(creds_info, scopes=scope)
             client = gspread.authorize(creds)
-            
             spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
             worksheet = spreadsheet.get_worksheet(0)
-            
             worksheet.clear()
             export_df = df.fillna("")
             worksheet.update([export_df.columns.values.tolist()] + export_df.values.tolist())
-            st.success("Successfully synced local database to Google Sheets!")
+            st.success("Successfully pushed data!")
         except Exception as e:
             st.error(f"Push failed: {e}")
 
@@ -462,17 +429,13 @@ elif tab_nav == "📊 Detailed Age Analysis":
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("Trial Turnaround Performance")
     trial_df = load_trial_data()
-    
     if not trial_df.empty:
         weekly_stats = trial_df.groupby('Week_Num')['Days_Taken'].mean().sort_index()
-        
         col1, col2 = st.columns([1, 3])
         with col1:
             avg_val = trial_df['Days_Taken'].mean()
             st.metric("Avg Turnaround (Total)", f"{avg_val:.1f} Days")
-            st.write("Weekly Averages:")
             st.dataframe(weekly_stats.rename("Avg Days"), use_container_width=True)
-        
         with col2:
             fig, ax = plt.subplots(figsize=(10, 4))
             ax.plot(weekly_stats.index, weekly_stats.values, marker='o', linestyle='-', color='#2ca02c')
@@ -482,5 +445,5 @@ elif tab_nav == "🧪 Trial Trends":
             ax.grid(True, alpha=0.3)
             st.pyplot(fig)
     else:
-        st.info("No trial data found to analyze.")
+        st.info("No trial data found.")
 # --- END OF FILE ---
