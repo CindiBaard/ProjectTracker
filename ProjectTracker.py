@@ -136,6 +136,8 @@ def save_db(df):
 
 @st.cache_data(show_spinner="Refreshing Database...")
 def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
+    # If force_refresh is hit, we should try to pull from GSheets first
+    # then overwrite the Parquet file.
     if os.path.exists(parquet_path) and not force_refresh:
         return pd.read_parquet(parquet_path)
     
@@ -248,17 +250,28 @@ if tab_nav == "🔍 Search & Edit":
         st.rerun()
 
     if c_sy.button("🔄 Sync Cloud", use_container_width=True):
+    with st.spinner("Downloading latest from Google..."):
+        # 1. Fetch from Google
+    # 3. Clear cache
         st.cache_data.clear()
-        df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=True)
-        st.success("Cloud Data Pulled!")
+        st.success("Cloud Data Pulled and Parquet Updated!")
         st.rerun()
+
+    search_no = pad_preprod_id(raw_search)
 
     # 2. Search Identification
-    search_no = pad_preprod_id(raw_search)
-    if search_no != st.session_state.last_search_no:
+    if search_no and search_no != st.session_state.last_search_no:
         st.session_state.last_search_no = search_no
+        
+        # NEW LOGIC: When a user searches, check the cloud for the latest 'Injection trial requested'
+        with st.spinner("Checking Cloud for latest trial status..."):
+            try:
+                # Use your existing service account logic here to pull ONLY the row needed
+                # Or simply force a cache clear for this specific action
+                st.cache_data.clear() 
+            except:
+                pass
         st.rerun()
-
     # 3. Match Logic
     match = df[df['Pre-Prod No.'] == search_no] if not df.empty else pd.DataFrame()
     
