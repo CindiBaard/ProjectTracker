@@ -395,11 +395,12 @@ elif tab_nav == "🌐 Cloud Sync":
     st.subheader("🌐 Google Sheets Database Sync")
     import gspread
     from google.oauth2.service_account import Credentials
+    
     col_a, col_b = st.columns(2)
     
-    if col_a.button("📥 Fetch from Google (Read Only)", use_container_width=True):
+    # --- COLUMN A: FETCH FROM GOOGLE ---
+    if col_a.button("📥 Fetch from Google (Overwrite Local)", use_container_width=True):
         try:
-            # 1. Setup Connection
             scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
             creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
             if isinstance(creds_info, dict) and "private_key" in creds_info:
@@ -410,30 +411,67 @@ elif tab_nav == "🌐 Cloud Sync":
             spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
             worksheet = spreadsheet.get_worksheet(0)
             
-            # 2. Get Data
+            # Get Data
             cloud_data = pd.DataFrame(worksheet.get_all_records())
             
             if not cloud_data.empty:
-                # 3. FIX THE DATA TYPES (Prevents the '10017_1' error)
+                # 1. Standardize column names
                 cloud_data = clean_column_names(cloud_data)
+                
+                # 2. Convert everything to string to prevent "int/bytes" errors
+                cloud_data = cloud_data.astype(str)
+                
+                # 3. Clean 'Pre-Prod No.' formatting and handle 'nan'
                 cloud_data['Pre-Prod No.'] = (
                     cloud_data['Pre-Prod No.']
-                    .astype(str)
                     .str.replace(r'\.0$', '', regex=True)
                     .str.strip()
                 )
+                cloud_data = cloud_data.replace('nan', '')
                 
-                # 4. Save to Parquet
+                # 4. Save to local Parquet
                 cloud_data.to_parquet(FILENAME_PARQUET, index=False, engine='pyarrow')
+                
                 st.session_state.google_data = cloud_data
-                st.success("✅ Successfully fetched and updated local database!")
+                st.success("✅ Local Database Updated from Cloud!")
                 st.cache_data.clear()
+                st.rerun()
             else:
-                st.warning("Cloud Sheet is empty.")
+                st.warning("The Google Sheet appears to be empty.")
                 
         except Exception as e:
-            # THIS BLOCK WAS MISSING OR MISPLACED
             st.error(f"Fetch failed: {e}")
+
+    # --- COLUMN B: PUSH TO GOOGLE ---
+    if col_b.button("📤 Push Local Data to Google", use_container_width=True, type="primary"):
+        try:
+            with st.spinner("Uploading to Google Sheets..."):
+                scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+                creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
+                if isinstance(creds_info, dict) and "private_key" in creds_info:
+                     creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+                
+                creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+                client = gspread.authorize(creds)
+                spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
+                worksheet = spreadsheet.get_worksheet(0)
+                
+                # 1. Prepare current local data for upload
+                # We use the current 'df' loaded at the start of the script
+                export_df = df.copy().fillna("")
+                export_df = export_df.astype(str) # Keep it as strings for Google
+                
+                # 2. Clear worksheet and upload fresh
+                worksheet.clear()
+                # Prepare data as a list of lists for gspread
+                data_to_upload = [export_df.columns.values.tolist()] + export_df.values.tolist()
+                worksheet.update(data_to_upload)
+                
+                st.success("✅ Cloud Spreadsheet Successfully Updated!")
+        except Exception as e:
+            st.error(f"Push failed: {e}")
+
+    # Preview section (Optional)
     if "google_data" in st.session_state:
         st.write("### Preview: Cloud Data")
         st.dataframe(st.session_state.google_data, use_container_width=True)
