@@ -408,14 +408,27 @@ elif tab_nav == "🌐 Cloud Sync":
             spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
             worksheet = spreadsheet.get_worksheet(0)
             cloud_data = pd.DataFrame(worksheet.get_all_records())
-            if not cloud_data.empty:
-    # --- ADD THIS LINE HERE ---
-    # This forces the ID column to be text so '10017_1' doesn't break the save
-                cloud_data['Pre-Prod No.'] = cloud_data['Pre-Prod No.'].astype(str)
+        if not cloud_data.empty:
+            # 1. Clean column names to match your DESIRED_ORDER
+            cloud_data = clean_column_names(cloud_data)
+            
+            # 2. Force 'Pre-Prod No.' to String and strip .0 (e.g., '10017.0' -> '10017')
+            cloud_data['Pre-Prod No.'] = (
+                cloud_data['Pre-Prod No.']
+                .astype(str)
+                .str.replace(r'\.0$', '', regex=True)
+                .str.strip()
+            )
+            
+            # 3. Save with index=False to keep the schema clean
+            try:
+                cloud_data.to_parquet(FILENAME_PARQUET, index=False, engine='pyarrow')
                 st.session_state.google_data = cloud_data
-                st.success("Successfully fetched data!")
-        except Exception as e:
-            st.error(f"Fetch failed: {e}")
+                st.success("Successfully fetched and converted data!")
+                st.cache_data.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(f"Parquet Save Error: {e}")
 
     if col_b.button("📤 Push Local Data to Google", use_container_width=True, type="primary"):
         try:
