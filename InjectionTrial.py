@@ -62,7 +62,7 @@ def delete_trial_entry(trial_ref):
             st.error(f"Error deleting entry: {e}")
             return False
     return False
-n
+
 def display_trial_history(pre_prod_no):
     if os.path.exists(SUBMISSIONS_FILE):
         df = pd.read_parquet(SUBMISSIONS_FILE)
@@ -91,7 +91,7 @@ def display_trial_history(pre_prod_no):
                 st.divider()
         else:
             st.write("No previous trial history found.")
-            
+
 def update_tracker_status(pre_prod_no, current_trial_ref):
     """Updates the Project Tracker Google Sheet with 'T# - Date'"""
     import gspread
