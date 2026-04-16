@@ -240,7 +240,6 @@ st.session_state.active_tab = tab_nav
 
 # --- TAB 1: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
-    # 1. Header with Search, Clear, and Sync buttons
     c_s, c_cl, c_sy = st.columns([3, 1, 1])
     
     raw_search = c_s.text_input("Search Pre-Prod No.", key="search_input_box").strip()
@@ -249,30 +248,36 @@ if tab_nav == "🔍 Search & Edit":
         st.session_state.last_search_no = ""
         st.rerun()
 
+    # Fixed Sync Cloud Logic
     if c_sy.button("🔄 Sync Cloud", use_container_width=True):
-    with st.spinner("Downloading latest from Google..."):
-        # 1. Fetch from Google
-    # 3. Clear cache
-        st.cache_data.clear()
-        st.success("Cloud Data Pulled and Parquet Updated!")
-        st.rerun()
+        with st.spinner("Downloading latest from Google..."):
+            try:
+                # Reuse your logic from Tab 5 to pull data
+                scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+                creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
+                if isinstance(creds_info, dict) and "private_key" in creds_info:
+                     creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+                
+                from google.oauth2.service_account import Credentials
+                import gspread
+                creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+                client = gspread.authorize(creds)
+                spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
+                worksheet = spreadsheet.get_worksheet(0)
+                
+                # Update the local Parquet
+                new_df = pd.DataFrame(worksheet.get_all_records())
+                if not new_df.empty:
+                    new_df.to_parquet(FILENAME_PARQUET, index=False)
+                    st.cache_data.clear()
+                    st.success("Cloud Data Pulled and Parquet Updated!")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Sync failed: {e}")
 
     search_no = pad_preprod_id(raw_search)
 
-    # 2. Search Identification
-    if search_no and search_no != st.session_state.last_search_no:
-        st.session_state.last_search_no = search_no
-        
-        # NEW LOGIC: When a user searches, check the cloud for the latest 'Injection trial requested'
-        with st.spinner("Checking Cloud for latest trial status..."):
-            try:
-                # Use your existing service account logic here to pull ONLY the row needed
-                # Or simply force a cache clear for this specific action
-                st.cache_data.clear() 
-            except:
-                pass
-        st.rerun()
-    # 3. Match Logic
+    # Simplified Match Logic (Removed the redundant cache clear on search)
     match = df[df['Pre-Prod No.'] == search_no] if not df.empty else pd.DataFrame()
     
     if search_no and not match.empty:
