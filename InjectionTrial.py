@@ -49,16 +49,49 @@ def get_next_trial_reference(pre_prod_no):
     except:
         return f"{pre_prod_no}_T1"
 
+def delete_trial_entry(trial_ref):
+    """Removes a specific trial reference from the submissions file."""
+    if os.path.exists(SUBMISSIONS_FILE):
+        try:
+            df = pd.read_parquet(SUBMISSIONS_FILE)
+            # Keep everything EXCEPT the trial reference we want to delete
+            df_filtered = df[df['Trial Ref'] != trial_ref]
+            df_filtered.to_parquet(SUBMISSIONS_FILE, index=False)
+            return True
+        except Exception as e:
+            st.error(f"Error deleting entry: {e}")
+            return False
+    return False
+n
 def display_trial_history(pre_prod_no):
     if os.path.exists(SUBMISSIONS_FILE):
         df = pd.read_parquet(SUBMISSIONS_FILE)
+        # Filter for the specific project
         history = df[df['Pre-Prod No.'] == str(pre_prod_no)].sort_values('Date', ascending=False)
+        
         if not history.empty:
             st.info(f"Existing Trials Found: **{len(history)}**")
-            st.dataframe(history[['Trial Ref', 'Date', 'Operator', 'Observations']], use_container_width=True)
+            
+            # Create a clean display table
+            display_df = history[['Trial Ref', 'Date', 'Operator', 'Observations']].copy()
+            
+            # Using columns to create a "Delete" interface
+            for index, row in history.iterrows():
+                col1, col2 = st.columns([5, 1])
+                with col1:
+                    st.write(f"**{row['Trial Ref']}** | {row['Date']} | {row['Operator']}")
+                    st.caption(f"Note: {row['Observations']}")
+                with col2:
+                    # Unique key required for each button in a loop
+                    if st.button(f"Delete", key=f"del_{row['Trial Ref']}"):
+                        if delete_trial_entry(row['Trial Ref']):
+                            st.success(f"Deleted {row['Trial Ref']}")
+                            time.sleep(1) # Brief pause so user sees success
+                            st.rerun() # Refresh to update the list
+                st.divider()
         else:
             st.write("No previous trial history found.")
-
+            
 def update_tracker_status(pre_prod_no, current_trial_ref):
     """Updates the Project Tracker Google Sheet with 'T# - Date'"""
     import gspread
