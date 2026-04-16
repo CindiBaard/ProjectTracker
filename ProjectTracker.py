@@ -399,54 +399,41 @@ elif tab_nav == "🌐 Cloud Sync":
     
     if col_a.button("📥 Fetch from Google (Read Only)", use_container_width=True):
         try:
+            # 1. Setup Connection
             scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
             creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
             if isinstance(creds_info, dict) and "private_key" in creds_info:
                  creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+            
             creds = Credentials.from_service_account_info(creds_info, scopes=scope)
             client = gspread.authorize(creds)
             spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
             worksheet = spreadsheet.get_worksheet(0)
+            
+            # 2. Get Data
             cloud_data = pd.DataFrame(worksheet.get_all_records())
-        if not cloud_data.empty:
-            # 1. Clean column names to match your DESIRED_ORDER
-            cloud_data = clean_column_names(cloud_data)
             
-            # 2. Force 'Pre-Prod No.' to String and strip .0 (e.g., '10017.0' -> '10017')
-            cloud_data['Pre-Prod No.'] = (
-                cloud_data['Pre-Prod No.']
-                .astype(str)
-                .str.replace(r'\.0$', '', regex=True)
-                .str.strip()
-            )
-            
-            # 3. Save with index=False to keep the schema clean
-            try:
+            if not cloud_data.empty:
+                # 3. FIX THE DATA TYPES (Prevents the '10017_1' error)
+                cloud_data = clean_column_names(cloud_data)
+                cloud_data['Pre-Prod No.'] = (
+                    cloud_data['Pre-Prod No.']
+                    .astype(str)
+                    .str.replace(r'\.0$', '', regex=True)
+                    .str.strip()
+                )
+                
+                # 4. Save to Parquet
                 cloud_data.to_parquet(FILENAME_PARQUET, index=False, engine='pyarrow')
                 st.session_state.google_data = cloud_data
-                st.success("Successfully fetched and converted data!")
+                st.success("✅ Successfully fetched and updated local database!")
                 st.cache_data.clear()
-                st.rerun()
-            except Exception as e:
-                st.error(f"Parquet Save Error: {e}")
-
-    if col_b.button("📤 Push Local Data to Google", use_container_width=True, type="primary"):
-        try:
-            scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-            creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
-            if isinstance(creds_info, dict) and "private_key" in creds_info:
-                 creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
-            creds = Credentials.from_service_account_info(creds_info, scopes=scope)
-            client = gspread.authorize(creds)
-            spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
-            worksheet = spreadsheet.get_worksheet(0)
-            worksheet.clear()
-            export_df = df.fillna("")
-            worksheet.update([export_df.columns.values.tolist()] + export_df.values.tolist())
-            st.success("Successfully pushed data!")
+            else:
+                st.warning("Cloud Sheet is empty.")
+                
         except Exception as e:
-            st.error(f"Push failed: {e}")
-
+            # THIS BLOCK WAS MISSING OR MISPLACED
+            st.error(f"Fetch failed: {e}")
     if "google_data" in st.session_state:
         st.write("### Preview: Cloud Data")
         st.dataframe(st.session_state.google_data, use_container_width=True)
