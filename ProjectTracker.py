@@ -411,7 +411,7 @@ elif tab_nav == "🌐 Cloud Sync":
             if not cloud_data.empty:
     # --- ADD THIS LINE HERE ---
     # This forces the ID column to be text so '10017_1' doesn't break the save
-            cloud_data['Pre-Prod No.'] = cloud_data['Pre-Prod No.'].astype(str)
+                cloud_data['Pre-Prod No.'] = cloud_data['Pre-Prod No.'].astype(str)
                 st.session_state.google_data = cloud_data
                 st.success("Successfully fetched data!")
         except Exception as e:
