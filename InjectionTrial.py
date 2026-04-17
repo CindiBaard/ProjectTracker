@@ -97,6 +97,15 @@ def update_tracker_status(pre_prod_no, current_trial_ref):
     import gspread
     from google.oauth2.service_account import Credentials
 
+# Construct the value for the Google Sheet (e.g., T1 - 17/04/2026)
+trial_suffix = current_trial_ref.split('_')[-1] if '_' in current_trial_ref else current_trial_ref
+
+# Use the manual_date if provided (from Sync), otherwise use today's date (from New Entry)
+if manual_date:
+    combined_value = f"{trial_suffix} - {manual_date}"
+else:
+    combined_value = f"{trial_suffix} - {datetime.now().strftime('%d/%m/%Y')}"
+
 # PASTE THE NEW FUNCTION HERE (Standalone)
 def sync_last_trial_to_cloud(pre_prod_no):
     """Finds the most recent trial in history and pushes it to Google Sheets."""
