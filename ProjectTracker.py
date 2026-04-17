@@ -73,46 +73,86 @@ def clean_column_names(df):
     df.columns = [str(c).strip().replace('\ufeff', '').replace('ï»¿', '').replace('"', '').replace('/', '_') for c in df.columns]
     return df
 
-def update_tracker_status_single(pre_prod_no, trial_ref, manual_date=None):
-    """Updates only the specific row in Google Sheets when a trial is saved"""
+def update_tracker_status(pre_prod_no, current_trial_ref, manual_date=None):
+    """Updates the Project Tracker Google Sheet with 'T# - Date'"""
     import gspread
     from google.oauth2.service_account import Credentials
-
-    # NEW LOGIC FOR THE VALUE
-    trial_suffix = current_trial_ref.split('_')[-1] if '_' in current_trial_ref else current_trial_ref
-    
-    # Use manual_date if provided (for syncing old trials), else use today
-    display_date = manual_date if manual_date else datetime.now().strftime('%d/%m/%Y')
-    
-    # Handle the "No Trials" case
-    if current_trial_ref == "No Trials":
-        combined_value = ""
-    else:
-        combined_value = f"{trial_suffix} - {display_date}"
     
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
+        
+        # Handle credentials from Streamlit secrets
+        if "gcp_service_account" in st.secrets:
+            creds_info = st.secrets["gcp_service_account"]
+        else:
+            creds_info = st.secrets["connections"]["gsheets"]
+            
         if isinstance(creds_info, dict) and "private_key" in creds_info:
-            creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+             creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
         
         creds = Credentials.from_service_account_info(creds_info, scopes=scope)
         client = gspread.authorize(creds)
         
-        spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
-        worksheet = spreadsheet.get_worksheet(0)
+        tracker_spreadsheet = client.open_by_key(TRACKER_FILE_ID)
+        tracker_worksheet = tracker_spreadsheet.get_worksheet(0) 
+
+        def pad_id(input_val):
+            if pd.isna(input_val) or str(input_val).strip() == '': 
+                return ""
+            val_str = str(input_val).strip().split('.')[0]
+            return val_str
+
+        search_id = pad_id(pre_prod_no)
+        cell = tracker_worksheet.find(search_id, in_column=1)
         
-        search_id = str(pre_prod_no).strip().split('.')[0]
-        cell = worksheet.find(search_id, in_column=1)
+        if not cell:
+            return False, f"ID {search_id} not found in Sheet."
+            
+        row_idx = cell.row
+
+        # Construct: T1 - 10/04/2026
+        trial_suffix = current_trial_ref.split('_')[-1] if '_' in current_trial_ref else current_trial_ref
+        # Use manual_date if syncing history, otherwise use today
+        date_str = manual_date if manual_date else datetime.now().strftime('%d/%m/%Y')
+        combined_value = f"{trial_suffix} - {date_str}"
+
+        headers = [h.strip() for h in tracker_worksheet.row_values(1)]
+        col_name = "Injection trial requested"
         
-        headers = worksheet.row_values(1)
-        if "Injection trial requested" in headers:
-            col_idx = headers.index("Injection trial requested") + 1
-            worksheet.update_cell(cell.row, col_idx, trial_ref)
-            return True
+        if col_name in headers:
+            col_idx = headers.index(col_name) + 1
+            tracker_worksheet.update_cell(row_idx, col_idx, combined_value)
+            return True, combined_value
+        else:
+            return False, f"Column '{col_name}' not found."
+            
     except Exception as e:
-        st.error(f"Background Cloud Sync failed: {e}")
-        return False
+        return False, str(e)
+
+def sync_last_trial_to_cloud(pre_prod_no):
+    """Finds the most recent trial in history and pushes it to Google Sheets."""
+    if not os.path.exists(SUBMISSIONS_FILE):
+        return False, "No history file found."
+    
+    try:
+        df_history = pd.read_parquet(SUBMISSIONS_FILE)
+        project_history = df_history[df_history['Pre-Prod No.'] == str(pre_prod_no)].copy()
+        
+        if project_history.empty:
+            # If no history exists, we clear the status in the sheet
+            return update_tracker_status(pre_prod_no, "No Trials", manual_date="N/A") 
+
+        # Extract number to sort correctly
+        project_history['Trial_Num'] = project_history['Trial Ref'].str.extract(r'(\d+)$').astype(int)
+        latest_trial = project_history.sort_values(by=['Trial_Num'], ascending=False).iloc[0]
+        
+        return update_tracker_status(
+            pre_prod_no, 
+            latest_trial['Trial Ref'], 
+            manual_date=datetime.strptime(latest_trial['Date'], '%Y-%m-%d').strftime('%d/%m/%Y')
+        )
+    except Exception as e:
+        return False, str(e)
 
 def calculate_age_category(row):
     try:
