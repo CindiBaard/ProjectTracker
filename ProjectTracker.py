@@ -73,10 +73,22 @@ def clean_column_names(df):
     df.columns = [str(c).strip().replace('\ufeff', '').replace('ï»¿', '').replace('"', '').replace('/', '_') for c in df.columns]
     return df
 
-def update_tracker_status_single(pre_prod_no, trial_ref):
+def update_tracker_status_single(pre_prod_no, trial_ref, manual_date=None):
     """Updates only the specific row in Google Sheets when a trial is saved"""
     import gspread
     from google.oauth2.service_account import Credentials
+
+    # NEW LOGIC FOR THE VALUE
+    trial_suffix = current_trial_ref.split('_')[-1] if '_' in current_trial_ref else current_trial_ref
+    
+    # Use manual_date if provided (for syncing old trials), else use today
+    display_date = manual_date if manual_date else datetime.now().strftime('%d/%m/%Y')
+    
+    # Handle the "No Trials" case
+    if current_trial_ref == "No Trials":
+        combined_value = ""
+    else:
+        combined_value = f"{trial_suffix} - {display_date}"
     
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]

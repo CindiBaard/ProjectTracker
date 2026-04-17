@@ -96,6 +96,31 @@ def update_tracker_status(pre_prod_no, current_trial_ref):
     """Updates the Project Tracker Google Sheet with 'T# - Date'"""
     import gspread
     from google.oauth2.service_account import Credentials
+
+# PASTE THE NEW FUNCTION HERE (Standalone)
+def sync_last_trial_to_cloud(pre_prod_no):
+    """Finds the most recent trial in history and pushes it to Google Sheets."""
+    if not os.path.exists(SUBMISSIONS_FILE):
+        return False, "No history file found."
+    
+    try:
+        df_history = pd.read_parquet(SUBMISSIONS_FILE)
+        project_history = df_history[df_history['Pre-Prod No.'] == str(pre_prod_no)].copy()
+        
+        if project_history.empty:
+            return update_tracker_status(pre_prod_no, "No Trials") 
+
+        # Extract number to sort correctly (T10 comes after T2)
+        project_history['Trial_Num'] = project_history['Trial Ref'].str.extract(r'(\d+)$').astype(int)
+        latest_trial = project_history.sort_values(by=['Trial_Num'], ascending=False).iloc[0]
+        
+        return update_tracker_status(
+            pre_prod_no, 
+            latest_trial['Trial Ref'], 
+            manual_date=latest_trial['Date']
+        )
+    except Exception as e:
+        return False, str(e)    
     
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -167,15 +192,35 @@ with col_s2:
 
 st.divider()
 
+# --- TRIAL TIMELINE & SYNC SECTION ---
 if search_input:
     st.subheader(f"Trial Timeline: {search_input}")
+    
+    # Add a Sync button at the top of the history section
+    col_h1, col_h2 = st.columns([3, 1])
+    with col_h1:
+        st.caption("If you deleted entries, use the Sync button to update the Master Tracker.")
+    with col_h2:
+        if st.button("🔄 Sync Master Tracker"):
+            # This calls the helper function you added earlier
+            success, msg = sync_last_trial_to_cloud(search_input)
+            if success:
+                st.success("Master Tracker updated to last valid trial!")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error(f"Sync failed: {msg}")
+
+    # Display the actual history (with the delete buttons)
     display_trial_history(search_input)
     st.divider()
 
+# --- SIDEBAR LOGIC ---
 if st.sidebar.button("♻️ Refresh Data Sources"):
     st.cache_data.clear()
     st.success("Cache cleared! Try searching again.")
 
+# --- NEW TRIAL ENTRY FORM ---
 if search_input:
     ld = st.session_state.get('lookup_data', {})
     current_trial_ref = get_next_trial_reference(search_input)
@@ -263,7 +308,6 @@ if search_input:
             with st.status("Saving Data...", expanded=True) as status:
                 st.write("📝 Writing to trial history...")
                 
-                # 1. Create the submission record with ALL parameters
                 new_submission = {
                     "Trial Ref": current_trial_ref,
                     "Pre-Prod No.": str(search_input),
@@ -281,7 +325,7 @@ if search_input:
                     "Shot Weight": shot_w
                 }
 
-                # Save to Trial_Submissions.parquet (The History Log)
+                # Save to Trial_Submissions.parquet
                 df_new = pd.DataFrame([new_submission])
                 if os.path.exists(SUBMISSIONS_FILE):
                     df_existing = pd.read_parquet(SUBMISSIONS_FILE)
@@ -291,20 +335,17 @@ if search_input:
                 df_final.to_parquet(SUBMISSIONS_FILE, index=False)
                 st.write("✅ Trial history log updated.")
 
-                # --- 2. UPDATE LOCAL TRACKER FILE (For immediate Dashboard view) ---
+                # --- UPDATE LOCAL TRACKER FILE ---
                 st.write("💾 Updating local Project Tracker file...")
                 if os.path.exists(FILENAME_PARQUET):
                     df_tracker = pd.read_parquet(FILENAME_PARQUET)
                     
-                    # Ensure ID formats match for the search
                     def pad_id_local(val):
                         return str(val).strip().split('.')[0].zfill(5)
                     
                     search_id = pad_id_local(search_input)
-                    # Standardize the tracker column for comparison
                     df_tracker['Pre-Prod No.'] = df_tracker['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip().apply(lambda x: x.zfill(5))
                     
-                    # Construct the status string (e.g., "T1 - 16/04/2026")
                     trial_suffix = current_trial_ref.split('_')[-1] if '_' in current_trial_ref else current_trial_ref
                     combined_value = f"{trial_suffix} - {datetime.now().strftime('%d/%m/%Y')}"
                     
@@ -316,7 +357,7 @@ if search_input:
                     else:
                         st.warning("Could not find ID in local Parquet to update.")
 
-                # --- 3. GOOGLE SHEETS UPDATE (Cloud Sync) ---
+                # --- GOOGLE SHEETS UPDATE ---
                 st.write("🌐 Attempting Cloud Sync (Google Sheets)...")
                 success, msg = update_tracker_status(search_input, current_trial_ref)
                 
@@ -329,7 +370,7 @@ if search_input:
                     st.error(f"❌ Cloud Sync Failed: {msg}")
                     status.update(label="Local Saved, Cloud Sync Failed", state="error", expanded=True)
 
-    # UI Feedback and Reset (Must be outside st.form)
+    # UI Feedback and Reset
     if st.session_state.get('submitted', False):
         st.success("Entry Saved Successfully!")
         if st.button("Start Next Entry"):
