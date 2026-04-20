@@ -7,3 +7,4 @@ altair<5.0.0  # Optional: adding this ensures extra stability with older chart c
 fastparquet
 gspread
 google-auth
+fpdf
