@@ -302,7 +302,24 @@ def create_pdf(data):
             if 'last_submission_data' in st.session_state:
                 del st.session_state.last_submission_data
             st.rerun()
-            
+
+# --- PDF GENERATION HELPER ---
+def create_pdf(data):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(200, 10, txt="Injection Trial Report", ln=True, align='C')
+    pdf.ln(10)
+    pdf.set_font("Arial", size=12)
+    
+    for key, value in data.items():
+        pdf.set_font("Arial", "B", 11)
+        pdf.cell(50, 10, txt=f"{key}:", border=0)
+        pdf.set_font("Arial", size=11)
+        pdf.cell(0, 10, txt=f"{str(value)}", border=0, ln=True)
+    
+    return pdf.output(dest='S').encode('latin-1')
+               
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
 st.subheader("Search Project Tracker")
