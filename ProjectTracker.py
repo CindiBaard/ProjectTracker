@@ -290,11 +290,20 @@ tabs_list = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysi
 tab_nav = st.radio("Navigation", tabs_list, index=tabs_list.index(st.session_state.active_tab), horizontal=True)
 st.session_state.active_tab = tab_nav
 
-# --- Inside Tab 1: SEARCH & EDIT ---
+# --- TAB 1: SEARCH & EDIT ---
+if tab_nav == "🔍 Search & Edit":
+    c_s, c_cl, c_sy = st.columns([3, 1, 1])
+    
+    raw_search = c_s.text_input("Search Pre-Prod No.", key="search_input_box").strip()
+    
+    if c_cl.button("♻️ Clear", use_container_width=True):
+        st.session_state.last_search_no = ""
+        st.rerun()
+
+    # --- FIXED SYNC CLOUD BLOCK ---
     if c_sy.button("🔄 Sync Cloud", use_container_width=True):
         with st.spinner("Downloading latest from Google..."):
             try:
-                # 1. Setup Credentials
                 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
                 creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
                 if isinstance(creds_info, dict) and "private_key" in creds_info:
@@ -307,31 +316,25 @@ st.session_state.active_tab = tab_nav
                 spreadsheet = client.open_by_key("1b7ksuTX2C7ns89AXc7Npki70KqjcXf1-oxIkZjTuq8M")
                 worksheet = spreadsheet.get_worksheet(0)
                 
-                # 2. Pull Data and immediately cast to string
-                raw_data = worksheet.get_all_records()
-                new_df = pd.DataFrame(raw_data).astype(str) # CRITICAL: Force all to string here
+                # Fetch and force to string to prevent the 'int64' conversion error
+                new_df = pd.DataFrame(worksheet.get_all_records()).astype(str)
                 
                 if not new_df.empty:
-                    # 3. Clean up the Pre-Prod No. column specifically
-                    # Remove .0 from floats-turned-strings and strip spaces
                     new_df['Pre-Prod No.'] = (
                         new_df['Pre-Prod No.']
                         .str.replace(r'\.0$', '', regex=True)
                         .str.strip()
                     )
-                    
-                    # 4. Handle "nan" strings that come from empty cells
                     new_df = new_df.replace('nan', '')
-
-                    # 5. Save with 'pyarrow' engine which is generally more robust for mixed types
                     new_df.to_parquet(FILENAME_PARQUET, index=False, engine='pyarrow')
                     
                     st.cache_data.clear()
-                    st.success("Cloud Data Pulled and Parquet Updated!")
+                    st.success("Cloud Data Pulled!")
                     st.rerun()
             except Exception as e:
                 st.error(f"Sync failed: {e}")
 
+    # This line must be at the same level as the 'if c_sy.button' block
     search_no = pad_preprod_id(raw_search)
 
     # Simplified Match Logic (Removed the redundant cache clear on search)
