@@ -92,21 +92,62 @@ def display_trial_history(pre_prod_no):
         else:
             st.write("No previous trial history found.")
 
-def update_tracker_status(pre_prod_no, current_trial_ref):
+def update_tracker_status(pre_prod_no, current_trial_ref, manual_date=None):
     """Updates the Project Tracker Google Sheet with 'T# - Date'"""
     import gspread
     from google.oauth2.service_account import Credentials
 
-# Construct the value for the Google Sheet (e.g., T1 - 17/04/2026)
-trial_suffix = current_trial_ref.split('_')[-1] if '_' in current_trial_ref else current_trial_ref
+    # 1. Construct the value for the Google Sheet (e.g., T1 - 17/04/2026)
+    trial_suffix = current_trial_ref.split('_')[-1] if '_' in current_trial_ref else current_trial_ref
 
-# Use the manual_date if provided (from Sync), otherwise use today's date (from New Entry)
-if manual_date:
-    combined_value = f"{trial_suffix} - {manual_date}"
-else:
-    combined_value = f"{trial_suffix} - {datetime.now().strftime('%d/%m/%Y')}"
+    if manual_date:
+        # If manual_date is coming from history (e.g. "2026-04-20"), 
+        # you might need to format it to DD/MM/YYYY
+        try:
+            date_obj = datetime.strptime(manual_date, "%Y-%m-%d")
+            date_str = date_obj.strftime('%d/%m/%Y')
+        except:
+            date_str = manual_date
+        combined_value = f"{trial_suffix} - {date_str}"
+    else:
+        combined_value = f"{trial_suffix} - {datetime.now().strftime('%d/%m/%Y')}"
 
-# PASTE THE NEW FUNCTION HERE (Standalone)
+    try:
+        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        # Use your existing secrets logic
+        creds_info = st.secrets["gcp_service_account"] if "gcp_service_account" in st.secrets else st.secrets["connections"]["gsheets"]
+        if isinstance(creds_info, dict) and "private_key" in creds_info:
+             creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+        
+        creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+        client = gspread.authorize(creds)
+        
+        tracker_spreadsheet = client.open_by_key(TRACKER_FILE_ID)
+        tracker_worksheet = tracker_spreadsheet.get_worksheet(0) 
+
+        # Helper to match IDs
+        def pad_id(input_val):
+            if pd.isna(input_val) or str(input_val).strip() == '': 
+                return ""
+            return str(input_val).strip().split('.')[0]
+
+        search_id = pad_id(pre_prod_no)
+        cell = tracker_worksheet.find(search_id, in_column=1)
+        row_idx = cell.row
+
+        headers = [h.strip() for h in tracker_worksheet.row_values(1)]
+        col_name = "Injection trial requested"
+        
+        if col_name in headers:
+            col_idx = headers.index(col_name) + 1
+            tracker_worksheet.update_cell(row_idx, col_idx, combined_value)
+            return True, combined_value
+        else:
+            return False, f"Column '{col_name}' not found."
+
+    except Exception as e:
+        return False, str(e)
+
 def sync_last_trial_to_cloud(pre_prod_no):
     """Finds the most recent trial in history and pushes it to Google Sheets."""
     if not os.path.exists(SUBMISSIONS_FILE):
@@ -117,7 +158,8 @@ def sync_last_trial_to_cloud(pre_prod_no):
         project_history = df_history[df_history['Pre-Prod No.'] == str(pre_prod_no)].copy()
         
         if project_history.empty:
-            return update_tracker_status(pre_prod_no, "No Trials") 
+            # If no trials left, you might want to clear the cell or set to "No Trials"
+            return update_tracker_status(pre_prod_no, "None", manual_date="No Trials") 
 
         # Extract number to sort correctly (T10 comes after T2)
         project_history['Trial_Num'] = project_history['Trial Ref'].str.extract(r'(\d+)$').astype(int)
@@ -129,7 +171,7 @@ def sync_last_trial_to_cloud(pre_prod_no):
             manual_date=latest_trial['Date']
         )
     except Exception as e:
-        return False, str(e)    
+        return False, str(e)  
     
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
