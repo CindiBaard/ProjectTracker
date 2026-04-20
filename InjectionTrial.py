@@ -248,8 +248,11 @@ def create_pdf(data):
 
 # ... [Keep all your existing code until the form submission] ...
 
-if submit_trial:
-            # Create a dictionary for the PDF (including fields from 'ld' and form)
+# ... (Inside the 'with st.form' block)
+        submit_trial = st.form_submit_button("Submit Trial Entry")
+
+        if submit_trial:
+            # 1. Prepare PDF data
             pdf_data = {
                 "Trial Reference": current_trial_ref,
                 "Pre-Prod No.": search_input,
@@ -264,36 +267,41 @@ if submit_trial:
                 "Inj Pressure": f"{inj_p} bar",
                 "Observations": notes
             }
-            
-            # Store data in session state so it persists for the download button
             st.session_state.last_submission_data = pdf_data
-            
+
             with st.status("Saving Data...", expanded=True) as status:
-                # ... [Your existing saving logic here] ...
+                # ... [YOUR EXISTING SAVE LOGIC HERE] ...
+                
+                # After successful save:
                 status.update(label="Submission Processed!", state="complete", expanded=False)
                 st.session_state.submitted = True
 
-    # --- ADD THIS AFTER THE FORM ---
+    # --- PDF & RESET SECTION (OUTSIDE THE FORM) ---
+    # Ensure this 'if' is aligned with the 'with st.form' block above
     if st.session_state.get('submitted', False):
         st.success("Entry Saved Successfully!")
         
-        # PDF Generation Button
         if 'last_submission_data' in st.session_state:
-            pdf_bytes = create_pdf(st.session_state.last_submission_data)
-            
-            st.download_button(
-                label="📥 Download Trial Report (PDF)",
-                data=pdf_bytes,
-                file_name=f"Trial_{current_trial_ref}.pdf",
-                mime="application/pdf",
-                key="download_pdf"
-            )
+            # This requires 'from fpdf import FPDF' at the top of your file
+            try:
+                pdf_bytes = create_pdf(st.session_state.last_submission_data)
+                
+                st.download_button(
+                    label="📥 Download Trial Report (PDF)",
+                    data=pdf_bytes,
+                    file_name=f"Trial_{st.session_state.last_submission_data['Trial Reference']}.pdf",
+                    mime="application/pdf",
+                    key="download_pdf"
+                )
+            except Exception as e:
+                st.error(f"Error generating PDF: {e}")
         
         if st.button("Start Next Entry"):
             st.session_state.lookup_data = {}
             st.session_state.submitted = False 
-            st.rerun()        
-
+            if 'last_submission_data' in st.session_state:
+                del st.session_state.last_submission_data
+            st.rerun()
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
 st.subheader("Search Project Tracker")
