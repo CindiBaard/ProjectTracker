@@ -222,6 +222,78 @@ def sync_last_trial_to_cloud(pre_prod_no):
     except Exception as e:
         return False, str(e)
 
+from fpdf import FPDF
+import io
+
+# --- PDF GENERATION HELPER ---
+def create_pdf(data):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    
+    # Title
+    pdf.cell(200, 10, txt="Injection Trial Report", ln=True, align='C')
+    pdf.ln(10)
+    
+    # Table-like content
+    pdf.set_font("Arial", size=12)
+    for key, value in data.items():
+        pdf.set_font("Arial", "B", 11)
+        pdf.cell(50, 10, txt=f"{key}:", border=0)
+        pdf.set_font("Arial", size=11)
+        pdf.cell(0, 10, txt=f"{value}", border=0, ln=True)
+    
+    # Return as bytes
+    return pdf.output(dest='S').encode('latin-1')
+
+# ... [Keep all your existing code until the form submission] ...
+
+if submit_trial:
+            # Create a dictionary for the PDF (including fields from 'ld' and form)
+            pdf_data = {
+                "Trial Reference": current_trial_ref,
+                "Pre-Prod No.": search_input,
+                "Date": trial_date.strftime("%Y-%m-%d"),
+                "Client": client,
+                "Operator": operator,
+                "Sales Rep": sales_rep,
+                "Machine (Trial)": machine_trial,
+                "Product": description,
+                "Material": material,
+                "Cycle Time": f"{cyc_t}s",
+                "Inj Pressure": f"{inj_p} bar",
+                "Observations": notes
+            }
+            
+            # Store data in session state so it persists for the download button
+            st.session_state.last_submission_data = pdf_data
+            
+            with st.status("Saving Data...", expanded=True) as status:
+                # ... [Your existing saving logic here] ...
+                status.update(label="Submission Processed!", state="complete", expanded=False)
+                st.session_state.submitted = True
+
+    # --- ADD THIS AFTER THE FORM ---
+    if st.session_state.get('submitted', False):
+        st.success("Entry Saved Successfully!")
+        
+        # PDF Generation Button
+        if 'last_submission_data' in st.session_state:
+            pdf_bytes = create_pdf(st.session_state.last_submission_data)
+            
+            st.download_button(
+                label="📥 Download Trial Report (PDF)",
+                data=pdf_bytes,
+                file_name=f"Trial_{current_trial_ref}.pdf",
+                mime="application/pdf",
+                key="download_pdf"
+            )
+        
+        if st.button("Start Next Entry"):
+            st.session_state.lookup_data = {}
+            st.session_state.submitted = False 
+            st.rerun()        
+
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
 st.subheader("Search Project Tracker")
