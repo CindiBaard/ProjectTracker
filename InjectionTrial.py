@@ -248,44 +248,44 @@ def create_pdf(data):
 
 # ... [Keep all your existing code until the form submission] ...
 
-# ... (Inside the 'with st.form' block)
+# --- NEW TRIAL ENTRY FORM ---
+    # Ensure this block is indented once under 'if search_input:'
+    with st.form("injection_xlsm_form", clear_on_submit=True):
+        st.subheader(f"New Trial Entry: {current_trial_ref}")
+        
+        # ... (Your existing columns s1-s4, p1-p4, d1-d5, pr1-pr4, and notes) ...
+        # [Keep all your input fields here]
+        
+        # This button MUST be indented exactly the same as the st.subheader lines above
         submit_trial = st.form_submit_button("Submit Trial Entry")
 
         if submit_trial:
-            # 1. Prepare PDF data
-            pdf_data = {
+            # 1. Capture data for PDF
+            st.session_state.last_submission_data = {
                 "Trial Reference": current_trial_ref,
                 "Pre-Prod No.": search_input,
                 "Date": trial_date.strftime("%Y-%m-%d"),
                 "Client": client,
                 "Operator": operator,
-                "Sales Rep": sales_rep,
-                "Machine (Trial)": machine_trial,
-                "Product": description,
-                "Material": material,
                 "Cycle Time": f"{cyc_t}s",
                 "Inj Pressure": f"{inj_p} bar",
                 "Observations": notes
             }
-            st.session_state.last_submission_data = pdf_data
 
             with st.status("Saving Data...", expanded=True) as status:
-                # ... [YOUR EXISTING SAVE LOGIC HERE] ...
+                # ... [YOUR EXISTING DATABASE/GSHEETS SAVE CODE] ...
                 
-                # After successful save:
                 status.update(label="Submission Processed!", state="complete", expanded=False)
                 st.session_state.submitted = True
 
     # --- PDF & RESET SECTION (OUTSIDE THE FORM) ---
-    # Ensure this 'if' is aligned with the 'with st.form' block above
+    # This 'if' must be aligned with the 'with st.form' line above
     if st.session_state.get('submitted', False):
         st.success("Entry Saved Successfully!")
         
         if 'last_submission_data' in st.session_state:
-            # This requires 'from fpdf import FPDF' at the top of your file
             try:
                 pdf_bytes = create_pdf(st.session_state.last_submission_data)
-                
                 st.download_button(
                     label="📥 Download Trial Report (PDF)",
                     data=pdf_bytes,
@@ -302,6 +302,7 @@ def create_pdf(data):
             if 'last_submission_data' in st.session_state:
                 del st.session_state.last_submission_data
             st.rerun()
+            
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
 st.subheader("Search Project Tracker")
