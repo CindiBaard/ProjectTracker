@@ -379,10 +379,3 @@ if search_input:
                 else:
                     st.error(f"Cloud Sync Failed: {msg}")
 
-    # UI Feedback and Reset
-    if st.session_state.get('submitted', False):
-        st.success("Entry Saved Successfully!")
-        if st.button("Start Next Entry"):
-            st.session_state.lookup_data = {}
-            st.session_state.submitted = False 
-            st.rerun()
