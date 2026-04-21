@@ -150,18 +150,20 @@ def update_tracker_status(pre_prod_no, current_trial_ref, manual_date=None):
 
 def sync_last_trial_to_cloud(pre_prod_no):
     """Finds the most recent trial in history and pushes it to Google Sheets."""
+    # Ensure we use the absolute path defined at the top
     if not os.path.exists(SUBMISSIONS_FILE):
-        return False, "No history file found."
+        return False, f"No history file found at {SUBMISSIONS_FILE}. Please submit a trial first."
     
     try:
         df_history = pd.read_parquet(SUBMISSIONS_FILE)
+        # Convert column to string to ensure matching works
+        df_history['Pre-Prod No.'] = df_history['Pre-Prod No.'].astype(str)
         project_history = df_history[df_history['Pre-Prod No.'] == str(pre_prod_no)].copy()
         
         if project_history.empty:
-            # If no trials left, you might want to clear the cell or set to "No Trials"
             return update_tracker_status(pre_prod_no, "None", manual_date="No Trials") 
 
-        # Extract number to sort correctly (T10 comes after T2)
+        # Extract number to sort correctly (handles T1, T2, T10 etc)
         project_history['Trial_Num'] = project_history['Trial Ref'].str.extract(r'(\d+)$').astype(int)
         latest_trial = project_history.sort_values(by=['Trial_Num'], ascending=False).iloc[0]
         
@@ -171,7 +173,7 @@ def sync_last_trial_to_cloud(pre_prod_no):
             manual_date=latest_trial['Date']
         )
     except Exception as e:
-        return False, str(e)  
+        return False, str(e)
     
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
@@ -249,18 +251,44 @@ def create_pdf(data):
 # ... [Keep all your existing code until the form submission] ...
 
 # --- NEW TRIAL ENTRY FORM ---
-    # Ensure this block is indented once under 'if search_input:'
+if search_input:
+    ld = st.session_state.get('lookup_data', {})
+    current_trial_ref = get_next_trial_reference(search_input)
+
+    # --- SUCCESS & PDF SECTION ---
+    # We check this BEFORE the form so it appears at the top once submitted
+    if st.session_state.get('submitted', False):
+        st.success("🎉 Entry Saved Successfully!")
+        
+        if 'last_submission_data' in st.session_state:
+            try:
+                pdf_bytes = create_pdf(st.session_state.last_submission_data)
+                st.download_button(
+                    label="📥 Download Trial Report (PDF)",
+                    data=pdf_bytes,
+                    file_name=f"Trial_{st.session_state.last_submission_data['Trial Reference']}.pdf",
+                    mime="application/pdf",
+                    key="download_pdf_main"
+                )
+            except Exception as e:
+                st.error(f"Error generating PDF: {e}")
+        
+        if st.button("Start Next Entry"):
+            st.session_state.submitted = False 
+            if 'last_submission_data' in st.session_state:
+                del st.session_state.last_submission_data
+            st.rerun()
+        
+        st.divider() # Separate success message from the form below
+
+    # Only show the form if not just submitted, or keep it there for back-to-back entries
     with st.form("injection_xlsm_form", clear_on_submit=True):
-        st.subheader(f"New Trial Entry: {current_trial_ref}")
+        # ... [Your existing form fields: s1, p1, d1, pr1, etc.] ...
         
-        # ... (Your existing columns s1-s4, p1-p4, d1-d5, pr1-pr4, and notes) ...
-        # [Keep all your input fields here]
-        
-        # This button MUST be indented exactly the same as the st.subheader lines above
         submit_trial = st.form_submit_button("Submit Trial Entry")
 
         if submit_trial:
-            # 1. Capture data for PDF
+            # Create the data dictionary for the PDF
             st.session_state.last_submission_data = {
                 "Trial Reference": current_trial_ref,
                 "Pre-Prod No.": search_input,
@@ -271,37 +299,11 @@ def create_pdf(data):
                 "Inj Pressure": f"{inj_p} bar",
                 "Observations": notes
             }
-
-            with st.status("Saving Data...", expanded=True) as status:
-                # ... [YOUR EXISTING DATABASE/GSHEETS SAVE CODE] ...
-                
-                status.update(label="Submission Processed!", state="complete", expanded=False)
-                st.session_state.submitted = True
-
-    # --- PDF & RESET SECTION (OUTSIDE THE FORM) ---
-    # This 'if' must be aligned with the 'with st.form' line above
-    if st.session_state.get('submitted', False):
-        st.success("Entry Saved Successfully!")
-        
-        if 'last_submission_data' in st.session_state:
-            try:
-                pdf_bytes = create_pdf(st.session_state.last_submission_data)
-                st.download_button(
-                    label="📥 Download Trial Report (PDF)",
-                    data=pdf_bytes,
-                    file_name=f"Trial_{st.session_state.last_submission_data['Trial Reference']}.pdf",
-                    mime="application/pdf",
-                    key="download_pdf"
-                )
-            except Exception as e:
-                st.error(f"Error generating PDF: {e}")
-        
-        if st.button("Start Next Entry"):
-            st.session_state.lookup_data = {}
-            st.session_state.submitted = False 
-            if 'last_submission_data' in st.session_state:
-                del st.session_state.last_submission_data
-            st.rerun()
+            
+            # ... [Your saving logic to Parquet and Google Sheets] ...
+            
+            st.session_state.submitted = True
+            st.rerun() # Rerun to show the success message and PDF button
 
 # --- PDF GENERATION HELPER ---
 def create_pdf(data):
