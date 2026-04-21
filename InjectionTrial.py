@@ -321,6 +321,12 @@ def create_pdf(data):
         pdf.cell(0, 10, txt=f"{str(value)}", border=0, ln=True)
     
     return pdf.output(dest='S').encode('latin-1')
+
+# This must happen before any logic runs
+if 'lookup_data' not in st.session_state:
+    st.session_state.lookup_data = {}
+if 'submitted' not in st.session_state:
+    st.session_state.submitted = False
                
 # --- HEADER & SEARCH ---
 st.title("Injection Trial Data Entry")
@@ -370,6 +376,21 @@ if search_input:
 if st.sidebar.button("♻️ Refresh Data Sources"):
     st.cache_data.clear()
     st.success("Cache cleared! Try searching again.")
+
+# 2. PDF Download Section (Shows after submission)
+    if st.session_state.get('submitted', False):
+        st.success("🎉 Entry Saved Successfully!")
+        if 'last_submission_data' in st.session_state:
+            pdf_bytes = create_pdf(st.session_state.last_submission_data)
+            st.download_button(
+                label="📥 Download Trial Report (PDF)",
+                data=pdf_bytes,
+                file_name=f"Trial_{st.session_state.last_submission_data['Trial Reference']}.pdf",
+                mime="application/pdf"
+            )
+        if st.button("Start Next Entry"):
+            st.session_state.submitted = False
+            st.rerun()
 
 # --- NEW TRIAL ENTRY FORM ---
 if search_input:
