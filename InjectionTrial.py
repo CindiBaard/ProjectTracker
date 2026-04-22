@@ -153,15 +153,67 @@ def sync_last_trial_to_cloud(pre_prod_no):
 def create_pdf(data):
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(200, 10, txt="Injection Trial Report", ln=True, align='C')
+    
+    # Title
+    pdf.set_font("Arial", "B", 18)
+    pdf.cell(0, 10, txt="Injection Trial Report", ln=True, align='C')
+    pdf.set_draw_color(50, 50, 50)
+    pdf.line(10, 22, 200, 22)
     pdf.ln(10)
-    pdf.set_font("Arial", size=12)
-    for key, value in data.items():
-        pdf.set_font("Arial", "B", 11)
-        pdf.cell(50, 10, txt=f"{key}:", border=0)
-        pdf.set_font("Arial", size=11)
-        pdf.cell(0, 10, txt=f"{str(value)}", border=0, ln=True)
+
+    def add_section(title):
+        pdf.set_font("Arial", "B", 12)
+        pdf.set_fill_color(230, 230, 230)
+        pdf.cell(0, 8, txt=f" {title}", ln=True, fill=True)
+        pdf.ln(2)
+
+    def add_row(label, value, label2="", value2=""):
+        pdf.set_font("Arial", "B", 10)
+        pdf.cell(45, 7, txt=f"{label}:", border=0)
+        pdf.set_font("Arial", size=10)
+        pdf.cell(50, 7, txt=f"{value}", border=0)
+        
+        if label2:
+            pdf.set_font("Arial", "B", 10)
+            pdf.cell(45, 7, txt=f"{label2}:", border=0)
+            pdf.set_font("Arial", size=10)
+            pdf.cell(0, 7, txt=f"{value2}", border=0)
+        pdf.ln(7)
+
+    # Section 1: Admin
+    add_section("1. Sales & Administration")
+    add_row("Trial Ref", data.get("Trial Reference"), "Date", data.get("Date"))
+    add_row("Pre-Prod No.", data.get("Pre-Prod No."), "Sales Rep", data.get("Sales Rep"))
+    add_row("Client", data.get("Client"), "Target To", data.get("Target to"))
+    add_row("Operator", data.get("Operator"), "Trial Qty", data.get("Trial Quantity"))
+    add_row("Prod Machine", data.get("Production Machine"), "Trial Machine", data.get("Trial Machine"))
+    pdf.ln(5)
+
+    # Section 2: Product Specs
+    add_section("2. Product Specifications")
+    add_row("Description", data.get("Description"), "Product Code", data.get("Product Code"))
+    add_row("Material", data.get("Material"), "Supplier", data.get("Supplier"))
+    add_row("Cap/Lid Style", data.get("Cap_Lid Style"), "Material", data.get("Cap_Lid Material"))
+    add_row("Diameter", data.get("Diameter"), "Length", data.get("Length"))
+    add_row("Orifice", data.get("Orifice"), "Mix %", data.get("Mix_%"))
+    add_row("Pigment Grade", data.get("Pigment_MB Grade"), "Pre-mix %", data.get("Pre-mix %"))
+    add_row("Tinuvin", data.get("Tinuvin"), "Dosing Fitted", data.get("Dosing Unit Fitted"))
+    pdf.ln(5)
+
+    # Section 3 & 4: Settings
+    add_section("3. Dosing & 4. Process Settings")
+    add_row("Colour Set", data.get("Colour Set"), "Colour Actual", data.get("Colour Actual"))
+    add_row("Shot Weight", data.get("Shot Weight"), "Dosing Time", data.get("Dosing Time"))
+    add_row("Inj Pressure", data.get("Inj Pressure"), "Hold Pressure", data.get("Holding Pressure"))
+    add_row("Inj Speed", data.get("Injection Speed"), "Back Pressure", data.get("Back Pressure"))
+    add_row("Cycle Time", data.get("Cycle Time"), "Cooling Time", data.get("Cooling Time"))
+    pdf.ln(5)
+
+    # Section 5: Observations
+    add_section("5. Trial Observations")
+    pdf.set_font("Arial", size=10)
+    pdf.multi_cell(0, 7, txt=data.get("Observations", ""))
+
     return pdf.output(dest='S').encode('latin-1')
 
 # --- INITIALIZE SESSION STATE ---
@@ -320,38 +372,54 @@ if search_input:
 
         if submit_trial:
             with st.status("Saving Data...", expanded=True) as status:
-                st.write("📝 Writing to trial history...")
-                new_submission = {
-                    "Trial Ref": current_trial_ref,
-                    "Pre-Prod No.": str(search_input),
+                # Create the full dictionary for the PDF and Parquet
+                full_data = {
+                    "Trial Reference": current_trial_ref,
+                    "Pre-Prod No.": search_input,
                     "Date": trial_date.strftime("%Y-%m-%d"),
                     "Sales Rep": sales_rep,
+                    "Target to": target_to,
                     "Client": client,
+                    "Trial Quantity": trial_qty,
                     "Operator": operator,
-                    "Observations": notes,
-                    "Cycle Time": cyc_t,
-                    "Inj Pressure": inj_p,
+                    "Production Machine": machine_prod,
+                    "Trial Machine": machine_trial,
+                    "Description": description,
+                    "Length": length,
+                    "Orifice": orifice,
+                    "Supplier": supplier,
+                    "Cap_Lid Style": cap_lid_style,
+                    "Cap_Lid Material": cap_lid_material,
+                    "Diameter": cap_lid_diameter,
+                    "Mix_%": mix,
+                    "Product Code": product_code,
+                    "Material": material,
+                    "Pigment_MB Grade": pigment,
+                    "Pre-mix %": pre_mix_perc,
                     "Tinuvin": tinuvin_val,
                     "Dosing Unit Fitted": dosing_fitted,
                     "Dosing Calibrated": dosing_calib,
                     "Colour Set": colour_set,
-                    "Shot Weight": shot_w
-                }
-                
-                # Save Data Logic
-                st.session_state.last_submission_data = {
-                    "Trial Reference": current_trial_ref,
-                    "Pre-Prod No.": search_input,
-                    "Date": trial_date.strftime("%Y-%m-%d"),
-                    "Client": client,
-                    "Operator": operator,
-                    "Cycle Time": f"{cyc_t}s",
+                    "Colour Actual": colour_act,
+                    "Colour Percentage": colour_perc,
+                    "Shot Weight": shot_w,
+                    "Dosing Time": dosing_time,
                     "Inj Pressure": f"{inj_p} bar",
+                    "Holding Pressure": f"{hold_p} bar",
+                    "Injection Speed": f"{inj_s} mm/s",
+                    "Back Pressure": f"{back_p} bar",
+                    "Cycle Time": f"{cyc_t}s",
+                    "Cooling Time": f"{cool_t}s",
+                    "Dosage Stroke": dos_s,
+                    "Decompression": dec_m,
                     "Observations": notes
                 }
+                
+                # Store in session state for the PDF generator
+                st.session_state.last_submission_data = full_data
 
                 # Parquet Save
-                df_new = pd.DataFrame([new_submission])
+                df_new = pd.DataFrame([full_data])
                 if os.path.exists(SUBMISSIONS_FILE):
                     df_existing = pd.read_parquet(SUBMISSIONS_FILE)
                     df_final = pd.concat([df_existing, df_new], ignore_index=True)
@@ -359,18 +427,7 @@ if search_input:
                     df_final = df_new
                 df_final.to_parquet(SUBMISSIONS_FILE, index=False)
 
-                # Local Tracker Update
-                if os.path.exists(FILENAME_PARQUET):
-                    df_tracker = pd.read_parquet(FILENAME_PARQUET)
-                    search_id = str(search_input).zfill(5)
-                    trial_suffix = current_trial_ref.split('_')[-1]
-                    combined_val = f"{trial_suffix} - {datetime.now().strftime('%d/%m/%Y')}"
-                    mask = df_tracker['Pre-Prod No.'].astype(str).str.zfill(5) == search_id
-                    if mask.any():
-                        df_tracker.loc[mask, 'Injection trial requested'] = combined_val
-                        df_tracker.to_parquet(FILENAME_PARQUET, index=False)
-
-                # Cloud Sync
+                # Cloud Sync and Rerun
                 success, msg = update_tracker_status(search_input, current_trial_ref)
                 if success:
                     st.session_state.submitted = True
