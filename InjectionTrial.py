@@ -140,18 +140,30 @@ def sync_last_trial_to_cloud(pre_prod_no):
         return False, "No history file found."
     try:
         df_history = pd.read_parquet(SUBMISSIONS_FILE)
+        
+        # 1. Clean data: Ensure Pre-Prod No. is a string and drop rows where Trial Ref is missing
         df_history['Pre-Prod No.'] = df_history['Pre-Prod No.'].astype(str)
+        df_history = df_history.dropna(subset=['Trial Ref'])
+        
         project_history = df_history[df_history['Pre-Prod No.'] == str(pre_prod_no)].copy()
         
         if project_history.empty:
             return update_tracker_status(pre_prod_no, "None", manual_date="No Trials") 
 
-        project_history['Trial_Num'] = project_history['Trial Ref'].str.extract(r'(\d+)$').astype(int)
+        # 2. Extract number safely: fill NaN with 0 before converting to int
+        project_history['Trial_Num'] = (
+            project_history['Trial Ref']
+            .str.extract(r'(\d+)$')
+            .fillna(0) # If no number found, use 0
+            .astype(int)
+        )
+        
+        # 3. Get the latest entry
         latest_trial = project_history.sort_values(by=['Trial_Num'], ascending=False).iloc[0]
         
         return update_tracker_status(pre_prod_no, latest_trial['Trial Ref'], manual_date=latest_trial['Date'])
     except Exception as e:
-        return False, str(e)
+        return False, f"Sync Logic Error: {str(e)}"
 
 def create_pdf(data):
     pdf = FPDF()
