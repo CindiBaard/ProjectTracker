@@ -370,69 +370,79 @@ if search_input:
 
         submit_trial = st.form_submit_button("Submit Trial Entry")
 
-        if submit_trial:
+    if submit_trial:
             with st.status("Saving Data...", expanded=True) as status:
                 # Create the full dictionary for the PDF and Parquet
                 full_data = {
                     "Trial Reference": current_trial_ref,
-                    "Pre-Prod No.": search_input,
+                    "Pre-Prod No.": str(search_input), # Force string
                     "Date": trial_date.strftime("%Y-%m-%d"),
-                    "Sales Rep": sales_rep,
-                    "Target to": target_to,
-                    "Client": client,
-                    "Trial Quantity": trial_qty,
-                    "Operator": operator,
-                    "Production Machine": machine_prod,
-                    "Trial Machine": machine_trial,
-                    "Description": description,
-                    "Length": length,
-                    "Orifice": orifice,
-                    "Supplier": supplier,
-                    "Cap_Lid Style": cap_lid_style,
-                    "Cap_Lid Material": cap_lid_material,
-                    "Diameter": cap_lid_diameter,
-                    "Mix_%": mix,
-                    "Product Code": product_code,
-                    "Material": material,
-                    "Pigment_MB Grade": pigment,
-                    "Pre-mix %": pre_mix_perc,
-                    "Tinuvin": tinuvin_val,
-                    "Dosing Unit Fitted": dosing_fitted,
-                    "Dosing Calibrated": dosing_calib,
-                    "Colour Set": colour_set,
-                    "Colour Actual": colour_act,
-                    "Colour Percentage": colour_perc,
-                    "Shot Weight": shot_w,
-                    "Dosing Time": dosing_time,
+                    "Sales Rep": str(sales_rep),
+                    "Target to": str(target_to),
+                    "Client": str(client),
+                    "Trial Quantity": str(trial_qty),
+                    "Operator": str(operator),
+                    "Production Machine": str(machine_prod),
+                    "Trial Machine": str(machine_trial),
+                    "Description": str(description),
+                    "Length": str(length),
+                    "Orifice": str(orifice),
+                    "Supplier": str(supplier),
+                    "Cap_Lid Style": str(cap_lid_style),
+                    "Cap_Lid Material": str(cap_lid_material),
+                    "Diameter": str(cap_lid_diameter),
+                    "Mix_%": str(mix),
+                    "Product Code": str(product_code),
+                    "Material": str(material),
+                    "Pigment_MB Grade": str(pigment),
+                    "Pre-mix %": str(pre_mix_perc),
+                    "Tinuvin": str(tinuvin_val),
+                    "Dosing Unit Fitted": str(dosing_fitted),
+                    "Dosing Calibrated": str(dosing_calib),
+                    "Colour Set": str(colour_set),
+                    "Colour Actual": str(colour_act),
+                    "Colour Percentage": str(colour_perc),
+                    "Shot Weight": str(shot_w),
+                    "Dosing Time": str(dosing_time),
                     "Inj Pressure": f"{inj_p} bar",
                     "Holding Pressure": f"{hold_p} bar",
                     "Injection Speed": f"{inj_s} mm/s",
                     "Back Pressure": f"{back_p} bar",
                     "Cycle Time": f"{cyc_t}s",
                     "Cooling Time": f"{cool_t}s",
-                    "Dosage Stroke": dos_s,
-                    "Decompression": dec_m,
-                    "Observations": notes
+                    "Dosage Stroke": str(dos_s),
+                    "Decompression": str(dec_m),
+                    "Observations": str(notes)
                 }
                 
-                # Store in session state for the PDF generator
                 st.session_state.last_submission_data = full_data
 
-                # Parquet Save
+                # Parquet Save Logic with Type Safety
                 df_new = pd.DataFrame([full_data])
+                
                 if os.path.exists(SUBMISSIONS_FILE):
-                    df_existing = pd.read_parquet(SUBMISSIONS_FILE)
-                    df_final = pd.concat([df_existing, df_new], ignore_index=True)
+                    try:
+                        df_existing = pd.read_parquet(SUBMISSIONS_FILE)
+                        # Ensure both dataframes have identical column types (Strings) to prevent Arrow errors
+                        df_existing = df_existing.astype(str)
+                        df_new = df_new.astype(str)
+                        df_final = pd.concat([df_existing, df_new], ignore_index=True)
+                    except Exception as e:
+                        st.warning(f"Existing file schema mismatch. Starting fresh: {e}")
+                        df_final = df_new
                 else:
                     df_final = df_new
-                df_final.to_parquet(SUBMISSIONS_FILE, index=False)
 
-                # Cloud Sync and Rerun
+                # FINAL STEP: Ensure everything is string before writing to Parquet
+                df_final = df_final.astype(str)
+                df_final.to_parquet(SUBMISSIONS_FILE, index=False, engine='pyarrow')
+
+                # Cloud Sync
                 success, msg = update_tracker_status(search_input, current_trial_ref)
                 if success:
                     st.session_state.submitted = True
                     st.cache_data.clear()
                     st.rerun()
                 else:
-                    st.error(f"Cloud Sync Failed: {msg}")
+                    st.error(f"Cloud Sync Failed: {msg}")    
 
