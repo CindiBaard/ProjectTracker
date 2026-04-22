@@ -171,13 +171,13 @@ def create_pdf(data):
         pdf.set_font("Arial", "B", 10)
         pdf.cell(45, 7, txt=f"{label}:", border=0)
         pdf.set_font("Arial", size=10)
-        pdf.cell(50, 7, txt=f"{value}", border=0)
+        pdf.cell(50, 7, txt=f"{str(value)}", border=0)
         
         if label2:
             pdf.set_font("Arial", "B", 10)
             pdf.cell(45, 7, txt=f"{label2}:", border=0)
             pdf.set_font("Arial", size=10)
-            pdf.cell(0, 7, txt=f"{value2}", border=0)
+            pdf.cell(0, 7, txt=f"{str(value2)}", border=0)
         pdf.ln(7)
 
     # Section 1: Admin
@@ -191,13 +191,22 @@ def create_pdf(data):
 
     # Section 2: Product Specs
     add_section("2. Product Specifications")
-    add_row("Description", data.get("Description"), "Product Code", data.get("Product Code"))
-    add_row("Material", data.get("Material"), "Supplier", data.get("Supplier"))
-    add_row("Cap/Lid Style", data.get("Cap_Lid Style"), "Material", data.get("Cap_Lid Material"))
-    add_row("Diameter", data.get("Diameter"), "Length", data.get("Length"))
-    add_row("Orifice", data.get("Orifice"), "Mix %", data.get("Mix_%"))
-    add_row("Pigment Grade", data.get("Pigment_MB Grade"), "Pre-mix %", data.get("Pre-mix %"))
-    add_row("Tinuvin", data.get("Tinuvin"), "Dosing Fitted", data.get("Dosing Unit Fitted"))
+    
+    # --- DESCRIPTION (Special wrap-around handling) ---
+    pdf.set_font("Arial", "B", 10)
+    pdf.cell(45, 7, txt="Description:", border=0)
+    pdf.set_font("Arial", size=10)
+    # Using multi_cell for wrap-around. 0 means extend to right margin.
+    pdf.multi_cell(0, 7, txt=str(data.get("Description", ""))) 
+    
+    # Continue with other rows
+    add_row("Product Code", data.get("Product Code"), "Material", data.get("Material"))
+    add_row("Supplier", data.get("Supplier"), "Cap/Lid Style", data.get("Cap_Lid Style"))
+    add_row("Cap/Lid Material", data.get("Cap_Lid Material"), "Diameter", data.get("Diameter"))
+    add_row("Length", data.get("Length"), "Orifice", data.get("Orifice"))
+    add_row("Mix %", data.get("Mix_%"), "Pigment Grade", data.get("Pigment_MB Grade"))
+    add_row("Pre-mix %", data.get("Pre-mix %"), "Tinuvin", data.get("Tinuvin"))
+    add_row("Dosing Fitted", data.get("Dosing Unit Fitted"), "Dosing Calib", data.get("Dosing Calibrated"))
     pdf.ln(5)
 
     # Section 3 & 4: Settings
@@ -212,7 +221,7 @@ def create_pdf(data):
     # Section 5: Observations
     add_section("5. Trial Observations")
     pdf.set_font("Arial", size=10)
-    pdf.multi_cell(0, 7, txt=data.get("Observations", ""))
+    pdf.multi_cell(0, 7, txt=str(data.get("Observations", "")))
 
     return pdf.output(dest='S').encode('latin-1')
 
