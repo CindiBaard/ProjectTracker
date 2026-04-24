@@ -302,17 +302,21 @@ if st.sidebar.button("🔄 Rebuild Local DB"):
     if os.path.exists(FILENAME_PARQUET):
         try:
             os.remove(FILENAME_PARQUET)
-        except:
-            pass # Handle case where file is locked
+        except Exception as e:
+            st.error(f"Could not delete old database: {e}")
     st.rerun()
 
-# 2. Call the function (Line 294)
+# 2. Call the function (This MUST match the name of the function you defined above)
 df = load_db_v2(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
 
 # 3. Handle empty dataframe
 if df is None or df.empty:
     st.warning("⚠️ Database is empty. Check CSVs or click Rebuild.")
-    df = pd.DataFrame(columns=DESIRED_ORDER) # Prevents downstream crashes
+    # Create an empty dataframe with correct headers so the rest of the app doesn't crash
+    df = pd.DataFrame(columns=DESIRED_ORDER) 
+
+# Now the rest of the app (st.title, etc.) follows...
+st.title("Project Tracker Dashboard")
 
 # 4. UI Header and Error Handling
 st.title("Project Tracker Dashboard")
