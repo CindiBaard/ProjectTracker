@@ -315,8 +315,6 @@ if df is None or df.empty:
     # Create an empty dataframe with correct headers so the rest of the app doesn't crash
     df = pd.DataFrame(columns=DESIRED_ORDER) 
 
-# Now the rest of the app (st.title, etc.) follows...
-st.title("Project Tracker Dashboard")
 
 # 4. UI Header and Error Handling
 st.title("Project Tracker Dashboard")
