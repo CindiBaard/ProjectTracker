@@ -187,45 +187,56 @@ def save_db(df):
         st.error(f"Error saving database: {e}")
 
 @st.cache_data(show_spinner="Refreshing Database...")
-def load_db(tracker_file, digital_file, parquet_path):
-    # Only load from Parquet if it exists
-    if os.path.exists(parquet_path):
+def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
+    # 1. Force logic check
+    if os.path.exists(parquet_path) and not force_refresh:
         return pd.read_parquet(parquet_path)
     
-    # If Parquet doesn't exist (or was deleted by the button), build from CSVs
+    # 2. Initialize the variable to avoid the "UnboundLocalError"
+    combined = pd.DataFrame() 
+
     try:
-        # ... your existing pd.read_csv and merge logic ...
-        # Ensure you handle encoding correctly for South African/Excel CSVs
-        df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig')
-        # ... rest of merge ...
-        return combined
-    except Exception as e:
-        st.error(f"Rebuild Failed: {e}")
-        return pd.DataFrame()
-    
-    try:
+        # Check if files actually exist before reading
+        if not os.path.exists(tracker_file) or not os.path.exists(digital_file):
+            st.error("One or more source CSV files are missing!")
+            return combined
+
         df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig')
         df_d = pd.read_csv(digital_file, sep=None, engine='python', encoding='utf-8-sig')
         
         df_d, df_t = clean_column_names(df_d), clean_column_names(df_t)
+        
+        # Standardize ID column names
         df_d = df_d.rename(columns={'Pre-Prod No': 'Pre-Prod No.', 'Pre Prod No.': 'Pre-Prod No.'})
         
         df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
-        combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), df_d.dropna(subset=['Pre-Prod No.']), on='Pre-Prod No.', how='outer', suffixes=('', '_dig'))
-        combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
+        # Perform Merge
+        combined = pd.merge(
+            df_t.dropna(subset=['Pre-Prod No.']), 
+            df_d.dropna(subset=['Pre-Prod No.']), 
+            on='Pre-Prod No.', 
+            how='outer', 
+            suffixes=('', '_dig')
+        )
         
-        if 'Date' in combined.columns:
-            results = combined.apply(calculate_age_category, axis=1)
-            combined['Age Category'] = [r[0] for r in results]
-            combined['Project Age (Open and Closed)'] = [r[1] for r in results]
+        if not combined.empty:
+            combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
+            
+            if 'Date' in combined.columns:
+                results = combined.apply(calculate_age_category, axis=1)
+                combined['Age Category'] = [r[0] for r in results]
+                combined['Project Age (Open and Closed)'] = [r[1] for r in results]
+            
+            combined.to_parquet(parquet_path, index=False)
         
-        combined.to_parquet(parquet_path, index=False)
         return combined
+
     except Exception as e:
         st.error(f"Merge Error: {e}")
-        return pd.DataFrame()
+        # Now 'combined' exists (as an empty DF), so this won't crash
+        return combined
 
 @st.cache_data
 def load_trial_data():
