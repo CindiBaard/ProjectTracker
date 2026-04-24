@@ -343,6 +343,9 @@ if st.sidebar.button("🔄 Rebuild Local DB"):
 
 # 2. Load the DB normally
 df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
+# Force sep=',' instead of sep=None
+df_t = pd.read_csv(tracker_file, sep=',', encoding='utf-8-sig')
+df_d = pd.read_csv(digital_file, sep=',', encoding='utf-8-sig')
 
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
