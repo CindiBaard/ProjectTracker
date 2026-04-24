@@ -28,7 +28,7 @@ DESIRED_ORDER = [
     "Proof Approved (Conventional)", "Proof Approved (Digital)", "Ordered Plates", 
     "Plates Arrived", "Sent on Trial", "Digital trial received", 
     "Revised Artwork After Trialling", "Masterbatch received", "Extrusion requested", 
-    "Extrusion received", "Injection trial requested", "Injection Trial Received", 
+    "Extrusion received", "Injection trial requested", "Injection trial received", 
     "Blowmould trial requested", "Blowmould trial received", "Comments"
 ]
 
@@ -187,11 +187,21 @@ def save_db(df):
         st.error(f"Error saving database: {e}")
 
 @st.cache_data(show_spinner="Refreshing Database...")
-def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
-    # If force_refresh is hit, we should try to pull from GSheets first
-    # then overwrite the Parquet file.
-    if os.path.exists(parquet_path) and not force_refresh:
+def load_db(tracker_file, digital_file, parquet_path):
+    # Only load from Parquet if it exists
+    if os.path.exists(parquet_path):
         return pd.read_parquet(parquet_path)
+    
+    # If Parquet doesn't exist (or was deleted by the button), build from CSVs
+    try:
+        # ... your existing pd.read_csv and merge logic ...
+        # Ensure you handle encoding correctly for South African/Excel CSVs
+        df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig')
+        # ... rest of merge ...
+        return combined
+    except Exception as e:
+        st.error(f"Rebuild Failed: {e}")
+        return pd.DataFrame()
     
     try:
         df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig')
@@ -271,7 +281,16 @@ def display_combination_table(key_prefix):
                 st.error(f"Combo Error: {e}")
 
 # --- 7. MAIN LOGIC ---
-df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET, force_refresh=st.sidebar.button("🔄 Rebuild Local DB"))
+# 1. Check if we should clear cache
+if st.sidebar.button("🔄 Rebuild Local DB"):
+    st.cache_data.clear()
+    # Explicitly delete the parquet file if you want a true "from scratch" rebuild
+    if os.path.exists(FILENAME_PARQUET):
+        os.remove(FILENAME_PARQUET)
+    st.rerun()
+
+# 2. Load the DB normally
+df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
 
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
