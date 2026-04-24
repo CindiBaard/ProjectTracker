@@ -201,88 +201,29 @@ def save_db(df):
         st.error(f"Error saving database: {e}")
 
 @st.cache_data(show_spinner="Refreshing Database...")
-def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
+def load_db_final(tracker_file, digital_file, parquet_path, force_refresh=False):
+    # If the file exists and we aren't forcing, just load it
     if os.path.exists(parquet_path) and not force_refresh:
         return pd.read_parquet(parquet_path)
     
-    combined = pd.DataFrame() 
-
     try:
-        # Load the files
-        df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig')
-        df_d = pd.read_csv(digital_file, sep=None, engine='python', encoding='utf-8-sig')
+        # Load with protection against extra commas in project descriptions
+        df_t = pd.read_csv(tracker_file, sep=',', encoding='utf-8-sig', quotechar='"', on_bad_lines='skip')
+        df_d = pd.read_csv(digital_file, sep=',', encoding='utf-8-sig', quotechar='"', on_bad_lines='skip')
         
-        # CLEANING STEP: Force removal of weird characters and spaces
-        df_t.columns = [str(c).strip().replace('\ufeff', '') for c in df_t.columns]
-        df_d.columns = [str(c).strip().replace('\ufeff', '') for c in df_d.columns]
-
-        # DEBUG: If it still fails, this will show you exactly what Python sees
-        # st.write("Tracker Columns:", df_t.columns.tolist())
-        # st.write("Digital Columns:", df_d.columns.tolist())
-
-        # Standardize the Join Key
-        # This handles the case where one file might not have the dot or has a space
-        rename_map = {'Pre-Prod No': 'Pre-Prod No.', 'Pre Prod No.': 'Pre-Prod No.', 'Pre Prod No': 'Pre-Prod No.'}
-        df_t = df_t.rename(columns=rename_map)
-        df_d = df_d.rename(columns=rename_map)
-
-        # Final check: Does the column actually exist now?
-        if 'Pre-Prod No.' not in df_t.columns or 'Pre-Prod No.' not in df_d.columns:
-            missing_in = "Tracker" if 'Pre-Prod No.' not in df_t.columns else "Digital"
-            st.error(f"Column 'Pre-Prod No.' missing in {missing_in} file. Check your CSV headers.")
-            return combined
-
-        # Proceed with merge
-        df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-        df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-
-        combined = pd.merge(
-            df_t.dropna(subset=['Pre-Prod No.']), 
-            df_d.dropna(subset=['Pre-Prod No.']), 
-            on='Pre-Prod No.', 
-            how='outer', 
-            suffixes=('', '_dig')
-        )
-        
-        # ... (rest of your logic for Age Category and saving) ...
-        combined.to_parquet(parquet_path, index=False)
-        return combined
-
-    except Exception as e:
-        st.error(f"Merge Error: {e}")
-        return combined
-
-@st.cache_data(show_spinner="Refreshing Database...")
-def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
-    if os.path.exists(parquet_path) and not force_refresh:
-        return pd.read_parquet(parquet_path)
-    
-    combined = pd.DataFrame() 
-
-    try:
-        # 1. Read files with utf-8-sig to strip BOM automatically
-        df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig')
-        df_d = pd.read_csv(digital_file, sep=None, engine='python', encoding='utf-8-sig')
-        
-        # 2. Clean names (removes spaces, weird characters, and standardizes the ID)
+        # Clean headers immediately
         df_t = clean_column_names(df_t)
         df_d = clean_column_names(df_d)
 
-        # 3. DIAGNOSTIC CHECK
+        # Ensure ID column exists
         if 'Pre-Prod No.' not in df_t.columns:
-            # This is the "Aha!" moment line:
-            st.error(f"Tracker headers found: {df_t.columns.tolist()}")
-            return combined # Exit early so it doesn't crash on the merge
+            st.error(f"Header Error! Found: {df_t.columns.tolist()[:3]}...")
+            return pd.DataFrame()
 
-        if 'Pre-Prod No.' not in df_d.columns:
-            st.error(f"Digital headers found: {df_d.columns.tolist()}")
-            return combined
-
-        # 4. Standardize data types for the merge
+        # Standardize for Merge
         df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
-        # 5. Perform Merge
         combined = pd.merge(
             df_t.dropna(subset=['Pre-Prod No.']), 
             df_d.dropna(subset=['Pre-Prod No.']), 
@@ -291,13 +232,18 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
             suffixes=('', '_dig')
         )
         
-        # ... rest of your age calculation and save logic ...
+        # Calculate Age
+        if not combined.empty and 'Date' in combined.columns:
+            results = combined.apply(calculate_age_category, axis=1)
+            combined['Age Category'] = [r[0] for r in results]
+            combined['Project Age (Open and Closed)'] = [r[1] for r in results]
+        
         combined.to_parquet(parquet_path, index=False)
         return combined
 
     except Exception as e:
-        st.error(f"Merge Error: {e}")
-        return combined
+        st.error(f"Critical Load Error: {e}")
+        return pd.DataFrame()
 
 # --- 6. UI HELPERS ---
 
@@ -333,55 +279,26 @@ def display_combination_table(key_prefix):
                 st.error(f"Combo Error: {e}")
 
 # --- 7. MAIN LOGIC ---
-# 1. Check if we should clear cache
+
+# 1. Sidebar Rebuild Button
 if st.sidebar.button("🔄 Rebuild Local DB"):
     st.cache_data.clear()
     if os.path.exists(FILENAME_PARQUET):
-        os.remove(FILENAME_PARQUET)
+        try:
+            os.remove(FILENAME_PARQUET)
+        except:
+            pass # Handle case where file is locked
     st.rerun()
 
-# 2. Define the refined load function (Hardened version)
-@st.cache_data(show_spinner="Refreshing Database...")
-def load_db_v2(tracker_path, digital_path, parquet_path):
-    # If parquet exists and we aren't forcing a rebuild, use it
-    if os.path.exists(parquet_path):
-        return pd.read_parquet(parquet_path)
-    
-    try:
-        # FORCE comma separator and strip BOMs
-        # We use utf-8-sig to handle South African regional encoding issues
-        df_t = pd.read_csv(tracker_path, sep=',', encoding='utf-8-sig', engine='c')
-        df_d = pd.read_csv(digital_path, sep=',', encoding='utf-8-sig', engine='c')
-        
-        # Clean headers
-        df_t = clean_column_names(df_t)
-        df_d = clean_column_names(df_d)
-        
-        # Standardize ID column for merging
-        df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-        df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-
-        # Merge
-        combined = pd.merge(
-            df_t.dropna(subset=['Pre-Prod No.']), 
-            df_d.dropna(subset=['Pre-Prod No.']), 
-            on='Pre-Prod No.', 
-            how='outer', 
-            suffixes=('', '_dig')
-        )
-        
-        # Add age calculation logic here if needed
-        
-        combined.to_parquet(parquet_path, index=False)
-        return combined
-
-    except Exception as e:
-        st.error(f"Failed to rebuild database: {e}")
-        return pd.DataFrame()
-
-# 3. Call the function
+# 2. Load the main dataframe using your hardened function
+# Note: Ensure load_db_v2 is the function name you kept in Section 5
 df = load_db_v2(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
 
+# 3. UI Header and Error Handling
+st.title("Project Tracker Dashboard") # This ensures the header is always visible
+
+if df is None or df.empty:
+    
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
     "Orifice": "Orifice.csv", "Diameter": "TubeDia.csv", "Foiling": "Foiling.csv",
