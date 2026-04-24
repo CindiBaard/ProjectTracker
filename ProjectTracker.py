@@ -201,24 +201,40 @@ def save_db(df):
         st.error(f"Error saving database: {e}")
 
 @st.cache_data(show_spinner="Refreshing Database...")
-def load_db_final(tracker_file, digital_file, parquet_path, force_refresh=False):
-    # If the file exists and we aren't forcing, just load it
-    if os.path.exists(parquet_path) and not force_refresh:
+def load_db_v2(tracker_path, digital_path, parquet_path):
+    # Check if we can just load the existing processed data
+    if os.path.exists(parquet_path):
         return pd.read_parquet(parquet_path)
     
     try:
-        # Load with protection against extra commas in project descriptions
-        df_t = pd.read_csv(tracker_file, sep=',', encoding='utf-8-sig', quotechar='"', on_bad_lines='skip')
-        df_d = pd.read_csv(digital_file, sep=',', encoding='utf-8-sig', quotechar='"', on_bad_lines='skip')
+        # Load with protection against extra commas and BOMs
+        df_t = pd.read_csv(tracker_path, sep=',', encoding='utf-8-sig', quotechar='"', on_bad_lines='skip')
+        df_d = pd.read_csv(digital_path, sep=',', encoding='utf-8-sig', quotechar='"', on_bad_lines='skip')
         
-        # Clean headers immediately
+        # Clean headers using your clean_column_names function
         df_t = clean_column_names(df_t)
         df_d = clean_column_names(df_d)
+        
+        # Standardize ID column
+        df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+        df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
-        # Ensure ID column exists
-        if 'Pre-Prod No.' not in df_t.columns:
-            st.error(f"Header Error! Found: {df_t.columns.tolist()[:3]}...")
-            return pd.DataFrame()
+        # Merge the files
+        combined = pd.merge(
+            df_t.dropna(subset=['Pre-Prod No.']), 
+            df_d.dropna(subset=['Pre-Prod No.']), 
+            on='Pre-Prod No.', 
+            how='outer', 
+            suffixes=('', '_dig')
+        )
+        
+        # Save to parquet for faster loading next time
+        combined.to_parquet(parquet_path, index=False)
+        return combined
+
+    except Exception as e:
+        st.error(f"Failed to rebuild database: {e}")
+        return pd.DataFrame()
 
         # Standardize for Merge
         df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
@@ -290,10 +306,15 @@ if st.sidebar.button("🔄 Rebuild Local DB"):
             pass # Handle case where file is locked
     st.rerun()
 
-# 2. Load the main dataframe
+# 2. Call the function (Line 294)
 df = load_db_v2(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
 
-# 3. UI Header and Error Handling
+# 3. Handle empty dataframe
+if df is None or df.empty:
+    st.warning("⚠️ Database is empty. Check CSVs or click Rebuild.")
+    df = pd.DataFrame(columns=DESIRED_ORDER) # Prevents downstream crashes
+
+# 4. UI Header and Error Handling
 st.title("Project Tracker Dashboard")
 
 if df is None or df.empty:
