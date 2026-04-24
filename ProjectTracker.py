@@ -188,31 +188,40 @@ def save_db(df):
 
 @st.cache_data(show_spinner="Refreshing Database...")
 def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
-    # 1. Force logic check
     if os.path.exists(parquet_path) and not force_refresh:
         return pd.read_parquet(parquet_path)
     
-    # 2. Initialize the variable to avoid the "UnboundLocalError"
     combined = pd.DataFrame() 
 
     try:
-        # Check if files actually exist before reading
-        if not os.path.exists(tracker_file) or not os.path.exists(digital_file):
-            st.error("One or more source CSV files are missing!")
-            return combined
-
+        # Load the files
         df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig')
         df_d = pd.read_csv(digital_file, sep=None, engine='python', encoding='utf-8-sig')
         
-        df_d, df_t = clean_column_names(df_d), clean_column_names(df_t)
-        
-        # Standardize ID column names
-        df_d = df_d.rename(columns={'Pre-Prod No': 'Pre-Prod No.', 'Pre Prod No.': 'Pre-Prod No.'})
-        
+        # CLEANING STEP: Force removal of weird characters and spaces
+        df_t.columns = [str(c).strip().replace('\ufeff', '') for c in df_t.columns]
+        df_d.columns = [str(c).strip().replace('\ufeff', '') for c in df_d.columns]
+
+        # DEBUG: If it still fails, this will show you exactly what Python sees
+        # st.write("Tracker Columns:", df_t.columns.tolist())
+        # st.write("Digital Columns:", df_d.columns.tolist())
+
+        # Standardize the Join Key
+        # This handles the case where one file might not have the dot or has a space
+        rename_map = {'Pre-Prod No': 'Pre-Prod No.', 'Pre Prod No.': 'Pre-Prod No.', 'Pre Prod No': 'Pre-Prod No.'}
+        df_t = df_t.rename(columns=rename_map)
+        df_d = df_d.rename(columns=rename_map)
+
+        # Final check: Does the column actually exist now?
+        if 'Pre-Prod No.' not in df_t.columns or 'Pre-Prod No.' not in df_d.columns:
+            missing_in = "Tracker" if 'Pre-Prod No.' not in df_t.columns else "Digital"
+            st.error(f"Column 'Pre-Prod No.' missing in {missing_in} file. Check your CSV headers.")
+            return combined
+
+        # Proceed with merge
         df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
         df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
-        # Perform Merge
         combined = pd.merge(
             df_t.dropna(subset=['Pre-Prod No.']), 
             df_d.dropna(subset=['Pre-Prod No.']), 
@@ -221,21 +230,12 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
             suffixes=('', '_dig')
         )
         
-        if not combined.empty:
-            combined['Pre-Prod No.'] = combined['Pre-Prod No.'].apply(pad_preprod_id)
-            
-            if 'Date' in combined.columns:
-                results = combined.apply(calculate_age_category, axis=1)
-                combined['Age Category'] = [r[0] for r in results]
-                combined['Project Age (Open and Closed)'] = [r[1] for r in results]
-            
-            combined.to_parquet(parquet_path, index=False)
-        
+        # ... (rest of your logic for Age Category and saving) ...
+        combined.to_parquet(parquet_path, index=False)
         return combined
 
     except Exception as e:
         st.error(f"Merge Error: {e}")
-        # Now 'combined' exists (as an empty DF), so this won't crash
         return combined
 
 @st.cache_data
