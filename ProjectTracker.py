@@ -290,22 +290,26 @@ if st.sidebar.button("🔄 Rebuild Local DB"):
             pass # Handle case where file is locked
     st.rerun()
 
-# 2. Load the main dataframe using your hardened function
-# Note: Ensure load_db_v2 is the function name you kept in Section 5
+# 2. Load the main dataframe
 df = load_db_v2(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
 
 # 3. UI Header and Error Handling
-st.title("Project Tracker Dashboard") # This ensures the header is always visible
+st.title("Project Tracker Dashboard")
 
 if df is None or df.empty:
-    
+    st.warning("⚠️ Database is currently empty or failed to load. Check your CSV headers or click 'Rebuild' in the sidebar.")
+    # We must put something here, or Python crashes. 
+    # If the DF is empty, we might want to stop execution or provide an empty DF.
+    df = pd.DataFrame(columns=DESIRED_ORDER) 
+
+# --- 8. CONFIGURATION & DROPDOWNS ---
+# This line (302) must be back at the "start" of the line (no spaces)
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
     "Orifice": "Orifice.csv", "Diameter": "TubeDia.csv", "Foiling": "Foiling.csv",
     "Cap_Lid Style": "Cap_Lid Style.csv", "Machine": "Machine.csv", 
     "Sales Rep": "Sales Rep.csv", "Cap_Lid Material": "Cap_Material.csv", "Cap_Lid Diameter": "Cap_Lid Diameter.csv"
 }
-
 DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
 
 if not df.empty:
