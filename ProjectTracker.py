@@ -336,16 +336,51 @@ def display_combination_table(key_prefix):
 # 1. Check if we should clear cache
 if st.sidebar.button("🔄 Rebuild Local DB"):
     st.cache_data.clear()
-    # Explicitly delete the parquet file if you want a true "from scratch" rebuild
     if os.path.exists(FILENAME_PARQUET):
         os.remove(FILENAME_PARQUET)
     st.rerun()
 
-# 2. Load the DB normally
-df = load_db(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
-# Force sep=',' instead of sep=None
-df_t = pd.read_csv(tracker_file, sep=',', encoding='utf-8-sig')
-df_d = pd.read_csv(digital_file, sep=',', encoding='utf-8-sig')
+# 2. Define the refined load function (Hardened version)
+@st.cache_data(show_spinner="Refreshing Database...")
+def load_db_v2(tracker_path, digital_path, parquet_path):
+    # If parquet exists and we aren't forcing a rebuild, use it
+    if os.path.exists(parquet_path):
+        return pd.read_parquet(parquet_path)
+    
+    try:
+        # FORCE comma separator and strip BOMs
+        # We use utf-8-sig to handle South African regional encoding issues
+        df_t = pd.read_csv(tracker_path, sep=',', encoding='utf-8-sig', engine='c')
+        df_d = pd.read_csv(digital_path, sep=',', encoding='utf-8-sig', engine='c')
+        
+        # Clean headers
+        df_t = clean_column_names(df_t)
+        df_d = clean_column_names(df_d)
+        
+        # Standardize ID column for merging
+        df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+        df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+
+        # Merge
+        combined = pd.merge(
+            df_t.dropna(subset=['Pre-Prod No.']), 
+            df_d.dropna(subset=['Pre-Prod No.']), 
+            on='Pre-Prod No.', 
+            how='outer', 
+            suffixes=('', '_dig')
+        )
+        
+        # Add age calculation logic here if needed
+        
+        combined.to_parquet(parquet_path, index=False)
+        return combined
+
+    except Exception as e:
+        st.error(f"Failed to rebuild database: {e}")
+        return pd.DataFrame()
+
+# 3. Call the function
+df = load_db_v2(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
 
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
