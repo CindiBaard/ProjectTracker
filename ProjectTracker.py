@@ -70,7 +70,21 @@ def pad_preprod_id(val):
     return val_str
 
 def clean_column_names(df):
-    df.columns = [str(c).strip().replace('\ufeff', '').replace('ï»¿', '').replace('"', '').replace('/', '_') for c in df.columns]
+    # This removes BOMs, hidden quotes, newlines, and extra whitespace
+    df.columns = [
+        str(c).replace('\ufeff', '')
+              .replace('ï»¿', '')
+              .strip() 
+        for c in df.columns
+    ]
+    
+    # Standardize the specific ID column name immediately
+    rename_map = {
+        'Pre-Prod No': 'Pre-Prod No.', 
+        'Pre Prod No.': 'Pre-Prod No.',
+        'Pre Prod No': 'Pre-Prod No.'
+    }
+    df = df.rename(columns=rename_map)
     return df
 
 def update_tracker_status(pre_prod_no, current_trial_ref, manual_date=None):
@@ -238,25 +252,52 @@ def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
         st.error(f"Merge Error: {e}")
         return combined
 
-@st.cache_data
-def load_trial_data():
-    trials_path = os.path.join(BASE_DIR, TRIALS_FILE_CURRENT)
-    if not os.path.exists(trials_path): 
-        return pd.DataFrame()
+@st.cache_data(show_spinner="Refreshing Database...")
+def load_db(tracker_file, digital_file, parquet_path, force_refresh=False):
+    if os.path.exists(parquet_path) and not force_refresh:
+        return pd.read_parquet(parquet_path)
+    
+    combined = pd.DataFrame() 
+
     try:
-        df = pd.read_csv(trials_path)
-        df['Date_Log'] = pd.to_datetime(df['Date_Log'], dayfirst=True, errors='coerce')
-        df['Completion_Date'] = pd.to_datetime(df['Completion_Date'], dayfirst=True, errors='coerce')
-        df['Days_Taken'] = (df['Completion_Date'] - df['Date_Log']).dt.days
-        wk_col = next((c for c in df.columns if 'week' in c.lower()), None)
-        if wk_col:
-            df['Week_Num'] = df[wk_col].astype(str).str.extract(r'(\d+)').fillna(0).astype(int)
-        else:
-            df['Week_Num'] = 0
-        return df
+        # 1. Read files with utf-8-sig to strip BOM automatically
+        df_t = pd.read_csv(tracker_file, sep=None, engine='python', encoding='utf-8-sig')
+        df_d = pd.read_csv(digital_file, sep=None, engine='python', encoding='utf-8-sig')
+        
+        # 2. Clean names (removes spaces, weird characters, and standardizes the ID)
+        df_t = clean_column_names(df_t)
+        df_d = clean_column_names(df_d)
+
+        # 3. DIAGNOSTIC CHECK
+        if 'Pre-Prod No.' not in df_t.columns:
+            # This is the "Aha!" moment line:
+            st.error(f"Tracker headers found: {df_t.columns.tolist()}")
+            return combined # Exit early so it doesn't crash on the merge
+
+        if 'Pre-Prod No.' not in df_d.columns:
+            st.error(f"Digital headers found: {df_d.columns.tolist()}")
+            return combined
+
+        # 4. Standardize data types for the merge
+        df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+        df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+
+        # 5. Perform Merge
+        combined = pd.merge(
+            df_t.dropna(subset=['Pre-Prod No.']), 
+            df_d.dropna(subset=['Pre-Prod No.']), 
+            on='Pre-Prod No.', 
+            how='outer', 
+            suffixes=('', '_dig')
+        )
+        
+        # ... rest of your age calculation and save logic ...
+        combined.to_parquet(parquet_path, index=False)
+        return combined
+
     except Exception as e:
-        st.error(f"Trial Data Load Error: {e}")
-        return pd.DataFrame()
+        st.error(f"Merge Error: {e}")
+        return combined
 
 # --- 6. UI HELPERS ---
 
