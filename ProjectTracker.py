@@ -521,7 +521,7 @@ with st.form("edit_form"):
         st.warning(f"No project found for '{search_no}'. Try 'Sync Cloud' if it was recently added.")
 
 # --- TAB 2: ADD NEW JOB ---
-    elif tab_nav == "➕ Add New Job":
+elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
     selected = st.session_state.get("selected_combo", {})
     default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
@@ -533,7 +533,8 @@ with st.form("edit_form"):
         new_entry = {"Pre-Prod No.": new_id}
         
         for i, col in enumerate(DESIRED_ORDER):
-            if col == "Age Category": continue
+            if col == "Age Category": 
+                continue
             val = selected.get(col, st.session_state.form_data.get(col, ""))
             with new_cols[i % 3]:
                 if col == 'Date':
