@@ -1,8 +1,3 @@
-The main issues in your code were unindented logic blocks and comments that "broke" the if/elif chain. In Python, an elif must immediately follow the previous block's indentation; any code or comments placed at the far-left margin between them will cause a SyntaxError.
-
-I have corrected the indentations for the navigation tabs and the logic inside the Search & Edit section.
-
-Python
 import os
 import re
 import io
