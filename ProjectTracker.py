@@ -19,13 +19,15 @@ DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
 COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
 
+# --- 2. FIXED DESIRED ORDER ---
+# Fixed the missing comma between "Pre-Prod No." and "Date"
 DESIRED_ORDER = [
-    "Pre-Prod No."
+    "Pre-Prod No.",
     "Date", 
     "Age Category", 
     "Client", 
     "Project Description", 
-    "New Mould_ Client or Product",  # Fixed: Space after underscore
+    "New Mould_ Client or Product", 
     "Product Code", 
     "Machine", 
     "Sales Rep", 
@@ -35,7 +37,7 @@ DESIRED_ORDER = [
     "Completion date", 
     "Material", 
     "Product Material Colour (tube, jar etc.)", 
-    "Artwork required",              # Fixed: lowercase 'r'
+    "Artwork required", 
     "Artwork Received", 
     "Order Qty x1000", 
     "Unit Order No", 
@@ -54,7 +56,7 @@ DESIRED_ORDER = [
     "Ordered Plates", 
     "Plates Arrived", 
     "Sent on Trial", 
-    "Digital trial sent",            # Note: Changed to 'sent' to match your CSV
+    "Digital trial sent", 
     "Revised Artwork After Trialling", 
     "Masterbatch received", 
     "Extrusion requested", 
@@ -460,28 +462,44 @@ if tab_nav == "🔍 Search & Edit":
 
         display_combination_table("edit")
         
-        with st.form("edit_form"):
-            st.subheader(f"Editing: {search_no}")
-            edit_cols = st.columns(3)
-            updated_vals = {}
-            selected = st.session_state.get("selected_combo", {})
+# --- 8. UPDATED EDIT FORM LOGIC (Search & Edit Tab) ---
+# This loop now handles all columns in DESIRED_ORDER
+with st.form("edit_form"):
+    st.subheader(f"Editing: {search_no}")
+    edit_cols = st.columns(3)
+    updated_vals = {}
+    selected_combo = st.session_state.get("selected_combo", {})
+    
+    for i, col in enumerate(DESIRED_ORDER):
+        # We skip calculated age fields as they are handled by the load function
+        if col in ["Age Category", "Project Age (Open and Closed)"]:
+            continue
             
-            for i, col in enumerate(DESIRED_ORDER):
-                if col == "Age Category": continue
-                cur_val = selected.get(col, str(row.get(col, "")).replace('nan', ''))
-                with edit_cols[i % 3]:
-                    if col in ['Completion date', 'Date']:
-                        try: d_val = pd.to_datetime(cur_val, dayfirst=True).date() if cur_val else None
-                        except: d_val = None
-                        d_input = st.date_input(col, value=d_val, key=f"ed_{col}")
-                        updated_vals[col] = d_input.strftime('%d/%m/%Y') if d_input else ""
-                    elif col in DROPDOWN_DATA:
-                        opts = sorted(list(set([""] + DROPDOWN_DATA[col] + [cur_val])))
-                        updated_vals[col] = st.selectbox(col, opts, index=opts.index(cur_val), key=f"sel_{col}")
-                    else:
-                        updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_{col}")
+        # Get the current value from the row, or the selected combination if browsing specs
+        cur_val = selected_combo.get(col, str(row.get(col, "")).replace('nan', ''))
+        
+        with edit_cols[i % 3]:
+            # 1. DATE PICKERS (Auto-detects any column with "Date" in the name)
+            if "date" in col.lower() or col == "Date":
+                try:
+                    # Attempt to parse existing date (supports DMY)
+                    d_val = pd.to_datetime(cur_val, dayfirst=True, errors='coerce').date()
+                except:
+                    d_val = None
+                
+                d_input = st.date_input(col, value=d_val, key=f"ed_{col}")
+                updated_vals[col] = d_input.strftime('%d/%m/%Y') if d_input else ""
+            
+            # 2. DROPDOWNS (From your config files)
+            elif col in DROPDOWN_DATA:
+                opts = sorted(list(set([""] + DROPDOWN_DATA[col] + [cur_val])))
+                updated_vals[col] = st.selectbox(col, opts, index=opts.index(cur_val), key=f"sel_{col}")
+            
+            # 3. TEXT BOXES (Everything else)
+            else:
+                updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_{col}")
 
-            if st.form_submit_button("💾 Save Changes", use_container_width=True):
+    if st.form_submit_button("💾 Save Changes", use_container_width=True):
                 status = "Closed" if updated_vals.get("Completion date") else "Open"
                 updated_vals.update({"Status": status, "Open or closed": status})
                 
