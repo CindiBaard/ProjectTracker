@@ -517,8 +517,8 @@ with st.form("edit_form"):
                 st.success("Saved locally & Synced to Cloud!")
                 st.rerun()
 
-    elif search_no:
-        st.warning(f"No project found for '{search_no}'. Try 'Sync Cloud' if it was recently added.")
+elif search_no:
+    st.warning(f"No project found for '{search_no}'. Try 'Sync Cloud' if it was recently added.")
 
 # --- TAB 2: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
