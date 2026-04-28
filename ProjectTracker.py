@@ -207,11 +207,16 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
         return pd.read_parquet(parquet_path)
     
     try:
-        # Load with protection against extra commas and BOMs
+        # 1. Load the files
         df_t = pd.read_csv(tracker_path, sep=',', encoding='utf-8-sig', quotechar='"', on_bad_lines='skip')
         df_d = pd.read_csv(digital_path, sep=',', encoding='utf-8-sig', quotechar='"', on_bad_lines='skip')
+
+        # 2. INSERT THE CLEANING CODE HERE 
+        # This removes #REF! errors immediately after loading
+        df_t = df_t.replace('#REF!', np.nan)
+        df_d = df_d.replace('#REF!', np.nan)
         
-        # Clean headers using your clean_column_names function
+        # 3. Clean headers
         df_t = clean_column_names(df_t)
         df_d = clean_column_names(df_d)
         
