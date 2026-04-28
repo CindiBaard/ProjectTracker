@@ -20,17 +20,50 @@ COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
 
 DESIRED_ORDER = [
-    "Date", "Age Category", "Client", "Project Description", "New Mould_Client or Product", 
-    "Product Code", "Machine", "Sales Rep", "Category", "Status", "Open or closed", 
-    "Completion date", "Material", "Product Material Colour (tube, jar etc.)", 
-    "Artwork Required", "Artwork Received", "Order Qty x1000", "Unit Order No", 
-    "Length", "Cap_Lid Style", "Cap_Lid Material", "Cap_Lid Diameter", "Orifice", "Other Cap_Lid Info", 
-    "Tube Shoulder colour", "Dust Controlled Area", "Date Sent on Proof", "Size of Eyemark", 
-    "Proof Approved (Conventional)", "Proof Approved (Digital)", "Ordered Plates", 
-    "Plates Arrived", "Sent on Trial", "Digital trial received", 
-    "Revised Artwork After Trialling", "Masterbatch received", "Extrusion requested", 
-    "Extrusion received", "Injection trial requested", "Injection trial received", 
-    "Blowmould trial requested", "Blowmould trial received", "Comments"
+    "Pre-Prod No."
+    "Date", 
+    "Age Category", 
+    "Client", 
+    "Project Description", 
+    "New Mould_ Client or Product",  # Fixed: Space after underscore
+    "Product Code", 
+    "Machine", 
+    "Sales Rep", 
+    "Category", 
+    "Status", 
+    "Open or closed", 
+    "Completion date", 
+    "Material", 
+    "Product Material Colour (tube, jar etc.)", 
+    "Artwork required",              # Fixed: lowercase 'r'
+    "Artwork Received", 
+    "Order Qty x1000", 
+    "Unit Order No", 
+    "Length", 
+    "Cap_Lid Style", 
+    "Cap_Lid Material", 
+    "Cap_Lid Diameter", 
+    "Orifice", 
+    "Other Cap_Lid Info", 
+    "Tube Shoulder colour", 
+    "Dust Controlled Area", 
+    "Date Sent on Proof", 
+    "Size of Eyemark", 
+    "Proof Approved (Conventional)", 
+    "Proof Approved (Digital)", 
+    "Ordered Plates", 
+    "Plates Arrived", 
+    "Sent on Trial", 
+    "Digital trial sent",            # Note: Changed to 'sent' to match your CSV
+    "Revised Artwork After Trialling", 
+    "Masterbatch received", 
+    "Extrusion requested", 
+    "Extrusion received", 
+    "Injection trial requested", 
+    "Injection trial received", 
+    "Blowmould trial requested", 
+    "Blowmould trial received", 
+    "Comments"
 ]
 
 # --- 3. SESSION STATE INITIALIZATION ---
