@@ -338,19 +338,27 @@ elif tab_nav == "🧪 Trial Trends":
 elif tab_nav == "🌐 Cloud Sync":
     st.subheader("Google Sheets Sync")
     ca, cb = st.columns(2)
-    if ca.button("📥 Fetch from Cloud"):
-        st.info("Fetching...") # Logic handled in Tab 1 Sync button
-    if cb.button("📤 Push to Cloud", type="primary"):
+# Optimized Fetch
+if ca.button("📥 Fetch from Cloud"):
+    with st.spinner("Optimized Downloading..."):
         try:
-            import gspread
-            from google.oauth2.service_account import Credentials
-            scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-            creds_info = st.secrets.get("gcp_service_account", st.secrets.get("connections", {}).get("gsheets"))
-            creds = Credentials.from_service_account_info(creds_info, scopes=scope)
-            client = gspread.authorize(creds)
+            # ... (credentials setup) ...
             ws = client.open_by_key(TRACKER_FILE_ID).get_worksheet(0)
-            export_df = df.copy().fillna("").astype(str)
-            ws.clear()
-            ws.update([export_df.columns.values.tolist()] + export_df.values.tolist())
-            st.success("Cloud Updated!")
-        except Exception as e: st.error(f"Push failed: {e}")
+            
+            # FASTEST WAY: get_all_values returns list of lists
+            raw_data = ws.get_all_values() 
+            
+            if raw_data:
+                # First row is header, rest is data
+                new_df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
+                
+                # Fast local cleaning
+                new_df['Pre-Prod No.'] = new_df['Pre-Prod No.'].str.replace(r'\.0$', '', regex=True).str.strip()
+                
+                # Save to local parquet (very fast)
+                new_df.to_parquet(FILENAME_PARQUET, index=False)
+                st.cache_data.clear()
+                st.success("Fetched in record time!")
+                st.rerun()
+        except Exception as e: 
+            st.error(f"Sync failed: {e}")
