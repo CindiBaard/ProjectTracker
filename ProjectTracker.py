@@ -338,27 +338,45 @@ elif tab_nav == "🧪 Trial Trends":
 elif tab_nav == "🌐 Cloud Sync":
     st.subheader("Google Sheets Sync")
     ca, cb = st.columns(2)
-# Optimized Fetch
-if ca.button("📥 Fetch from Cloud"):
-    with st.spinner("Optimized Downloading..."):
-        try:
-            # ... (credentials setup) ...
-            ws = client.open_by_key(TRACKER_FILE_ID).get_worksheet(0)
-            
-            # FASTEST WAY: get_all_values returns list of lists
-            raw_data = ws.get_all_values() 
-            
-            if raw_data:
-                # First row is header, rest is data
-                new_df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
+
+    # FIXED: This must be indented inside the 'elif' block
+    if ca.button("📥 Fetch from Cloud"):
+        with st.spinner("Optimized Downloading..."):
+            try:
+                import gspread
+                from google.oauth2.service_account import Credentials
                 
-                # Fast local cleaning
-                new_df['Pre-Prod No.'] = new_df['Pre-Prod No.'].str.replace(r'\.0$', '', regex=True).str.strip()
+                # 1. Setup Connection
+                scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+                creds_info = st.secrets.get("gcp_service_account", st.secrets.get("connections", {}).get("gsheets"))
+                creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+                client = gspread.authorize(creds)
                 
-                # Save to local parquet (very fast)
-                new_df.to_parquet(FILENAME_PARQUET, index=False)
-                st.cache_data.clear()
-                st.success("Fetched in record time!")
-                st.rerun()
-        except Exception as e: 
-            st.error(f"Sync failed: {e}")
+                # 2. Fetch Data
+                ws = client.open_by_key(TRACKER_FILE_ID).get_worksheet(0)
+                raw_data = ws.get_all_values() 
+                
+                if raw_data:
+                    # Create DataFrame
+                    new_df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
+                    
+                    # 3. CRITICAL: Clean column names immediately to prevent 'Pre-Prod No.' errors
+                    new_df = clean_column_names(new_df)
+                    
+                    if 'Pre-Prod No.' in new_df.columns:
+                        new_df['Pre-Prod No.'] = new_df['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                    
+                    # 4. Save and Refresh
+                    new_df.to_parquet(FILENAME_PARQUET, index=False)
+                    st.cache_data.clear()
+                    st.success("Fetched and cleaned successfully!")
+                    st.rerun()
+                else:
+                    st.error("Sheet is empty.")
+                    
+            except Exception as e: 
+                st.error(f"Sync failed: {e}")
+
+    if cb.button("📤 Push to Cloud", type="primary"):
+        # ... your existing Push logic ...
+        pass
