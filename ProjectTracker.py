@@ -380,3 +380,13 @@ elif tab_nav == "🌐 Cloud Sync":
     if cb.button("📤 Push to Cloud", type="primary"):
         # ... your existing Push logic ...
         pass
+
+    # --- ADD THIS: THE DATA PREVIEW ---
+    st.divider()
+    st.subheader("Current Local Data Preview")
+    
+    if not df.empty:
+        st.write(f"Showing {len(df)} records found in local database:")
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No local data found. Click 'Fetch from Cloud' to download data.")
