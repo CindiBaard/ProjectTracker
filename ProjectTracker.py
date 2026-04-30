@@ -263,12 +263,38 @@ if tab_nav == "🔍 Search & Edit":
         
         with st.form("edit_form"):
             st.subheader(f"Editing: {search_no}")
-            edit_cols = st.columns(3)
-            updated_vals = {}
-            sel_combo = st.session_state.get("selected_combo", {})
             
-            for i, col in enumerate(DESIRED_ORDER):
-                if col in ["Age Category", "Project Age (Open and Closed)"]: continue
+            # 1. Define the group of trial fields
+            trial_fields = [
+                "Sent on Trial", "Digital trial sent", "Revised Artwork After Trialling",
+                "Extrusion requested", "Extrusion received", "Injection trial requested", 
+                "Injection trial received", "Blowmould trial requested", "Blowmould trial received"
+            ]
+            
+            # 2. Create the "Trial Information" Box at the top (or wherever preferred)
+            st.markdown("### 🧪 Trial Information")
+            with st.container(border=True):
+                t_cols = st.columns(3)
+                for i, col in enumerate(trial_fields):
+                    if col in DESIRED_ORDER:
+                        cur_val = sel_combo.get(col, str(row.get(col, "")).replace('nan', ''))
+                        with t_cols[i % 3]:
+                            # Logic for Trial Dates/Text
+                            if "date" in col.lower() or "sent" in col.lower() or "requested" in col.lower() or "received" in col.lower():
+                                updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_trial_{col}")
+                            else:
+                                updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_trial_{col}")
+
+            st.divider()
+
+            # 3. Handle all other fields in the standard 3-column grid
+            st.markdown("### 📋 General Details")
+            edit_cols = st.columns(3)
+            
+            # Filter out trial fields and metadata fields from the main loop
+            remaining_fields = [c for c in DESIRED_ORDER if c not in trial_fields and c not in ["Age Category", "Project Age (Open and Closed)"]]
+            
+            for i, col in enumerate(remaining_fields):
                 cur_val = sel_combo.get(col, str(row.get(col, "")).replace('nan', ''))
                 with edit_cols[i % 3]:
                     if "date" in col.lower() or col == "Date":
