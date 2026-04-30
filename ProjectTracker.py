@@ -254,7 +254,7 @@ if tab_nav == "🔍 Search & Edit":
             updated_vals = {}
             sel_combo = st.session_state.get("selected_combo", {})
 
-            # 1. NEW: Status & Completion Group (With Border)
+            # 1. Project Status Group (With Border)
             status_fields = ["Status", "Open or closed", "Completion date"]
             st.markdown("### 🚦 Project Status")
             with st.container(border=True):
@@ -274,7 +274,28 @@ if tab_nav == "🔍 Search & Edit":
 
             st.divider()
 
-            # 2. Proof Information Group (With Border)
+            # 2. Plate Management Group (NEW BOX)
+            plate_fields = ["Ordered Plates", "Plates Arrived"]
+            st.markdown("### 🍽️ Plate Management")
+            with st.container(border=True):
+                pl_cols = st.columns(2)
+                for i, col in enumerate(plate_fields):
+                    cur_val = sel_combo.get(col, str(row.get(col, "")).replace('nan', ''))
+                    with pl_cols[i]:
+                        # Check if user wants a date picker for plates or just text
+                        if "date" in col.lower():
+                             try:
+                                d_parsed = pd.to_datetime(cur_val, dayfirst=True, errors='coerce')
+                                d_val = d_parsed.date() if pd.notnull(d_parsed) else datetime.now().date()
+                             except: d_val = datetime.now().date()
+                             d_input = st.date_input(col, value=d_val, key=f"ed_plate_{col}")
+                             updated_vals[col] = d_input.strftime('%d/%m/%Y')
+                        else:
+                             updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_plate_{col}")
+
+            st.divider()
+
+            # 3. Proof Information Group (With Border)
             proof_fields = ["Date Sent on Proof", "Proof Approved (Conventional)", "Proof Approved (Digital)"]
             st.markdown("### 📝 Proof Information")
             with st.container(border=True):
@@ -294,7 +315,7 @@ if tab_nav == "🔍 Search & Edit":
 
             st.divider()
 
-            # 3. Trial Fields Grouping
+            # 4. Trial Fields Grouping
             trial_fields = [
                 "Sent on Trial", "Digital trial sent", "Revised Artwork After Trialling",
                 "Extrusion requested", "Extrusion received", "Injection trial requested", 
@@ -311,12 +332,12 @@ if tab_nav == "🔍 Search & Edit":
 
             st.divider()
 
-            # 4. General Fields Grouping
+            # 5. General Fields Grouping
             st.markdown("### 📋 General Details")
             edit_cols = st.columns(3)
             
             # Exclude everything already handled in the boxes above
-            excluded = status_fields + trial_fields + proof_fields + ["Age Category", "Project Age (Open and Closed)"]
+            excluded = status_fields + trial_fields + proof_fields + plate_fields + ["Age Category", "Project Age (Open and Closed)"]
             remaining_fields = [c for c in DESIRED_ORDER if c not in excluded and c != "Pre-Prod No."]
             
             for i, col in enumerate(remaining_fields):
@@ -351,7 +372,7 @@ if tab_nav == "🔍 Search & Edit":
 
     elif search_no:
         st.warning("No project found.")
-        
+
 # --- TAB 2: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
