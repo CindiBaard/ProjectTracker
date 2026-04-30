@@ -254,9 +254,28 @@ if tab_nav == "🔍 Search & Edit":
             updated_vals = {}
             sel_combo = st.session_state.get("selected_combo", {})
 
-            # 1. NEW: Proof Information Group (With Border)
+            # 1. NEW: Status & Completion Group (With Border)
+            status_fields = ["Status", "Open or closed", "Completion date"]
+            st.markdown("### 🚦 Project Status")
+            with st.container(border=True):
+                s_cols = st.columns(3)
+                for i, col in enumerate(status_fields):
+                    cur_val = sel_combo.get(col, str(row.get(col, "")).replace('nan', ''))
+                    with s_cols[i % 3]:
+                        if col == "Completion date":
+                            try:
+                                d_parsed = pd.to_datetime(cur_val, dayfirst=True, errors='coerce')
+                                d_val = d_parsed.date() if pd.notnull(d_parsed) else datetime.now().date()
+                            except: d_val = datetime.now().date()
+                            d_input = st.date_input(col, value=d_val, key=f"ed_stat_{col}")
+                            updated_vals[col] = d_input.strftime('%d/%m/%Y')
+                        else:
+                            updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_stat_{col}")
+
+            st.divider()
+
+            # 2. Proof Information Group (With Border)
             proof_fields = ["Date Sent on Proof", "Proof Approved (Conventional)", "Proof Approved (Digital)"]
-            
             st.markdown("### 📝 Proof Information")
             with st.container(border=True):
                 p_cols = st.columns(3)
@@ -275,31 +294,30 @@ if tab_nav == "🔍 Search & Edit":
 
             st.divider()
 
-            # 2. Trial Fields Grouping
+            # 3. Trial Fields Grouping
             trial_fields = [
                 "Sent on Trial", "Digital trial sent", "Revised Artwork After Trialling",
                 "Extrusion requested", "Extrusion received", "Injection trial requested", 
                 "Injection trial received", "Blowmould trial requested", "Blowmould trial received"
             ]
-            
             st.markdown("### 🧪 Trial Information")
             with st.container(border=True):
                 t_cols = st.columns(3)
-                existing_trial_fields = [f for f in trial_fields if f in DESIRED_ORDER]
-                for i, col in enumerate(existing_trial_fields):
-                    cur_val = sel_combo.get(col, str(row.get(col, "")).replace('nan', ''))
-                    with t_cols[i % 3]:
-                        updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_trial_{col}")
+                for i, col in enumerate(trial_fields):
+                    if col in DESIRED_ORDER:
+                        cur_val = sel_combo.get(col, str(row.get(col, "")).replace('nan', ''))
+                        with t_cols[i % 3]:
+                            updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_trial_{col}")
 
             st.divider()
 
-            # 3. General Fields Grouping
+            # 4. General Fields Grouping
             st.markdown("### 📋 General Details")
             edit_cols = st.columns(3)
             
-            # Filter out Trial, Proof, and Calculated fields to prevent duplicates
-            excluded = trial_fields + proof_fields + ["Age Category", "Project Age (Open and Closed)"]
-            remaining_fields = [c for c in DESIRED_ORDER if c not in excluded]
+            # Exclude everything already handled in the boxes above
+            excluded = status_fields + trial_fields + proof_fields + ["Age Category", "Project Age (Open and Closed)"]
+            remaining_fields = [c for c in DESIRED_ORDER if c not in excluded and c != "Pre-Prod No."]
             
             for i, col in enumerate(remaining_fields):
                 cur_val = sel_combo.get(col, str(row.get(col, "")).replace('nan', ''))
@@ -309,7 +327,7 @@ if tab_nav == "🔍 Search & Edit":
                             d_parsed = pd.to_datetime(cur_val, dayfirst=True, errors='coerce')
                             d_val = d_parsed.date() if pd.notnull(d_parsed) else datetime.now().date()
                         except: d_val = datetime.now().date()
-                        d_input = st.date_input(col, value=d_val, key=f"ed_{col}")
+                        d_input = st.date_input(col, value=d_val, key=f"ed_gen_{col}")
                         updated_vals[col] = d_input.strftime('%d/%m/%Y')
                     elif col in DROPDOWN_DATA:
                         opts = sorted(list(set([""] + DROPDOWN_DATA[col] + [cur_val])))
@@ -333,6 +351,7 @@ if tab_nav == "🔍 Search & Edit":
 
     elif search_no:
         st.warning("No project found.")
+        
 # --- TAB 2: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
