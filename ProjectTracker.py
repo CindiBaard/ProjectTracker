@@ -223,7 +223,7 @@ if tab_nav == "🔍 Search & Edit":
         st.rerun()
 
     if c_sy.button("🔄 Sync Cloud", use_container_width=True):
-        # ... (Your existing Sync Cloud logic remains the same)
+        # ... (Your existing Sync Cloud logic)
         pass
 
     search_no = pad_preprod_id(raw_search)
@@ -251,11 +251,31 @@ if tab_nav == "🔍 Search & Edit":
         with st.form("edit_form"):
             st.subheader(f"Editing: {search_no}")
             
-            # --- CRITICAL FIX 1: Initialize updated_vals BEFORE using it ---
             updated_vals = {}
             sel_combo = st.session_state.get("selected_combo", {})
 
-            # 1. Trial Fields Grouping
+            # 1. NEW: Proof Information Group (With Border)
+            proof_fields = ["Date Sent on Proof", "Proof Approved (Conventional)", "Proof Approved (Digital)"]
+            
+            st.markdown("### 📝 Proof Information")
+            with st.container(border=True):
+                p_cols = st.columns(3)
+                for i, col in enumerate(proof_fields):
+                    cur_val = sel_combo.get(col, str(row.get(col, "")).replace('nan', ''))
+                    with p_cols[i % 3]:
+                        if "Date" in col:
+                            try:
+                                d_parsed = pd.to_datetime(cur_val, dayfirst=True, errors='coerce')
+                                d_val = d_parsed.date() if pd.notnull(d_parsed) else datetime.now().date()
+                            except: d_val = datetime.now().date()
+                            d_input = st.date_input(col, value=d_val, key=f"ed_proof_{col}")
+                            updated_vals[col] = d_input.strftime('%d/%m/%Y')
+                        else:
+                            updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_proof_{col}")
+
+            st.divider()
+
+            # 2. Trial Fields Grouping
             trial_fields = [
                 "Sent on Trial", "Digital trial sent", "Revised Artwork After Trialling",
                 "Extrusion requested", "Extrusion received", "Injection trial requested", 
@@ -265,7 +285,6 @@ if tab_nav == "🔍 Search & Edit":
             st.markdown("### 🧪 Trial Information")
             with st.container(border=True):
                 t_cols = st.columns(3)
-                # Filter to only show fields that actually exist in your DESIRED_ORDER
                 existing_trial_fields = [f for f in trial_fields if f in DESIRED_ORDER]
                 for i, col in enumerate(existing_trial_fields):
                     cur_val = sel_combo.get(col, str(row.get(col, "")).replace('nan', ''))
@@ -274,12 +293,13 @@ if tab_nav == "🔍 Search & Edit":
 
             st.divider()
 
-            # 2. General Fields Grouping
+            # 3. General Fields Grouping
             st.markdown("### 📋 General Details")
             edit_cols = st.columns(3)
             
-            # Filter out trial fields and calculated fields
-            remaining_fields = [c for c in DESIRED_ORDER if c not in trial_fields and c not in ["Age Category", "Project Age (Open and Closed)"]]
+            # Filter out Trial, Proof, and Calculated fields to prevent duplicates
+            excluded = trial_fields + proof_fields + ["Age Category", "Project Age (Open and Closed)"]
+            remaining_fields = [c for c in DESIRED_ORDER if c not in excluded]
             
             for i, col in enumerate(remaining_fields):
                 cur_val = sel_combo.get(col, str(row.get(col, "")).replace('nan', ''))
@@ -297,14 +317,11 @@ if tab_nav == "🔍 Search & Edit":
                     else:
                         updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_{col}")
 
-            # --- CRITICAL FIX 2: Ensure the submit button is inside the form block ---
             if st.form_submit_button("💾 Save Changes", use_container_width=True):
                 for k, v in updated_vals.items(): 
                     df.at[idx, k] = v
-                
                 save_db(df)
                 
-                # Update Google Sheets if specific field changes
                 trial_status = updated_vals.get("Injection trial requested", "")
                 if trial_status: 
                     update_tracker_status(search_no, trial_status)
@@ -316,7 +333,6 @@ if tab_nav == "🔍 Search & Edit":
 
     elif search_no:
         st.warning("No project found.")
-
 # --- TAB 2: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
