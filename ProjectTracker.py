@@ -213,6 +213,25 @@ tabs_list = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysi
 tab_nav = st.radio("Navigation", tabs_list, index=tabs_list.index(st.session_state.active_tab), horizontal=True)
 st.session_state.active_tab = tab_nav
 
+# --- SIDEBAR NAVIGATION ---
+with st.sidebar:
+    st.title("Navigation")
+    
+    # External Link to the Injection Trial App
+    st.page_link(
+        "https://injectiontrial-996rcfrtn9rkgafzsejzrn.streamlit.app/", 
+        label="🧪 Go to Injection Trial App", 
+        icon="🚀"
+    )
+    
+    st.divider()
+
+    if st.button("🔄 Rebuild Local DB", use_container_width=True):
+        st.cache_data.clear()
+        if os.path.exists(FILENAME_PARQUET): 
+            os.remove(FILENAME_PARQUET)
+        st.rerun()
+        
 # --- TAB 1: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
     c_s, c_cl, c_sy = st.columns([3, 1, 1])
