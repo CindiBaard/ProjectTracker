@@ -86,7 +86,7 @@ def get_auto_next_no(df):
     if df is None or df.empty or 'Pre-Prod No.' not in df.columns: 
         return "00001"
     try:
-        nums = df['Pre-Prod No.'].str.extract(r'(\d+)')[0].dropna().astype(int)
+        nums = df['Pre-Prod No.'].astype(str).str.extract(r'(\d+)')[0].dropna().astype(int)
         if nums.empty: return "00001"
         return str(int(nums.max()) + 1).zfill(5)
     except: return "00001"
@@ -180,15 +180,19 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
     
     try:
         def smart_read(path):
-            if not os.path.exists(path): return pd.DataFrame()
-            # Try comma
-            d = pd.read_csv(path, sep=',', on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
-            d = clean_column_names(d)
-            # If failed to split, try semicolon
-            if len(d.columns) < 2:
-                d = pd.read_csv(path, sep=';', on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
-                d = clean_column_names(d)
-            return d
+    if not os.path.exists(path): return pd.DataFrame()
+    try:
+        # Try reading with comma first
+        df = pd.read_csv(path, sep=',', on_bad_lines='skip', encoding='utf-8-sig')
+        # If it failed to split (only 1 column), try semicolon
+        if len(df.columns) <= 1:
+            df = pd.read_csv(path, sep=';', on_bad_lines='skip', encoding='utf-8-sig')
+        
+        df = df.replace('#REF!', np.nan)
+        return clean_column_names(df)
+    except Exception as e:
+        st.error(f"Error reading {path}: {e}")
+        return pd.DataFrame()
 
         df_t = smart_read(tracker_path)
         df_d = smart_read(digital_path)
@@ -230,14 +234,7 @@ def display_combination_table(key_prefix):
                 if search:
                     combo_df = combo_df[combo_df.apply(lambda r: r.astype(str).str.contains(search, case=False).any(), axis=1)]
                 
-                event = st.dataframe(
-                    combo_df, 
-                    use_container_width=True, 
-                    hide_index=True, 
-                    on_select="rerun", 
-                    selection_mode="single-row", 
-                    key=f"{key_prefix}_table"
-                )
+                event = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table")
                 
                 if event.selection.rows:
                     sel_row = combo_df.iloc[event.selection.rows[0]].to_dict()
@@ -277,7 +274,7 @@ with st.sidebar:
     st.title("Navigation")
     st.page_link("https://injectiontrial-996rcfrtn9rkgafzsejzrn.streamlit.app/", label="🧪 Go to Injection Trial App", icon="🚀")
     st.divider()
-    if st.button("🔄 Rebuild Local DB", key="sidebar_rebuild", use_container_width=True):
+    if st.button("🔄 Rebuild Local DB", use_container_width=True):
         st.cache_data.clear()
         if os.path.exists(FILENAME_PARQUET): os.remove(FILENAME_PARQUET)
         st.rerun()
