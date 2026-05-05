@@ -1,3 +1,4 @@
+import os
 import re
 import io
 import numpy as np
@@ -8,7 +9,6 @@ from datetime import datetime
 
 # --- 1. INITIAL SETUP & DEPENDENCIES ---
 st.set_page_config(page_title="Project Tracker Dashboard", layout="wide")
-# Note: styler.render.max_elements is usually for display, keeping it for compatibility
 pd.set_option("styler.render.max_elements", 1000000)
 
 # --- 2. FILE PATHS & CONFIG ---
