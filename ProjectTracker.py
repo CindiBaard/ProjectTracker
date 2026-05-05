@@ -180,7 +180,7 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
     
     try:
         def smart_read(path):
-    if not os.path.exists(path): return pd.DataFrame()
+        if not os.path.exists(path): return pd.DataFrame()
     try:
         # Try reading with comma first
         df = pd.read_csv(path, sep=',', on_bad_lines='skip', encoding='utf-8-sig')
