@@ -160,6 +160,11 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
         # Read CSVs with explicit handling for messy headers
         df_t = pd.read_csv(tracker_path, on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
         df_d = pd.read_csv(digital_path, on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
+
+        # If it still fails, force the comma:
+        df_t = pd.read_csv(tracker_path, sep=',', on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
+        df_d = pd.read_csv(digital_path, sep=',', on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
+        
         
         df_t = clean_column_names(df_t)
         df_d = clean_column_names(df_d)
@@ -194,7 +199,7 @@ def display_combination_table(key_prefix):
                 search = st.text_input(f"🔍 Filter List", key=f"{key_prefix}_search")
                 if search:
                     combo_df = combo_df[combo_df.apply(lambda r: r.astype(str).str.contains(search, case=False).any(), axis=1)]
-                event = st.dataframe(combo_df, use_container_width=Stretch, hide_index=True, on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table")
+                event = st.dataframe(combo_df, use_container_width=use_container_width="Stretch", hide_index=True, on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table")
                 if event.selection.rows:
                     sel_row = combo_df.iloc[event.selection.rows[0]].to_dict()
                     st.session_state.selected_combo = {
@@ -245,7 +250,7 @@ with st.sidebar:
     
     st.divider()
 
-    if st.button("🔄 Rebuild Local DB", use_container_width=Stretch):
+    if st.button("🔄 Rebuild Local DB", use_container_width="Stretch"):
         st.cache_data.clear()
         if os.path.exists(FILENAME_PARQUET): 
             os.remove(FILENAME_PARQUET)
@@ -256,11 +261,11 @@ if tab_nav == "🔍 Search & Edit":
     c_s, c_cl, c_sy = st.columns([3, 1, 1])
     raw_search = c_s.text_input("Search Pre-Prod No.", key="search_input_box").strip()
     
-    if c_cl.button("♻️ Clear", use_container_width=Stretch):
+    if c_cl.button("♻️ Clear", use_container_width="Stretch"):
         st.session_state.last_search_no = ""
         st.rerun()
 
-    if c_sy.button("🔄 Sync Cloud", use_container_width=Stretch):
+    if c_sy.button("🔄 Sync Cloud", use_container_width="Stretch"):
         # ... (Your existing Sync Cloud logic)
         pass
 
@@ -272,7 +277,7 @@ if tab_nav == "🔍 Search & Edit":
         btn_col1, btn_col2 = st.columns(2)
         
         with btn_col1:
-            if st.button("👯 Clone Project", use_container_width=Stretch):
+            if st.button("👯 Clone Project", use_container_width="Stretch"):
                 new_clone = row.to_dict()
                 new_clone.update({'Pre-Prod No.': get_next_available_id(search_no, df['Pre-Prod No.']), 'Date': datetime.now().strftime('%d/%m/%Y')})
                 st.session_state.form_data = new_clone
@@ -280,7 +285,7 @@ if tab_nav == "🔍 Search & Edit":
                 st.rerun()
         
         with btn_col2:
-            if st.button("🗑️ Delete Project", type="primary", use_container_width=Stretch) if st.checkbox(f"Confirm Delete {search_no}") else None:
+            if st.button("🗑️ Delete Project", type="primary", use_container_width="Stretch") if st.checkbox(f"Confirm Delete {search_no}") else None:
                 df = df.drop(idx)
                 save_db(df); st.cache_data.clear(); st.rerun()
 
@@ -394,7 +399,7 @@ if tab_nav == "🔍 Search & Edit":
                         with t_cols[i % 3]:
                             updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_trial_{col}")
 
-            if st.form_submit_button("💾 Save Changes", use_container_width=Stretch):
+            if st.form_submit_button("💾 Save Changes", use_container_width="Stretch"):
                 for k, v in updated_vals.items(): 
                     df.at[idx, k] = v
                 save_db(df)
@@ -429,7 +434,7 @@ elif tab_nav == "➕ Add New Job":
                     opts = sorted(list(set([""] + DROPDOWN_DATA[col] + ([val] if val else []))))
                     new_entry[col] = st.selectbox(col, opts, index=opts.index(val) if val in opts else 0)
                 else: new_entry[col] = st.text_input(col, value=val)
-        if st.form_submit_button("➕ Create Project", use_container_width=Stretch):
+        if st.form_submit_button("➕ Create Project", use_container_width="Stretch"):
             df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
             save_db(df); st.cache_data.clear(); st.session_state.form_data = {}; st.rerun()
 
@@ -438,7 +443,7 @@ elif tab_nav == "📊 Detailed Age Analysis":
     st.subheader("Project Age Distribution")
     if not df.empty and 'Age Category' in df.columns:
         st.bar_chart(df['Age Category'].value_counts())
-        st.dataframe(df[['Pre-Prod No.', 'Client', 'Project Description', 'Age Category']], use_container_width=Stretch)
+        st.dataframe(df[['Pre-Prod No.', 'Client', 'Project Description', 'Age Category']], use_container_width="Stretch")
 
 # --- TAB 4: TRIAL TRENDS ---
 elif tab_nav == "🧪 Trial Trends":
@@ -505,6 +510,6 @@ elif tab_nav == "🌐 Cloud Sync":
     
     if not df.empty:
         st.write(f"Showing {len(df)} records found in local database:")
-        st.dataframe(df, use_container_width=Stretch, hide_index=True)
+        st.dataframe(df, use_container_width="Stretch", hide_index=True)
     else:
         st.info("No local data found. Click 'Fetch from Cloud' to download data.")
