@@ -439,3 +439,6 @@ elif tab_nav == "🌐 Cloud Sync":
     st.divider()
     st.subheader("Local Database Preview")
     st.dataframe(df, use_container_width=True, hide_index=True)
+
+    else:
+        st.info("No local data found. Click 'Fetch from Cloud' to download data.")
