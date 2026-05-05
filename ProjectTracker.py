@@ -205,15 +205,16 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
         if 'Pre-Prod No.' in df_t.columns:
             df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
-        # Handle Digital DF and Merge
+        # --- REVISED MERGE LOGIC ---
         if not df_d.empty and 'Pre-Prod No.' in df_d.columns:
             # A. Clean Digital IDs
             df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
             
-            # B. Drop any column that already ends in '_dig' to prevent suffix collision
+            # B. Drop any column that ALREADY ends in '_dig' to prevent suffix collision
+            # This is why you got the duplicate column error.
             df_d = df_d.drop(columns=[c for c in df_d.columns if c.endswith('_dig')], errors='ignore')
             
-            # C. Remove any literal duplicate column names
+            # C. Remove literal duplicate column names (e.g., two 'Project' columns)
             df_d = df_d.loc[:, ~df_d.columns.duplicated()]
             
             # D. Perform Merge
@@ -225,7 +226,7 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
                 suffixes=('', '_dig')
             )
         else:
-            # If digital is empty, just use tracker
+            # If digital is empty or missing key column, just use tracker
             combined = df_t
         
         # 3. Final Polish
@@ -236,6 +237,10 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
         # Save to local parquet for faster next load
         combined.to_parquet(parquet_path, index=False)
         return combined
+        
+    except Exception as e:
+        st.error(f"Load Error: {e}")
+        return pd.DataFrame()
         
     except Exception as e:
         st.error(f"Load Error: {e}")
