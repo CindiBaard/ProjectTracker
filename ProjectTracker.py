@@ -1,4 +1,3 @@
-import os
 import re
 import io
 import numpy as np
@@ -9,6 +8,7 @@ from datetime import datetime
 
 # --- 1. INITIAL SETUP & DEPENDENCIES ---
 st.set_page_config(page_title="Project Tracker Dashboard", layout="wide")
+# Note: styler.render.max_elements is usually for display, keeping it for compatibility
 pd.set_option("styler.render.max_elements", 1000000)
 
 # --- 2. FILE PATHS & CONFIG ---
@@ -48,6 +48,40 @@ if 'last_search_no' not in st.session_state:
     st.session_state.last_search_no = ""
 
 # --- 4. UTILITY FUNCTIONS ---
+
+def clean_column_names(df):
+    """Fixes merged headers, removes whitespace, and handles duplicates."""
+    # 1. Strip whitespace and remove BOM characters
+    df.columns = [str(c).replace('\ufeff', '').replace('ï»¿', '').strip() for c in df.columns]
+    
+    # 2. Fix the 'All headers in one column' issue (Delimiter mismatch)
+    if len(df.columns) > 0 and "," in df.columns[0] and "Pre-Prod" in df.columns[0]:
+        new_headers = df.columns[0].split(',')
+        if len(new_headers) > 5:
+            data = df.iloc[:, 0].str.split(',', expand=True)
+            df = data
+            df.columns = new_headers[:len(df.columns)]
+
+    # 3. Standardize naming
+    rename_map = {
+        'Pre-Prod No': 'Pre-Prod No.', 
+        'Pre Prod No.': 'Pre-Prod No.', 
+        'Pre-Prod No. ': 'Pre-Prod No.',
+        'Pre Prod No': 'Pre-Prod No.'
+    }
+    df = df.rename(columns=rename_map)
+    
+    # 4. Drop completely empty/unnamed columns
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+    
+    # 5. Handle duplicate column names (prevents pandas crashes)
+    cols = pd.Series(df.columns)
+    for dup in cols[cols.duplicated()].unique(): 
+        cols[cols == dup] = [f"{dup}_{i}" if i != 0 else dup for i in range(sum(cols == dup))]
+    df.columns = cols
+    
+    return df
+
 def get_auto_next_no(df):
     if df is None or df.empty or 'Pre-Prod No.' not in df.columns: 
         return "00001"
@@ -72,17 +106,6 @@ def pad_preprod_id(val):
         parts = val_str.split('_', 1)
         return f"{parts[0]}_{parts[1]}"
     return val_str
-
-def clean_column_names(df):
-    df.columns = [str(c).replace('\ufeff', '').replace('ï»¿', '').strip() for c in df.columns]
-    rename_map = {
-        'Pre-Prod No': 'Pre-Prod No.', 
-        'Pre Prod No.': 'Pre-Prod No.', 
-        'Pre Prod No': 'Pre-Prod No.',
-        'Pre-Prod No. ': 'Pre-Prod No.'
-    }
-    df = df.rename(columns=rename_map)
-    return df
 
 def update_tracker_status(pre_prod_no, current_trial_ref, manual_date=None):
     import gspread
@@ -150,28 +173,42 @@ def save_db(df):
 @st.cache_data(show_spinner="Refreshing Database...")
 def load_db_v2(tracker_path, digital_path, parquet_path):
     if os.path.exists(parquet_path): 
-        return pd.read_parquet(parquet_path)
+        try:
+            return pd.read_parquet(parquet_path)
+        except:
+            pass
     
     try:
-        df_t = pd.read_csv(tracker_path, on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
-        df_d = pd.read_csv(digital_path, on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
+        def smart_read(path):
+            if not os.path.exists(path): return pd.DataFrame()
+            # Try comma
+            d = pd.read_csv(path, sep=',', on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
+            d = clean_column_names(d)
+            # If failed to split, try semicolon
+            if len(d.columns) < 2:
+                d = pd.read_csv(path, sep=';', on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
+                d = clean_column_names(d)
+            return d
 
-        df_t = pd.read_csv(tracker_path, sep=',', on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
-        df_d = pd.read_csv(digital_path, sep=',', on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
+        df_t = smart_read(tracker_path)
+        df_d = smart_read(digital_path)
         
-        df_t = clean_column_names(df_t)
-        df_d = clean_column_names(df_d)
-        
+        if df_t.empty: return pd.DataFrame()
+
         if 'Pre-Prod No.' not in df_t.columns:
-            st.error(f"Critical Error: 'Pre-Prod No.' column not found. Found: {list(df_t.columns)}")
+            st.error(f"Critical Error: 'Pre-Prod No.' column not found. Found: {list(df_t.columns[:5])}")
             return pd.DataFrame()
 
         for d in [df_t, df_d]:
-            d['Pre-Prod No.'] = d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            if not d.empty and 'Pre-Prod No.' in d.columns:
+                d['Pre-Prod No.'] = d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
-        combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), 
-                            df_d.dropna(subset=['Pre-Prod No.']), 
-                            on='Pre-Prod No.', how='outer', suffixes=('', '_dig'))
+        if not df_d.empty:
+            combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), 
+                                df_d.dropna(subset=['Pre-Prod No.']), 
+                                on='Pre-Prod No.', how='outer', suffixes=('', '_dig'))
+        else:
+            combined = df_t
         
         existing_cols = [c for c in DESIRED_ORDER if c in combined.columns]
         combined = combined[existing_cols]
@@ -187,15 +224,15 @@ def display_combination_table(key_prefix):
     if os.path.exists(COMBINATIONS_FILE):
         with st.expander("📂 Browse Tube & Cap Combinations", expanded=False):
             try:
-                combo_df = clean_column_names(pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig'))
+                combo_df = pd.read_csv(COMBINATIONS_FILE, sep=';', encoding='utf-8-sig')
+                combo_df = clean_column_names(combo_df)
                 search = st.text_input(f"🔍 Filter List", key=f"{key_prefix}_search")
                 if search:
                     combo_df = combo_df[combo_df.apply(lambda r: r.astype(str).str.contains(search, case=False).any(), axis=1)]
                 
-                # FIXED: Corrected width parameter for st.dataframe
                 event = st.dataframe(
                     combo_df, 
-                    width="stretch", 
+                    use_container_width=True, 
                     hide_index=True, 
                     on_select="rerun", 
                     selection_mode="single-row", 
@@ -213,12 +250,7 @@ def display_combination_table(key_prefix):
                     st.toast("✅ Specs Selected")
             except Exception as e: st.error(f"Combo Error: {e}")
 
-# --- 7. MAIN LOGIC ---
-if st.sidebar.button("🔄 Rebuild Local DB"):
-    st.cache_data.clear()
-    if os.path.exists(FILENAME_PARQUET): os.remove(FILENAME_PARQUET)
-    st.rerun()
-
+# --- 7. MAIN APP START ---
 df = load_db_v2(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
 if df.empty: df = pd.DataFrame(columns=DESIRED_ORDER)
 
@@ -232,42 +264,31 @@ DROPDOWN_CONFIG = {
     "Sales Rep": "Sales Rep.csv", "Cap_Lid Material": "Cap_Material.csv", "Cap_Lid Diameter": "Cap_Lid Diameter.csv"
 }
 DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
-if not df.empty:
+if not df.empty and 'Client' in df.columns:
     DROPDOWN_DATA['Client'] = sorted([str(c) for c in df['Client'].unique() if str(c).strip() and str(c).lower() != 'nan'])
 
+# NAVIGATION
 tabs_list = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Cloud Sync"]
 tab_nav = st.radio("Navigation", tabs_list, index=tabs_list.index(st.session_state.active_tab), horizontal=True)
 st.session_state.active_tab = tab_nav
 
-# --- SIDEBAR NAVIGATION ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.title("Navigation")
-    st.page_link(
-        "https://injectiontrial-996rcfrtn9rkgafzsejzrn.streamlit.app/", 
-        label="🧪 Go to Injection Trial App", 
-        icon="🚀"
-    )
+    st.page_link("https://injectiontrial-996rcfrtn9rkgafzsejzrn.streamlit.app/", label="🧪 Go to Injection Trial App", icon="🚀")
     st.divider()
-
-    # FIXED: Corrected parameter for st.button
     if st.button("🔄 Rebuild Local DB", key="sidebar_rebuild", use_container_width=True):
         st.cache_data.clear()
-        if os.path.exists(FILENAME_PARQUET): 
-            os.remove(FILENAME_PARQUET)
+        if os.path.exists(FILENAME_PARQUET): os.remove(FILENAME_PARQUET)
         st.rerun()
-        
+
 # --- TAB 1: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
-    c_s, c_cl, c_sy = st.columns([3, 1, 1])
+    c_s, c_cl = st.columns([4, 1])
     raw_search = c_s.text_input("Search Pre-Prod No.", key="search_input_box").strip()
-    
-    # FIXED: Corrected parameter for buttons
     if c_cl.button("♻️ Clear", use_container_width=True):
         st.session_state.last_search_no = ""
         st.rerun()
-
-    if c_sy.button("🔄 Sync Cloud", use_container_width=True):
-        pass
 
     search_no = pad_preprod_id(raw_search)
     match = df[df['Pre-Prod No.'] == search_no] if not df.empty else pd.DataFrame()
@@ -285,9 +306,10 @@ if tab_nav == "🔍 Search & Edit":
                 st.rerun()
         
         with btn_col2:
-            if st.button("🗑️ Delete Project", type="primary", use_container_width=True) if st.checkbox(f"Confirm Delete {search_no}") else None:
-                df = df.drop(idx)
-                save_db(df); st.cache_data.clear(); st.rerun()
+            if st.checkbox(f"Confirm Delete {search_no}"):
+                if st.button("🗑️ Delete Project", type="primary", use_container_width=True):
+                    df = df.drop(idx)
+                    save_db(df); st.cache_data.clear(); st.rerun()
 
         display_combination_table("edit")
         
@@ -296,6 +318,7 @@ if tab_nav == "🔍 Search & Edit":
             updated_vals = {}
             sel_combo = st.session_state.get("selected_combo", {})
 
+            # Fields Grouping
             status_fields = ["Status", "Open or closed", "Completion date"]
             plate_fields = ["Ordered Plates", "Plates Arrived"]
             proof_fields = ["Date Sent on Proof", "Proof Approved (Conventional)", "Proof Approved (Digital)"]
@@ -307,7 +330,7 @@ if tab_nav == "🔍 Search & Edit":
 
             st.markdown("### 📋 General Details")
             edit_cols = st.columns(3)
-            excluded = status_fields + trial_fields + proof_fields + plate_fields + ["Age Category", "Project Age (Open and Closed)"]
+            excluded = status_fields + trial_fields + proof_fields + plate_fields + ["Age Category"]
             remaining_fields = [c for c in DESIRED_ORDER if c not in excluded and c != "Pre-Prod No."]
             
             for i, col in enumerate(remaining_fields):
@@ -327,74 +350,18 @@ if tab_nav == "🔍 Search & Edit":
                         updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_{col}")
 
             st.divider()
-            st.markdown("### 🚦 Project Status")
-            with st.container(border=True):
-                s_cols = st.columns(3)
-                for i, col in enumerate(status_fields):
-                    cur_val = sel_combo.get(col, str(row.get(col, "")).replace('nan', ''))
-                    with s_cols[i % 3]:
-                        if col == "Completion date":
-                            try:
-                                d_parsed = pd.to_datetime(cur_val, dayfirst=True, errors='coerce')
-                                d_val = d_parsed.date() if pd.notnull(d_parsed) else datetime.now().date()
-                            except: d_val = datetime.now().date()
-                            d_input = st.date_input(col, value=d_val, key=f"ed_stat_{col}")
-                            updated_vals[col] = d_input.strftime('%d/%m/%Y')
-                        else:
-                            updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_stat_{col}")
+            st.markdown("### 🧪 Trials & Progress")
+            t_cols = st.columns(3)
+            for i, col in enumerate(trial_fields + status_fields + plate_fields + proof_fields):
+                cur_val = str(row.get(col, "")).replace('nan', '')
+                with t_cols[i % 3]:
+                    updated_vals[col] = st.text_input(col, value=cur_val, key=f"flow_{col}")
 
-            st.divider()
-            st.markdown("### 🍽️ Plate Management")
-            with st.container(border=True):
-                pl_cols = st.columns(2)
-                for i, col in enumerate(plate_fields):
-                    cur_val = sel_combo.get(col, str(row.get(col, "")).replace('nan', ''))
-                    with pl_cols[i]:
-                        if "date" in col.lower():
-                             try:
-                                d_parsed = pd.to_datetime(cur_val, dayfirst=True, errors='coerce')
-                                d_val = d_parsed.date() if pd.notnull(d_parsed) else datetime.now().date()
-                             except: d_val = datetime.now().date()
-                             d_input = st.date_input(col, value=d_val, key=f"ed_plate_{col}")
-                             updated_vals[col] = d_input.strftime('%d/%m/%Y')
-                        else:
-                             updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_plate_{col}")
-
-            st.divider()
-            st.markdown("### 📝 Proof Information")
-            with st.container(border=True):
-                p_cols = st.columns(3)
-                for i, col in enumerate(proof_fields):
-                    cur_val = sel_combo.get(col, str(row.get(col, "")).replace('nan', ''))
-                    with p_cols[i % 3]:
-                        if "Date" in col:
-                            try:
-                                d_parsed = pd.to_datetime(cur_val, dayfirst=True, errors='coerce')
-                                d_val = d_parsed.date() if pd.notnull(d_parsed) else datetime.now().date()
-                            except: d_val = datetime.now().date()
-                            d_input = st.date_input(col, value=d_val, key=f"ed_proof_{col}")
-                            updated_vals[col] = d_input.strftime('%d/%m/%Y')
-                        else:
-                            updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_proof_{col}")
-
-            st.divider()
-            st.markdown("### 🧪 Trial Information")
-            with st.container(border=True):
-                t_cols = st.columns(3)
-                for i, col in enumerate(trial_fields):
-                    if col in DESIRED_ORDER:
-                        cur_val = sel_combo.get(col, str(row.get(col, "")).replace('nan', ''))
-                        with t_cols[i % 3]:
-                            updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_trial_{col}")
-
-            # FIXED: Corrected parameter for form submit button
             if st.form_submit_button("💾 Save Changes", use_container_width=True):
-                for k, v in updated_vals.items(): 
-                    df.at[idx, k] = v
+                for k, v in updated_vals.items(): df.at[idx, k] = v
                 save_db(df)
-                trial_status = updated_vals.get("Injection trial requested", "")
-                if trial_status: 
-                    update_tracker_status(search_no, trial_status)
+                if updated_vals.get("Injection trial requested"):
+                    update_tracker_status(search_no, updated_vals["Injection trial requested"])
                 st.session_state.selected_combo = {}
                 st.cache_data.clear()
                 st.success("Saved successfully!")
@@ -422,7 +389,6 @@ elif tab_nav == "➕ Add New Job":
                     new_entry[col] = st.selectbox(col, opts, index=opts.index(val) if val in opts else 0)
                 else: new_entry[col] = st.text_input(col, value=val)
         
-        # FIXED: Corrected parameter for form submit button
         if st.form_submit_button("➕ Create Project", use_container_width=True):
             df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
             save_db(df); st.cache_data.clear(); st.session_state.form_data = {}; st.rerun()
@@ -432,28 +398,24 @@ elif tab_nav == "📊 Detailed Age Analysis":
     st.subheader("Project Age Distribution")
     if not df.empty and 'Age Category' in df.columns:
         st.bar_chart(df['Age Category'].value_counts())
-        # FIXED: Corrected width parameter for dataframe
-        st.dataframe(df[['Pre-Prod No.', 'Client', 'Project Description', 'Age Category']], width="stretch")
+        st.dataframe(df[['Pre-Prod No.', 'Client', 'Project Description', 'Age Category']], use_container_width=True)
 
 # --- TAB 4: TRIAL TRENDS ---
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("Trial Turnaround Performance")
     trial_df = load_trial_data()
     if not trial_df.empty:
-        weekly = trial_df.groupby('Week_Num')['Days_Taken'].mean().sort_index()
         st.metric("Avg Turnaround", f"{trial_df['Days_Taken'].mean():.1f} Days")
         fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(weekly.index, weekly.values, marker='o', color='#2ca02c')
+        ax.plot(trial_df.index, trial_df['Days_Taken'], marker='o', color='#2ca02c')
         st.pyplot(fig)
     else: st.info("No trial data found.")
 
 # --- TAB 5: CLOUD SYNC ---
 elif tab_nav == "🌐 Cloud Sync":
     st.subheader("Google Sheets Sync")
-    ca, cb = st.columns(2)
-
-    if ca.button("📥 Fetch from Cloud"):
-        with st.spinner("Optimized Downloading..."):
+    if st.button("📥 Fetch from Cloud", use_container_width=True):
+        with st.spinner("Syncing..."):
             try:
                 import gspread
                 from google.oauth2.service_account import Credentials
@@ -470,19 +432,12 @@ elif tab_nav == "🌐 Cloud Sync":
                         new_df['Pre-Prod No.'] = new_df['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
                     new_df.to_parquet(FILENAME_PARQUET, index=False)
                     st.cache_data.clear()
-                    st.success("Fetched and cleaned successfully!")
+                    st.success("Fetched successfully!")
                     st.rerun()
-                else: st.error("Sheet is empty.")
             except Exception as e: st.error(f"Sync failed: {e}")
 
-    if cb.button("📤 Push to Cloud", type="primary"):
-        pass
-
     st.divider()
-    st.subheader("Current Local Data Preview")
-    if not df.empty:
-        st.write(f"Showing {len(df)} records found in local database:")
-        # FIXED: Corrected width parameter for dataframe
-        st.dataframe(df, width="stretch", hide_index=True)
+    st.subheader("Local Database Preview")
+    st.dataframe(df, use_container_width=True, hide_index=True)
     else:
         st.info("No local data found. Click 'Fetch from Cloud' to download data.")
