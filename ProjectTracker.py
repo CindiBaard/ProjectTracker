@@ -73,10 +73,20 @@ def pad_preprod_id(val):
         return f"{parts[0]}_{parts[1]}"
     return val_str
 
+# --- IMPROVED CLEANING FUNCTION ---
 def clean_column_names(df):
+    # Removes hidden characters and standardizes the ID column name
     df.columns = [str(c).replace('\ufeff', '').replace('ï»¿', '').strip() for c in df.columns]
-    rename_map = {'Pre-Prod No': 'Pre-Prod No.', 'Pre Prod No.': 'Pre-Prod No.', 'Pre Prod No': 'Pre-Prod No.'}
-    return df.rename(columns=rename_map)
+    
+    # Map all variations to the one used in DESIRED_ORDER
+    rename_map = {
+        'Pre-Prod No': 'Pre-Prod No.', 
+        'Pre Prod No.': 'Pre-Prod No.', 
+        'Pre Prod No': 'Pre-Prod No.',
+        'Pre-Prod No. ': 'Pre-Prod No.'
+    }
+    df = df.rename(columns=rename_map)
+    return df
 
 def update_tracker_status(pre_prod_no, current_trial_ref, manual_date=None):
     import gspread
@@ -143,29 +153,38 @@ def save_db(df):
 
 @st.cache_data(show_spinner="Refreshing Database...")
 def load_db_v2(tracker_path, digital_path, parquet_path):
-    if os.path.exists(parquet_path): return pd.read_parquet(parquet_path)
+    if os.path.exists(parquet_path): 
+        return pd.read_parquet(parquet_path)
+    
     try:
-        df_t = pd.read_csv(tracker_path, on_bad_lines='skip').replace('#REF!', np.nan)
-        df_d = pd.read_csv(digital_path, on_bad_lines='skip').replace('#REF!', np.nan)
-        df_t, df_d = clean_column_names(df_t), clean_column_names(df_d)
+        # Read CSVs with explicit handling for messy headers
+        df_t = pd.read_csv(tracker_path, on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
+        df_d = pd.read_csv(digital_path, on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
         
+        df_t = clean_column_names(df_t)
+        df_d = clean_column_names(df_d)
+        
+        # Ensure ID column exists before merging
+        if 'Pre-Prod No.' not in df_t.columns:
+            st.error(f"Critical Error: 'Pre-Prod No.' column not found in {tracker_path}. Found: {list(df_t.columns)}")
+            return pd.DataFrame()
+
         for d in [df_t, df_d]:
             d['Pre-Prod No.'] = d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
-        combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), df_d.dropna(subset=['Pre-Prod No.']), 
-                             on='Pre-Prod No.', how='outer', suffixes=('', '_dig'))
+        combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), 
+                            df_d.dropna(subset=['Pre-Prod No.']), 
+                            on='Pre-Prod No.', how='outer', suffixes=('', '_dig'))
         
-        if not combined.empty and 'Date' in combined.columns:
-            results = combined.apply(calculate_age_category, axis=1)
-            combined['Age Category'] = [r[0] for r in results]
-            combined['Project Age (Open and Closed)'] = [r[1] for r in results]
-        
+        # Re-index to your DESIRED_ORDER to ensure UI consistency
+        existing_cols = [c for c in DESIRED_ORDER if c in combined.columns]
+        combined = combined[existing_cols]
+
         combined.to_parquet(parquet_path, index=False)
         return combined
     except Exception as e:
         st.error(f"Load Error: {e}")
         return pd.DataFrame()
-
 # --- 6. UI HELPERS ---
 def display_combination_table(key_prefix):
     if os.path.exists(COMBINATIONS_FILE):
@@ -175,7 +194,7 @@ def display_combination_table(key_prefix):
                 search = st.text_input(f"🔍 Filter List", key=f"{key_prefix}_search")
                 if search:
                     combo_df = combo_df[combo_df.apply(lambda r: r.astype(str).str.contains(search, case=False).any(), axis=1)]
-                event = st.dataframe(combo_df, use_container_width=True, hide_index=True, on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table")
+                event = st.dataframe(combo_df, use_container_width=Stretch, hide_index=True, on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table")
                 if event.selection.rows:
                     sel_row = combo_df.iloc[event.selection.rows[0]].to_dict()
                     st.session_state.selected_combo = {
@@ -226,7 +245,7 @@ with st.sidebar:
     
     st.divider()
 
-    if st.button("🔄 Rebuild Local DB", use_container_width=True):
+    if st.button("🔄 Rebuild Local DB", use_container_width=Stretch):
         st.cache_data.clear()
         if os.path.exists(FILENAME_PARQUET): 
             os.remove(FILENAME_PARQUET)
@@ -237,11 +256,11 @@ if tab_nav == "🔍 Search & Edit":
     c_s, c_cl, c_sy = st.columns([3, 1, 1])
     raw_search = c_s.text_input("Search Pre-Prod No.", key="search_input_box").strip()
     
-    if c_cl.button("♻️ Clear", use_container_width=True):
+    if c_cl.button("♻️ Clear", use_container_width=Stretch):
         st.session_state.last_search_no = ""
         st.rerun()
 
-    if c_sy.button("🔄 Sync Cloud", use_container_width=True):
+    if c_sy.button("🔄 Sync Cloud", use_container_width=Stretch):
         # ... (Your existing Sync Cloud logic)
         pass
 
@@ -253,7 +272,7 @@ if tab_nav == "🔍 Search & Edit":
         btn_col1, btn_col2 = st.columns(2)
         
         with btn_col1:
-            if st.button("👯 Clone Project", use_container_width=True):
+            if st.button("👯 Clone Project", use_container_width=Stretch):
                 new_clone = row.to_dict()
                 new_clone.update({'Pre-Prod No.': get_next_available_id(search_no, df['Pre-Prod No.']), 'Date': datetime.now().strftime('%d/%m/%Y')})
                 st.session_state.form_data = new_clone
@@ -261,7 +280,7 @@ if tab_nav == "🔍 Search & Edit":
                 st.rerun()
         
         with btn_col2:
-            if st.button("🗑️ Delete Project", type="primary", use_container_width=True) if st.checkbox(f"Confirm Delete {search_no}") else None:
+            if st.button("🗑️ Delete Project", type="primary", use_container_width=Stretch) if st.checkbox(f"Confirm Delete {search_no}") else None:
                 df = df.drop(idx)
                 save_db(df); st.cache_data.clear(); st.rerun()
 
@@ -375,7 +394,7 @@ if tab_nav == "🔍 Search & Edit":
                         with t_cols[i % 3]:
                             updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_trial_{col}")
 
-            if st.form_submit_button("💾 Save Changes", use_container_width=True):
+            if st.form_submit_button("💾 Save Changes", use_container_width=Stretch):
                 for k, v in updated_vals.items(): 
                     df.at[idx, k] = v
                 save_db(df)
@@ -410,7 +429,7 @@ elif tab_nav == "➕ Add New Job":
                     opts = sorted(list(set([""] + DROPDOWN_DATA[col] + ([val] if val else []))))
                     new_entry[col] = st.selectbox(col, opts, index=opts.index(val) if val in opts else 0)
                 else: new_entry[col] = st.text_input(col, value=val)
-        if st.form_submit_button("➕ Create Project", use_container_width=True):
+        if st.form_submit_button("➕ Create Project", use_container_width=Stretch):
             df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
             save_db(df); st.cache_data.clear(); st.session_state.form_data = {}; st.rerun()
 
@@ -419,7 +438,7 @@ elif tab_nav == "📊 Detailed Age Analysis":
     st.subheader("Project Age Distribution")
     if not df.empty and 'Age Category' in df.columns:
         st.bar_chart(df['Age Category'].value_counts())
-        st.dataframe(df[['Pre-Prod No.', 'Client', 'Project Description', 'Age Category']], use_container_width=True)
+        st.dataframe(df[['Pre-Prod No.', 'Client', 'Project Description', 'Age Category']], use_container_width=Stretch)
 
 # --- TAB 4: TRIAL TRENDS ---
 elif tab_nav == "🧪 Trial Trends":
@@ -486,6 +505,6 @@ elif tab_nav == "🌐 Cloud Sync":
     
     if not df.empty:
         st.write(f"Showing {len(df)} records found in local database:")
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        st.dataframe(df, use_container_width=Stretch, hide_index=True)
     else:
         st.info("No local data found. Click 'Fetch from Cloud' to download data.")
