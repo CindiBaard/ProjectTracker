@@ -414,32 +414,41 @@ elif tab_nav == "🧪 Trial Trends":
 # --- TAB 5: CLOUD SYNC ---
 elif tab_nav == "🌐 Cloud Sync":
     st.subheader("Google Sheets Sync")
+    
+    # 1. Sync Button Logic
     if st.button("📥 Fetch from Cloud", use_container_width=True):
         with st.spinner("Syncing..."):
             try:
                 import gspread
                 from google.oauth2.service_account import Credentials
+                
                 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
                 creds_info = st.secrets.get("gcp_service_account", st.secrets.get("connections", {}).get("gsheets"))
+                
+                # Format private key for Streamlit Cloud
+                if isinstance(creds_info, dict) and "private_key" in creds_info:
+                    creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+                
                 creds = Credentials.from_service_account_info(creds_info, scopes=scope)
                 client = gspread.authorize(creds)
                 ws = client.open_by_key(TRACKER_FILE_ID).get_worksheet(0)
                 raw_data = ws.get_all_values() 
+                
                 if raw_data:
                     new_df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
-                    new_df = clean_column_names(new_df)
-                    if 'Pre-Prod No.' in new_df.columns:
-                        new_df['Pre-Prod No.'] = new_df['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+                    # Ensure FILENAME_PARQUET is defined at the top of your script
                     new_df.to_parquet(FILENAME_PARQUET, index=False)
                     st.cache_data.clear()
                     st.success("Fetched successfully!")
                     st.rerun()
-            except Exception as e: st.error(f"Sync failed: {e}")
+            except Exception as e: 
+                st.error(f"Sync failed: {e}")
 
     st.divider()
     st.subheader("Local Database Preview")
+    
+    # 2. Preview Logic (This is where your syntax error was)
     if not df.empty:
         st.dataframe(df, use_container_width=True, hide_index=True)
-
     else:
         st.info("No local data found. Click 'Fetch from Cloud' to download data.")
