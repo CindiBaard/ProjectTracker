@@ -18,7 +18,7 @@ TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
 DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
 COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
-SUBMISSIONS_FILE = "Submissions_History.parquet" # Added based on function calls
+SUBMISSIONS_FILE = "Submissions_History.parquet" 
 TRACKER_FILE_ID = "11F0IRee8En-rRLtYaqFG4DjJFWMWEt1OS3Oj_D40sd8"
 
 # --- 2. FIXED DESIRED ORDER ---
@@ -73,12 +73,8 @@ def pad_preprod_id(val):
         return f"{parts[0]}_{parts[1]}"
     return val_str
 
-# --- IMPROVED CLEANING FUNCTION ---
 def clean_column_names(df):
-    # Removes hidden characters and standardizes the ID column name
     df.columns = [str(c).replace('\ufeff', '').replace('ï»¿', '').strip() for c in df.columns]
-    
-    # Map all variations to the one used in DESIRED_ORDER
     rename_map = {
         'Pre-Prod No': 'Pre-Prod No.', 
         'Pre Prod No.': 'Pre-Prod No.', 
@@ -157,21 +153,17 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
         return pd.read_parquet(parquet_path)
     
     try:
-        # Read CSVs with explicit handling for messy headers
         df_t = pd.read_csv(tracker_path, on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
         df_d = pd.read_csv(digital_path, on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
 
-        # If it still fails, force the comma:
         df_t = pd.read_csv(tracker_path, sep=',', on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
         df_d = pd.read_csv(digital_path, sep=',', on_bad_lines='skip', encoding='utf-8-sig').replace('#REF!', np.nan)
-        
         
         df_t = clean_column_names(df_t)
         df_d = clean_column_names(df_d)
         
-        # Ensure ID column exists before merging
         if 'Pre-Prod No.' not in df_t.columns:
-            st.error(f"Critical Error: 'Pre-Prod No.' column not found in {tracker_path}. Found: {list(df_t.columns)}")
+            st.error(f"Critical Error: 'Pre-Prod No.' column not found. Found: {list(df_t.columns)}")
             return pd.DataFrame()
 
         for d in [df_t, df_d]:
@@ -181,7 +173,6 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
                             df_d.dropna(subset=['Pre-Prod No.']), 
                             on='Pre-Prod No.', how='outer', suffixes=('', '_dig'))
         
-        # Re-index to your DESIRED_ORDER to ensure UI consistency
         existing_cols = [c for c in DESIRED_ORDER if c in combined.columns]
         combined = combined[existing_cols]
 
@@ -190,6 +181,7 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
     except Exception as e:
         st.error(f"Load Error: {e}")
         return pd.DataFrame()
+
 # --- 6. UI HELPERS ---
 def display_combination_table(key_prefix):
     if os.path.exists(COMBINATIONS_FILE):
@@ -199,7 +191,17 @@ def display_combination_table(key_prefix):
                 search = st.text_input(f"🔍 Filter List", key=f"{key_prefix}_search")
                 if search:
                     combo_df = combo_df[combo_df.apply(lambda r: r.astype(str).str.contains(search, case=False).any(), axis=1)]
-                event = st.dataframe(combo_df, use_container_width=use_container_width="Stretch", hide_index=True, on_select="rerun", selection_mode="single-row", key=f"{key_prefix}_table")
+                
+                # FIXED: Corrected width parameter for st.dataframe
+                event = st.dataframe(
+                    combo_df, 
+                    width="stretch", 
+                    hide_index=True, 
+                    on_select="rerun", 
+                    selection_mode="single-row", 
+                    key=f"{key_prefix}_table"
+                )
+                
                 if event.selection.rows:
                     sel_row = combo_df.iloc[event.selection.rows[0]].to_dict()
                     st.session_state.selected_combo = {
@@ -240,17 +242,15 @@ st.session_state.active_tab = tab_nav
 # --- SIDEBAR NAVIGATION ---
 with st.sidebar:
     st.title("Navigation")
-    
-    # External Link to the Injection Trial App
     st.page_link(
         "https://injectiontrial-996rcfrtn9rkgafzsejzrn.streamlit.app/", 
         label="🧪 Go to Injection Trial App", 
         icon="🚀"
     )
-    
     st.divider()
 
-    if st.button("🔄 Rebuild Local DB", use_container_width="Stretch"):
+    # FIXED: Corrected parameter for st.button
+    if st.button("🔄 Rebuild Local DB", key="sidebar_rebuild", use_container_width=True):
         st.cache_data.clear()
         if os.path.exists(FILENAME_PARQUET): 
             os.remove(FILENAME_PARQUET)
@@ -261,12 +261,12 @@ if tab_nav == "🔍 Search & Edit":
     c_s, c_cl, c_sy = st.columns([3, 1, 1])
     raw_search = c_s.text_input("Search Pre-Prod No.", key="search_input_box").strip()
     
-    if c_cl.button("♻️ Clear", use_container_width="Stretch"):
+    # FIXED: Corrected parameter for buttons
+    if c_cl.button("♻️ Clear", use_container_width=True):
         st.session_state.last_search_no = ""
         st.rerun()
 
-    if c_sy.button("🔄 Sync Cloud", use_container_width="Stretch"):
-        # ... (Your existing Sync Cloud logic)
+    if c_sy.button("🔄 Sync Cloud", use_container_width=True):
         pass
 
     search_no = pad_preprod_id(raw_search)
@@ -277,7 +277,7 @@ if tab_nav == "🔍 Search & Edit":
         btn_col1, btn_col2 = st.columns(2)
         
         with btn_col1:
-            if st.button("👯 Clone Project", use_container_width="Stretch"):
+            if st.button("👯 Clone Project", use_container_width=True):
                 new_clone = row.to_dict()
                 new_clone.update({'Pre-Prod No.': get_next_available_id(search_no, df['Pre-Prod No.']), 'Date': datetime.now().strftime('%d/%m/%Y')})
                 st.session_state.form_data = new_clone
@@ -285,7 +285,7 @@ if tab_nav == "🔍 Search & Edit":
                 st.rerun()
         
         with btn_col2:
-            if st.button("🗑️ Delete Project", type="primary", use_container_width="Stretch") if st.checkbox(f"Confirm Delete {search_no}") else None:
+            if st.button("🗑️ Delete Project", type="primary", use_container_width=True) if st.checkbox(f"Confirm Delete {search_no}") else None:
                 df = df.drop(idx)
                 save_db(df); st.cache_data.clear(); st.rerun()
 
@@ -293,11 +293,9 @@ if tab_nav == "🔍 Search & Edit":
         
         with st.form("edit_form"):
             st.subheader(f"Editing: {search_no}")
-            
             updated_vals = {}
             sel_combo = st.session_state.get("selected_combo", {})
 
-            # Define Field Groups
             status_fields = ["Status", "Open or closed", "Completion date"]
             plate_fields = ["Ordered Plates", "Plates Arrived"]
             proof_fields = ["Date Sent on Proof", "Proof Approved (Conventional)", "Proof Approved (Digital)"]
@@ -307,10 +305,8 @@ if tab_nav == "🔍 Search & Edit":
                 "Injection trial received", "Blowmould trial requested", "Blowmould trial received"
             ]
 
-            # 1. General Fields Grouping (MOVED TO TOP)
             st.markdown("### 📋 General Details")
             edit_cols = st.columns(3)
-            
             excluded = status_fields + trial_fields + proof_fields + plate_fields + ["Age Category", "Project Age (Open and Closed)"]
             remaining_fields = [c for c in DESIRED_ORDER if c not in excluded and c != "Pre-Prod No."]
             
@@ -331,8 +327,6 @@ if tab_nav == "🔍 Search & Edit":
                         updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_{col}")
 
             st.divider()
-
-            # 2. Project Status Group (With Border)
             st.markdown("### 🚦 Project Status")
             with st.container(border=True):
                 s_cols = st.columns(3)
@@ -350,8 +344,6 @@ if tab_nav == "🔍 Search & Edit":
                             updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_stat_{col}")
 
             st.divider()
-
-            # 3. Plate Management Group (With Border)
             st.markdown("### 🍽️ Plate Management")
             with st.container(border=True):
                 pl_cols = st.columns(2)
@@ -369,8 +361,6 @@ if tab_nav == "🔍 Search & Edit":
                              updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_plate_{col}")
 
             st.divider()
-
-            # 4. Proof Information Group (With Border)
             st.markdown("### 📝 Proof Information")
             with st.container(border=True):
                 p_cols = st.columns(3)
@@ -388,8 +378,6 @@ if tab_nav == "🔍 Search & Edit":
                             updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_proof_{col}")
 
             st.divider()
-
-            # 5. Trial Information Group (With Border)
             st.markdown("### 🧪 Trial Information")
             with st.container(border=True):
                 t_cols = st.columns(3)
@@ -399,15 +387,14 @@ if tab_nav == "🔍 Search & Edit":
                         with t_cols[i % 3]:
                             updated_vals[col] = st.text_input(col, value=cur_val, key=f"ed_trial_{col}")
 
-            if st.form_submit_button("💾 Save Changes", use_container_width="Stretch"):
+            # FIXED: Corrected parameter for form submit button
+            if st.form_submit_button("💾 Save Changes", use_container_width=True):
                 for k, v in updated_vals.items(): 
                     df.at[idx, k] = v
                 save_db(df)
-                
                 trial_status = updated_vals.get("Injection trial requested", "")
                 if trial_status: 
                     update_tracker_status(search_no, trial_status)
-                
                 st.session_state.selected_combo = {}
                 st.cache_data.clear()
                 st.success("Saved successfully!")
@@ -434,7 +421,9 @@ elif tab_nav == "➕ Add New Job":
                     opts = sorted(list(set([""] + DROPDOWN_DATA[col] + ([val] if val else []))))
                     new_entry[col] = st.selectbox(col, opts, index=opts.index(val) if val in opts else 0)
                 else: new_entry[col] = st.text_input(col, value=val)
-        if st.form_submit_button("➕ Create Project", use_container_width="Stretch"):
+        
+        # FIXED: Corrected parameter for form submit button
+        if st.form_submit_button("➕ Create Project", use_container_width=True):
             df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
             save_db(df); st.cache_data.clear(); st.session_state.form_data = {}; st.rerun()
 
@@ -443,7 +432,8 @@ elif tab_nav == "📊 Detailed Age Analysis":
     st.subheader("Project Age Distribution")
     if not df.empty and 'Age Category' in df.columns:
         st.bar_chart(df['Age Category'].value_counts())
-        st.dataframe(df[['Pre-Prod No.', 'Client', 'Project Description', 'Age Category']], use_container_width="Stretch")
+        # FIXED: Corrected width parameter for dataframe
+        st.dataframe(df[['Pre-Prod No.', 'Client', 'Project Description', 'Age Category']], width="stretch")
 
 # --- TAB 4: TRIAL TRENDS ---
 elif tab_nav == "🧪 Trial Trends":
@@ -462,54 +452,37 @@ elif tab_nav == "🌐 Cloud Sync":
     st.subheader("Google Sheets Sync")
     ca, cb = st.columns(2)
 
-    # FIXED: This must be indented inside the 'elif' block
     if ca.button("📥 Fetch from Cloud"):
         with st.spinner("Optimized Downloading..."):
             try:
                 import gspread
                 from google.oauth2.service_account import Credentials
-                
-                # 1. Setup Connection
                 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
                 creds_info = st.secrets.get("gcp_service_account", st.secrets.get("connections", {}).get("gsheets"))
                 creds = Credentials.from_service_account_info(creds_info, scopes=scope)
                 client = gspread.authorize(creds)
-                
-                # 2. Fetch Data
                 ws = client.open_by_key(TRACKER_FILE_ID).get_worksheet(0)
                 raw_data = ws.get_all_values() 
-                
                 if raw_data:
-                    # Create DataFrame
                     new_df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
-                    
-                    # 3. CRITICAL: Clean column names immediately to prevent 'Pre-Prod No.' errors
                     new_df = clean_column_names(new_df)
-                    
                     if 'Pre-Prod No.' in new_df.columns:
                         new_df['Pre-Prod No.'] = new_df['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-                    
-                    # 4. Save and Refresh
                     new_df.to_parquet(FILENAME_PARQUET, index=False)
                     st.cache_data.clear()
                     st.success("Fetched and cleaned successfully!")
                     st.rerun()
-                else:
-                    st.error("Sheet is empty.")
-                    
-            except Exception as e: 
-                st.error(f"Sync failed: {e}")
+                else: st.error("Sheet is empty.")
+            except Exception as e: st.error(f"Sync failed: {e}")
 
     if cb.button("📤 Push to Cloud", type="primary"):
-        # ... your existing Push logic ...
         pass
 
-    # --- ADD THIS: THE DATA PREVIEW ---
     st.divider()
     st.subheader("Current Local Data Preview")
-    
     if not df.empty:
         st.write(f"Showing {len(df)} records found in local database:")
-        st.dataframe(df, use_container_width="Stretch", hide_index=True)
+        # FIXED: Corrected width parameter for dataframe
+        st.dataframe(df, width="stretch", hide_index=True)
     else:
         st.info("No local data found. Click 'Fetch from Cloud' to download data.")
