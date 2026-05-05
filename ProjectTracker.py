@@ -165,22 +165,12 @@ def load_trial_data():
         except: return pd.DataFrame()
     return pd.DataFrame()
 
-# --- 5. DATA LOADING ---
-def save_db(df):
-    try: df.to_parquet(FILENAME_PARQUET, index=False)
-    except Exception as e: st.error(f"Error saving: {e}")
+# --- 5. DATA LOADING HELPERS ---
 
-@st.cache_data(show_spinner="Refreshing Database...")
-def load_db_v2(tracker_path, digital_path, parquet_path):
-    if os.path.exists(parquet_path): 
-        try:
-            return pd.read_parquet(parquet_path)
-        except:
-            pass
-    
-    try:
 def smart_read(path):
-    if not os.path.exists(path): return pd.DataFrame()
+    """Helper function to read CSVs with flexible delimiters."""
+    if not os.path.exists(path): 
+        return pd.DataFrame()
     try:
         # Try reading with comma first
         df = pd.read_csv(path, sep=',', on_bad_lines='skip', encoding='utf-8-sig')
@@ -192,6 +182,49 @@ def smart_read(path):
         return clean_column_names(df)
     except Exception as e:
         st.error(f"Error reading {path}: {e}")
+        return pd.DataFrame()
+
+@st.cache_data(show_spinner="Refreshing Database...")
+def load_db_v2(tracker_path, digital_path, parquet_path):
+    # 1. Try loading existing local Parquet first
+    if os.path.exists(parquet_path): 
+        try:
+            return pd.read_parquet(parquet_path)
+        except Exception:
+            pass
+    
+    # 2. If no parquet, read from CSVs
+    try:
+        df_t = smart_read(tracker_path)
+        df_d = smart_read(digital_path)
+        
+        if df_t.empty: 
+            return pd.DataFrame()
+
+        # Ensure Pre-Prod No. is a string to avoid .str accessor errors
+        if 'Pre-Prod No.' in df_t.columns:
+            df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+
+        if not df_d.empty and 'Pre-Prod No.' in df_d.columns:
+            df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            combined = pd.merge(
+                df_t.dropna(subset=['Pre-Prod No.']), 
+                df_d.dropna(subset=['Pre-Prod No.']), 
+                on='Pre-Prod No.', how='outer', suffixes=('', '_dig')
+            )
+        else:
+            combined = df_t
+        
+        # Reorder columns based on DESIRED_ORDER
+        existing_cols = [c for c in DESIRED_ORDER if c in combined.columns]
+        combined = combined[existing_cols]
+
+        # Save to local parquet for faster next load
+        combined.to_parquet(parquet_path, index=False)
+        return combined
+        
+    except Exception as e:
+        st.error(f"Load Error: {e}")
         return pd.DataFrame()
 
         df_t = smart_read(tracker_path)
