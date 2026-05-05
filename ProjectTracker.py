@@ -193,7 +193,7 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
         except Exception:
             pass
     
-    # 2. If no parquet, read from CSVs
+# 2. If no parquet, read from CSVs
     try:
         df_t = smart_read(tracker_path)
         df_d = smart_read(digital_path)
@@ -201,21 +201,35 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
         if df_t.empty: 
             return pd.DataFrame()
 
-        # Ensure Pre-Prod No. is a string to avoid .str accessor errors
+        # Clean the Main Tracker IDs
         if 'Pre-Prod No.' in df_t.columns:
             df_t['Pre-Prod No.'] = df_t['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
 
+        # Handle Digital DF and Merge
         if not df_d.empty and 'Pre-Prod No.' in df_d.columns:
+            # A. Clean Digital IDs
             df_d['Pre-Prod No.'] = df_d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
+            
+            # B. Drop any column that already ends in '_dig' to prevent suffix collision
+            df_d = df_d.drop(columns=[c for c in df_d.columns if c.endswith('_dig')], errors='ignore')
+            
+            # C. Remove any literal duplicate column names
+            df_d = df_d.loc[:, ~df_d.columns.duplicated()]
+            
+            # D. Perform Merge
             combined = pd.merge(
                 df_t.dropna(subset=['Pre-Prod No.']), 
                 df_d.dropna(subset=['Pre-Prod No.']), 
-                on='Pre-Prod No.', how='outer', suffixes=('', '_dig')
+                on='Pre-Prod No.', 
+                how='outer', 
+                suffixes=('', '_dig')
             )
         else:
+            # If digital is empty, just use tracker
             combined = df_t
         
-        # Reorder columns based on DESIRED_ORDER
+        # 3. Final Polish
+        # Reorder columns based on DESIRED_ORDER (only those that actually exist)
         existing_cols = [c for c in DESIRED_ORDER if c in combined.columns]
         combined = combined[existing_cols]
 
@@ -225,36 +239,7 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
         
     except Exception as e:
         st.error(f"Load Error: {e}")
-        return pd.DataFrame()
-
-        df_t = smart_read(tracker_path)
-        df_d = smart_read(digital_path)
-        
-        if df_t.empty: return pd.DataFrame()
-
-        if 'Pre-Prod No.' not in df_t.columns:
-            st.error(f"Critical Error: 'Pre-Prod No.' column not found. Found: {list(df_t.columns[:5])}")
-            return pd.DataFrame()
-
-        for d in [df_t, df_d]:
-            if not d.empty and 'Pre-Prod No.' in d.columns:
-                d['Pre-Prod No.'] = d['Pre-Prod No.'].astype(str).str.replace(r'\.0$', '', regex=True).str.strip()
-
-        if not df_d.empty:
-            combined = pd.merge(df_t.dropna(subset=['Pre-Prod No.']), 
-                                df_d.dropna(subset=['Pre-Prod No.']), 
-                                on='Pre-Prod No.', how='outer', suffixes=('', '_dig'))
-        else:
-            combined = df_t
-        
-        existing_cols = [c for c in DESIRED_ORDER if c in combined.columns]
-        combined = combined[existing_cols]
-
-        combined.to_parquet(parquet_path, index=False)
-        return combined
-    except Exception as e:
-        st.error(f"Load Error: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame()    
 
 # --- 6. UI HELPERS ---
 def display_combination_table(key_prefix):
