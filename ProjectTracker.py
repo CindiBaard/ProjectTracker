@@ -382,10 +382,31 @@ if tab_nav == "🔍 Search & Edit":
                     else:
                         updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_{col}")
 
+            # --- NEW SECTION 1: STATUS & CLOSURE ---
             st.divider()
-            st.markdown("### 🧪 Trials & Progress")
+            st.markdown("### 📊 Project Status & Completion")
+            stat_cols = st.columns(3)
+            for i, col in enumerate(status_fields):
+                cur_val = str(row.get(col, "")).replace('nan', '')
+                with stat_cols[i % 3]:
+                    updated_vals[col] = st.text_input(col, value=cur_val, key=f"stat_grp_{col}")
+
+            # --- NEW SECTION 2: PROOFING DETAILS ---
+            st.divider()
+            st.markdown("### 📝 Proofing Lifecycle")
+            proof_cols = st.columns(3)
+            for i, col in enumerate(proof_fields):
+                cur_val = str(row.get(col, "")).replace('nan', '')
+                with proof_cols[i % 3]:
+                    updated_vals[col] = st.text_input(col, value=cur_val, key=f"proof_grp_{col}")
+
+            # --- REMAINING TRIALS & PROGRESS ---
+            st.divider()
+            st.markdown("### 🧪 Trials & Technical Progress")
             t_cols = st.columns(3)
-            for i, col in enumerate(trial_fields + status_fields + plate_fields + proof_fields):
+            # Combine the remaining progress fields (Trials and Plates)
+            remaining_progress = trial_fields + plate_fields
+            for i, col in enumerate(remaining_progress):
                 cur_val = str(row.get(col, "")).replace('nan', '')
                 with t_cols[i % 3]:
                     updated_vals[col] = st.text_input(col, value=cur_val, key=f"flow_{col}")
