@@ -305,8 +305,13 @@ with st.sidebar:
 # --- TAB 1: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
     c_s, c_cl = st.columns([4, 1])
+    
+    # 1. Use the 'search_input_box' key from session state
     raw_search = c_s.text_input("Search Pre-Prod No.", key="search_input_box").strip()
+
+    # 2. Clear the specific key in session state
     if c_cl.button("♻️ Clear", use_container_width=True):
+        st.session_state["search_input_box"] = "" # This clears the text box
         st.session_state.last_search_no = ""
         st.rerun()
 
