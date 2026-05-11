@@ -148,6 +148,9 @@ def calculate_age_category(row):
         return cat, max(0, days)
     except: return "Error", 0
 
+def save_db(df):
+    df.to_parquet(FILENAME_PARQUET, index=False)
+
 @st.cache_data
 def get_options(filename):
     path = os.path.join(BASE_DIR, filename)
