@@ -393,7 +393,7 @@ if tab_nav == "🔍 Search & Edit":
 
             # --- NEW SECTION 2: PROOFING DETAILS ---
             st.divider()
-            st.markdown("### 📝 Proofing Lifecycle")
+            st.markdown("### 📝 Proof Information")
             proof_cols = st.columns(3)
             for i, col in enumerate(proof_fields):
                 cur_val = str(row.get(col, "")).replace('nan', '')
@@ -402,7 +402,7 @@ if tab_nav == "🔍 Search & Edit":
 
             # --- REMAINING TRIALS & PROGRESS ---
             st.divider()
-            st.markdown("### 🧪 Trials & Technical Progress")
+            st.markdown("### 🧪 Trial Information")
             t_cols = st.columns(3)
             # Combine the remaining progress fields (Trials and Plates)
             remaining_progress = trial_fields + plate_fields
