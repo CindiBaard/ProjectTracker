@@ -307,16 +307,21 @@ with st.sidebar:
 
 # --- TAB 1: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
+    
+    # Define a clear function (This is the safest way to reset widget state)
+    def clear_search():
+        st.session_state["search_input_box"] = ""
+        st.session_state.last_search_no = ""
+
     c_s, c_cl = st.columns([4, 1])
     
-    # 1. Use the 'search_input_box' key from session state
+    # 1. Create the text input
+    # Note: We don't manually set st.session_state["search_input_box"] here
     raw_search = c_s.text_input("Search Pre-Prod No.", key="search_input_box").strip()
 
-    # 2. Clear the specific key in session state
-    if c_cl.button("♻️ Clear", use_container_width=True):
-        st.session_state["search_input_box"] = "" # This clears the text box
-        st.session_state.last_search_no = ""
-        st.rerun()
+    # 2. Use the 'on_click' parameter
+    # This triggers the function BEFORE the script reruns and redraws the text_input
+    c_cl.button("♻️ Clear", use_container_width=True, on_click=clear_search)
 
     search_no = pad_preprod_id(raw_search)
     match = df[df['Pre-Prod No.'] == search_no] if not df.empty else pd.DataFrame()
