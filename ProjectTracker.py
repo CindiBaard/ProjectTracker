@@ -424,29 +424,60 @@ if tab_nav == "🔍 Search & Edit":
     elif search_no:
         st.warning("No project found.")
 
-# --- TAB 2: ADD NEW JOB ---
+# --- TAB 2: ADD NEW JOB (CLEANED VERSION) ---
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
     sel = st.session_state.get("selected_combo", {})
     default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
+
+    # 1. Define only the fields required for initial project entry
+    INITIAL_FIELDS = [
+        "Pre-Prod No.", "Date", "Client", "Project Description", 
+        "Product Code", "Machine", "Sales Rep", "Category", 
+        "Material", "Product Material Colour (tube, jar etc.)", 
+        "Order Qty x1000", "Unit Order No", "Length", 
+        "Cap_Lid Style", "Cap_Lid Material", "Cap_Lid Diameter", "Orifice"
+    ]
+
     with st.form("new_job_form"):
-        st.subheader("New Project Entry")
+        st.subheader("New Project Entry: General Information")
+        
+        # We manually place the ID at the top
         new_id = st.text_input("Pre-Prod No.", value=default_id).strip()
-        new_cols = st.columns(3); new_entry = {"Pre-Prod No.": new_id}
-        for i, col in enumerate(DESIRED_ORDER):
-            if col in ["Age Category", "Pre-Prod No."]: continue
+        new_entry = {"Pre-Prod No.": new_id}
+        
+        # Use columns for a nice layout
+        new_cols = st.columns(3)
+        
+        # Loop through only our "General" list instead of DESIRED_ORDER
+        # Start index at 1 because we handled ID separately
+        for i, col in enumerate(INITIAL_FIELDS[1:]): 
             val = sel.get(col, st.session_state.form_data.get(col, ""))
             with new_cols[i % 3]:
-                if col == 'Date': new_entry[col] = st.date_input(col, value=datetime.now()).strftime('%d/%m/%Y')
+                if col == 'Date':
+                    new_entry[col] = st.date_input(col, value=datetime.now()).strftime('%d/%m/%Y')
                 elif col in DROPDOWN_DATA:
                     opts = sorted(list(set([""] + DROPDOWN_DATA[col] + ([val] if val else []))))
                     new_entry[col] = st.selectbox(col, opts, index=opts.index(val) if val in opts else 0)
-                else: new_entry[col] = st.text_input(col, value=val)
+                else:
+                    new_entry[col] = st.text_input(col, value=val)
         
-        if st.form_submit_button("➕ Create Project", use_container_width=True):
-            df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
-            save_db(df); st.cache_data.clear(); st.session_state.form_data = {}; st.rerun()
+        # 2. Automatically fill the 'hidden' trial fields with blanks so the dataframe stays consistent
+        for col in DESIRED_ORDER:
+            if col not in new_entry:
+                new_entry[col] = ""
 
+        if st.form_submit_button("➕ Create Project", use_container_width=True):
+            if not new_id:
+                st.error("Please enter a Pre-Prod Number.")
+            else:
+                new_row = pd.DataFrame([new_entry])
+                df = pd.concat([df, new_row], ignore_index=True)
+                save_db(df)
+                st.cache_data.clear()
+                st.session_state.form_data = {}
+                st.success(f"Project {new_id} initialized! Use 'Search & Edit' later to add Trial/Proof info.")
+                st.rerun()
 # --- TAB 3: AGE ANALYSIS ---
 elif tab_nav == "📊 Detailed Age Analysis":
     st.subheader("Project Age Distribution")
