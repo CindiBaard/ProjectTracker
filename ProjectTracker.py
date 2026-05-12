@@ -297,8 +297,8 @@ st.title("Project Tracker Dashboard")
 DROPDOWN_CONFIG = {
     "Category": "Category.csv", "Length": "Length.csv", "Material": "Material.csv",
     "Orifice": "Orifice.csv", "Diameter": "TubeDia.csv", "Foiling": "Foiling.csv",
-    "Cap_Lid Style": "Cap_Lid Style.csv", "Machine": "Machine.csv", 
-    "Sales Rep": "Sales Rep.csv", "Cap_Lid Material": "Cap_Material.csv", "Cap_Lid Diameter": "Cap_Lid Diameter.csv"
+    "Cap_Lid Style": "Cap_Lid style.csv", "Machine": "Machine.csv", 
+    "Sales Rep": "Sales Rep.csv", "Cap_Lid Material": "CapMaterial.csv", "Cap_Lid Diameter": "Cap_Lid Diameter.csv"
 }
 DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
 if not df.empty and 'Client' in df.columns:
@@ -508,7 +508,7 @@ elif tab_nav == "➕ Add New Job":
                 st.session_state.form_data = {}
                 st.success(f"Project {new_id} created and new options saved!")
                 st.rerun()
-                
+
 # --- TAB 3: AGE ANALYSIS ---
 elif tab_nav == "📊 Detailed Age Analysis":
     st.subheader("Project Age Distribution")
