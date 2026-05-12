@@ -49,6 +49,20 @@ if 'last_search_no' not in st.session_state:
 
 # --- 4. UTILITY FUNCTIONS ---
 
+def add_new_option(filename, new_val):
+    """Appends a new unique value to the specified dropdown CSV file."""
+    path = os.path.join(BASE_DIR, filename)
+    existing_options = get_options(filename)
+    
+    if new_val and new_val not in existing_options:
+        try:
+            with open(path, 'a', encoding='latin1') as f:
+                f.write(f"\n{new_val}")
+            return True
+        except Exception as e:
+            st.error(f"Error saving new option: {e}")
+    return False
+
 def clean_column_names(df):
     """Fixes merged headers, removes whitespace, and handles duplicates."""
     # 1. Strip whitespace and remove BOM characters
@@ -424,13 +438,12 @@ if tab_nav == "🔍 Search & Edit":
     elif search_no:
         st.warning("No project found.")
 
-# --- TAB 2: ADD NEW JOB (CLEANED VERSION) ---
+# --- TAB 2: ADD NEW JOB (WITH CUSTOM OPTIONS) ---
 elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
     sel = st.session_state.get("selected_combo", {})
     default_id = st.session_state.form_data.get('Pre-Prod No.', get_auto_next_no(df))
 
-    # 1. Define only the fields required for initial project entry
     INITIAL_FIELDS = [
         "Pre-Prod No.", "Date", "Client", "Project Description", 
         "Product Code", "Machine", "Sales Rep", "Category", 
@@ -441,43 +454,61 @@ elif tab_nav == "➕ Add New Job":
 
     with st.form("new_job_form"):
         st.subheader("New Project Entry: General Information")
-        
-        # We manually place the ID at the top
         new_id = st.text_input("Pre-Prod No.", value=default_id).strip()
         new_entry = {"Pre-Prod No.": new_id}
         
-        # Use columns for a nice layout
         new_cols = st.columns(3)
-        
-        # Loop through only our "General" list instead of DESIRED_ORDER
-        # Start index at 1 because we handled ID separately
+        custom_inputs = {} # To track "Add New" text fields
+
         for i, col in enumerate(INITIAL_FIELDS[1:]): 
             val = sel.get(col, st.session_state.form_data.get(col, ""))
             with new_cols[i % 3]:
                 if col == 'Date':
                     new_entry[col] = st.date_input(col, value=datetime.now()).strftime('%d/%m/%Y')
+                
+                elif col in ["Client", "Sales Rep", "Material"]:
+                    # Create dropdown options + the "Add New" trigger
+                    opts = sorted(list(set([""] + DROPDOWN_DATA.get(col, []) + ([val] if val else []))))
+                    opts.append("➕ Add New...")
+                    
+                    selection = st.selectbox(col, opts, index=opts.index(val) if val in opts else 0, key=f"new_job_{col}")
+                    
+                    if selection == "➕ Add New...":
+                        custom_inputs[col] = st.text_input(f"Enter New {col}", key=f"custom_{col}")
+                        new_entry[col] = custom_inputs[col]
+                    else:
+                        new_entry[col] = selection
+
                 elif col in DROPDOWN_DATA:
                     opts = sorted(list(set([""] + DROPDOWN_DATA[col] + ([val] if val else []))))
                     new_entry[col] = st.selectbox(col, opts, index=opts.index(val) if val in opts else 0)
                 else:
                     new_entry[col] = st.text_input(col, value=val)
         
-        # 2. Automatically fill the 'hidden' trial fields with blanks so the dataframe stays consistent
         for col in DESIRED_ORDER:
-            if col not in new_entry:
-                new_entry[col] = ""
+            if col not in new_entry: new_entry[col] = ""
 
         if st.form_submit_button("➕ Create Project", use_container_width=True):
             if not new_id:
                 st.error("Please enter a Pre-Prod Number.")
             else:
+                # Process any new dropdown items first
+                for col, new_val in custom_inputs.items():
+                    if new_val:
+                        # Map column names back to their respective CSV files
+                        csv_file = DROPDOWN_CONFIG.get(col) if col != "Client" else None
+                        if csv_file:
+                            add_new_option(csv_file, new_val)
+                        # Note: Client is usually dynamic from the DB, so it will appear automatically next load
+
                 new_row = pd.DataFrame([new_entry])
                 df = pd.concat([df, new_row], ignore_index=True)
                 save_db(df)
                 st.cache_data.clear()
                 st.session_state.form_data = {}
-                st.success(f"Project {new_id} initialized! Use 'Search & Edit' later to add Trial/Proof info.")
+                st.success(f"Project {new_id} created and new options saved!")
                 st.rerun()
+                
 # --- TAB 3: AGE ANALYSIS ---
 elif tab_nav == "📊 Detailed Age Analysis":
     st.subheader("Project Age Distribution")
