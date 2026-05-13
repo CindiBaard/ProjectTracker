@@ -312,6 +312,10 @@ st.session_state.active_tab = tab_nav
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("Navigation")
+        st.page_link(
+        "https://projecttracker-kc2ksaezfqxarnv96ugzdk.streamlit.app/", 
+        label="📋 Go to Project Tracker", 
+        icon="🚀"
     st.page_link("https://injectiontrial-996rcfrtn9rkgafzsejzrn.streamlit.app/", label="🧪 Go to Injection Trial App", icon="🚀")
     st.divider()
     if st.button("🔄 Rebuild Local DB", use_container_width=True):
