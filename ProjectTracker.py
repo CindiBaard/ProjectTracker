@@ -312,13 +312,14 @@ st.session_state.active_tab = tab_nav
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("Quick Links")
-    # Updated with the bottle icon 🏺
-    st.page_link("https://blowmouldtrials-896hkmybnnmb8zmzpggfsv.streamlit.app/", Blowmould Trial App", icon="🏺")
-    st.page_link("https://injectiontrial-996rcfrtn9rkgafzsejzrn.streamlit.app/", Injection Trial App", icon="🧪")
+    # Fixed the missing quotation marks around the labels
+    st.page_link("https://blowmouldtrials-896hkmybnnmb8zmzpggfsv.streamlit.app/", label="Blowmould Trial App", icon="🏺")
+    st.page_link("https://injectiontrial-996rcfrtn9rkgafzsejzrn.streamlit.app/", label="Injection Trial App", icon="🧪")
     st.divider()
     if st.button("🔄 Rebuild Local DB", use_container_width=True):
         st.cache_data.clear()
-        if os.path.exists(FILENAME_PARQUET): os.remove(FILENAME_PARQUET)
+        if os.path.exists(FILENAME_PARQUET): 
+            os.remove(FILENAME_PARQUET)
         st.rerun()
 
 # --- TAB 1: SEARCH & EDIT ---
