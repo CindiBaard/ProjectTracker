@@ -313,8 +313,8 @@ st.session_state.active_tab = tab_nav
 with st.sidebar:
     st.title("Quick Links")
     # Updated with the bottle icon 🏺
-    st.page_link("https://blowmouldtrials-896hkmybnnmb8zmzpggfsv.streamlit.app/", label="🏺 Blowmould", icon="🏺")
-    st.page_link("https://injectiontrial-996rcfrtn9rkgafzsejzrn.streamlit.app/", label="🧪 Injection Trial App", icon="🧪")
+    st.page_link("https://blowmouldtrials-896hkmybnnmb8zmzpggfsv.streamlit.app/", Blowmould Trial App", icon="🏺")
+    st.page_link("https://injectiontrial-996rcfrtn9rkgafzsejzrn.streamlit.app/", Injection Trial App", icon="🧪")
     st.divider()
     if st.button("🔄 Rebuild Local DB", use_container_width=True):
         st.cache_data.clear()
