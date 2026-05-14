@@ -394,9 +394,9 @@ if tab_nav == "🔍 Search & Edit":
                 "Injection trial received", "Blowmould trial requested", "Blowmould trial received"
             ]
 
-            st.markdown("### 📋 General Details")
+        st.markdown("### 📋 General Details")
             edit_cols = st.columns(3)
-            excluded = status_fields + trial_fields + proof_fields + plate_fields + ["Age Category"]
+            excluded = status_fields + trial_fields + proof_fields + plate_fields + ["Age Category", "Mould No.", "Drawing No."]
             remaining_fields = [c for c in DESIRED_ORDER if c not in excluded and c != "Pre-Prod No."]
             
             for i, col in enumerate(remaining_fields):
@@ -414,6 +414,32 @@ if tab_nav == "🔍 Search & Edit":
                         updated_vals[col] = st.selectbox(col, opts, index=opts.index(cur_val), key=f"sel_{col}")
                     else:
                         updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_{col}")
+
+            # --- CORRECTED MOULD SPECIFICATIONS SECTION ---
+            st.divider()
+            st.markdown("### 🏺 Mould & Product Specifications")
+            
+            # Fetch the lookup data
+            mould_mapping = get_mould_lookup_data()
+            mould_descriptions = list(mould_mapping.keys())
+
+            spec_c1, spec_c2, spec_c3 = st.columns(3)
+            
+            with spec_c1:
+                updated_vals["Drawing No."] = st.text_input("Drawing No.", value=str(row.get('Drawing No.', '')))
+
+            with spec_c2:
+                selected_desc = st.selectbox(
+                    "Mould Description (Search Assets)", 
+                    options=[""] + mould_descriptions,
+                    key="mould_desc_search"
+                )
+
+            with spec_c3:
+                # Logic to decide which Mould No to show
+                default_mould_no = str(row.get('Mould No.', ''))
+                found_mould_no = mould_mapping.get(selected_desc, default_mould_no) if selected_desc else default_mould_no
+                updated_vals["Mould No."] = st.text_input("Mould No.", value=found_mould_no)
 
 st.markdown("### Product Specifications")
 
