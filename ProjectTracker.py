@@ -219,54 +219,19 @@ def get_mould_lookup_data():
     try:
         client = get_gspread_client()
         sheet = client.open_by_key(MOULD_ASSETS_ID).get_worksheet(0)
-        
         raw_data = sheet.get_all_values()
         if not raw_data or len(raw_data) < 2:
             return {}
-
         headers = [str(h).strip() for h in raw_data[0]]
-        df = pd.DataFrame(raw_data[1:], columns=headers)
-
-        # Force all data to string to avoid 'AttributeError: str'
-        df = df.astype(str)
-
-        desc_col = None
-        mould_col = None
-        
-        # Look for column names
-        for col in df.columns:
-            c_low = col.lower()
-            if "description" in c_low:
-                desc_col = col
-            if "mould" in c_low and ("no" in c_low or "num" in c_low):
-                mould_col = col
-
-        # Fallback to index if column names aren't found
-        if not desc_col:
-            desc_col = df.columns[0]
-        if not mould_col:
-            mould_col = df.columns[1] if len(df.columns) > 1 else df.columns[0]
-
-        # Filter out empty rows and strip whitespace
-        df = df[df[desc_col].str.strip() != ""]
-        
-        # Create mapping
-        lookup_dict = dict(zip(
-            df[desc_col].str.strip(), 
-            df[mould_col].str.strip()
-        ))
-        
-        return lookup_dict
-
+        df_assets = pd.DataFrame(raw_data[1:], columns=headers)
+        df_assets = df_assets.astype(str) # Fixes AttributeError: str
+        desc_col = next((c for c in df_assets.columns if "description" in c.lower()), df_assets.columns[0])
+        mould_col = next((c for c in df_assets.columns if "mould" in c.lower() and "no" in c.lower()), df_assets.columns[1] if len(df_assets.columns) > 1 else df_assets.columns[0])
+        df_assets = df_assets[df_assets[desc_col].str.strip() != ""]
+        return dict(zip(df_assets[desc_col].str.strip(), df_assets[mould_col].str.strip()))
     except Exception as e:
         st.error(f"Error fetching Mould Assets: {e}")
         return {}
-    except Exception as e:
-        st.error(f"Error fetching Mould Assets: {e}")
-        return {}
-    except Exception as e:
-        st.error(f"Error fetching Mould Assets: {e}")
-        return {} 
 
 # --- 6. UI HELPERS ---
 def display_combination_table(key_prefix):
@@ -306,6 +271,7 @@ DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_CONFIG.items()}
 if not df.empty and 'Client' in df.columns:
     DROPDOWN_DATA['Client'] = sorted([str(c) for c in df['Client'].unique() if str(c).strip() and str(c).lower() != 'nan'])
 
+# --- REPAIRED NAVIGATION LOGIC ---
 tabs_list = ["🔍 Search & Edit", "➕ Add New Job", "📊 Detailed Age Analysis", "🧪 Trial Trends", "🌐 Cloud Sync"]
 tab_nav = st.radio("Navigation", tabs_list, index=tabs_list.index(st.session_state.active_tab), horizontal=True)
 st.session_state.active_tab = tab_nav
@@ -330,6 +296,7 @@ if tab_nav == "🔍 Search & Edit":
     c_cl.button("♻️ Clear", use_container_width=True, on_click=clear_search)
     search_no = pad_preprod_id(raw_search)
     match = df[df['Pre-Prod No.'] == search_no] if not df.empty else pd.DataFrame()
+    
     if search_no and not match.empty:
         idx, row = match.index[0], match.iloc[0]
         btn_col1, btn_col2 = st.columns(2)
@@ -345,7 +312,9 @@ if tab_nav == "🔍 Search & Edit":
                 if st.button("🗑️ Delete Project", type="primary", use_container_width=True):
                     df = df.drop(idx)
                     save_db(df); st.cache_data.clear(); st.rerun()
+        
         display_combination_table("edit")
+        
         with st.form("edit_form"):
             st.subheader(f"Editing: {search_no}")
             updated_vals = {}
@@ -354,10 +323,12 @@ if tab_nav == "🔍 Search & Edit":
             plate_fields = ["Ordered Plates", "Plates Arrived"]
             proof_fields = ["Date Sent on Proof", "Proof Approved (Conventional)", "Proof Approved (Digital)"]
             trial_fields = ["Sent on Trial", "Digital trial sent", "Revised Artwork After Trialling", "Extrusion requested", "Extrusion received", "Injection trial requested", "Injection trial received", "Blowmould trial requested", "Blowmould trial received"]
+            
             st.markdown("### 📋 General Details")
             edit_cols = st.columns(3)
             excluded = status_fields + trial_fields + proof_fields + plate_fields + ["Age Category", "Mould No.", "Drawing No.", "Machine No."]
-            remaining_fields = [c for c in DESIRED_ORDER if c not in excluded and c != "Pre-Prod No."]
+            remaining_fields = [c for c in DESIRED_ORDER if c in row.index and c not in excluded and c != "Pre-Prod No."]
+            
             for i, col in enumerate(remaining_fields):
                 cur_val = sel_combo.get(col, str(row.get(col, "")).replace('nan', ''))
                 with edit_cols[i % 3]:
@@ -373,21 +344,29 @@ if tab_nav == "🔍 Search & Edit":
                         updated_vals[col] = st.selectbox(col, opts, index=opts.index(cur_val), key=f"sel_{col}")
                     else:
                         updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_{col}")
+            
             st.divider()
             st.markdown("### 🏺 Mould & Product Specifications")
+            
+            # --- FIXED MOULD LOOKUP LOGIC ---
             mould_mapping = get_mould_lookup_data()
-            mould_descriptions = list(mould_mapping.keys())
+            mould_descriptions = sorted(list(mould_mapping.keys()))
             spec_c1, spec_c2, spec_c3, spec_c4 = st.columns(4)
+            
             with spec_c1:
                 updated_vals["Drawing No."] = st.text_input("Drawing No.", value=str(row.get('Drawing No.', '')))
             with spec_c2:
                 selected_desc = st.selectbox("Mould Description (Search Assets)", options=[""] + mould_descriptions, key="mould_desc_search")
             with spec_c3:
-                default_mould_no = str(row.get('Mould No.', ''))
-                found_mould_no = mould_mapping.get(selected_desc, default_mould_no) if selected_desc else default_mould_no
-                updated_vals["Mould No."] = st.text_input("Mould No.", value=found_mould_no)
+                # If a description is selected, pull the number from the map, otherwise use the existing record value
+                if selected_desc:
+                    found_mould_no = mould_mapping.get(selected_desc, "")
+                    updated_vals["Mould No."] = st.text_input("Mould No.", value=found_mould_no)
+                else:
+                    updated_vals["Mould No."] = st.text_input("Mould No.", value=str(row.get('Mould No.', '')))
             with spec_c4:
                 updated_vals["Machine No."] = st.text_input("Machine No.", value=str(row.get('Machine No.', '')))
+            
             st.divider()
             st.markdown("### 📊 Project Status & Completion")
             stat_cols = st.columns(3)
@@ -395,6 +374,7 @@ if tab_nav == "🔍 Search & Edit":
                 cur_val = str(row.get(col, "")).replace('nan', '')
                 with stat_cols[i % 3]:
                     updated_vals[col] = st.text_input(col, value=cur_val, key=f"stat_grp_{col}")
+            
             st.divider()
             st.markdown("### 📝 Proof Information")
             proof_cols = st.columns(3)
@@ -402,6 +382,7 @@ if tab_nav == "🔍 Search & Edit":
                 cur_val = str(row.get(col, "")).replace('nan', '')
                 with proof_cols[i % 3]:
                     updated_vals[col] = st.text_input(col, value=cur_val, key=f"proof_grp_{col}")
+            
             st.divider()
             st.markdown("### 🧪 Trial Information")
             t_cols = st.columns(3)
@@ -410,6 +391,7 @@ if tab_nav == "🔍 Search & Edit":
                 cur_val = str(row.get(col, "")).replace('nan', '')
                 with t_cols[i % 3]:
                     updated_vals[col] = st.text_input(col, value=cur_val, key=f"flow_{col}")
+            
             if st.form_submit_button("💾 Save Changes", use_container_width=True):
                 for k, v in updated_vals.items(): df.at[idx, k] = v
                 save_db(df)
