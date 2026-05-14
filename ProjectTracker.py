@@ -297,7 +297,8 @@ with tabs[0]:
     st.subheader("Advanced Project Lookup")
     c1, c2, c3 = st.columns([2, 1, 1])
     with c1:
-        search_query = st.text_input("Global Search", placeholder="ID, Client, or Product...").strip()
+        # To this (adding a unique key):
+        search_query = st.text_input("Global Search", placeholder="ID, Client, or Product...", key="search_main_tab").strip()
     with c2:
         st_list = ["All"] + sorted([str(x) for x in df['Status'].unique() if pd.notna(x)])
         st_filter = st.selectbox("Filter Status", st_list)
