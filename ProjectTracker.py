@@ -142,7 +142,7 @@ if 'active_tab' not in st.session_state: st.session_state.active_tab = "🔍 Sea
 df = load_db()
 DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_FILES.items()}
 Block 2: UI Tabs, Advanced Editing, and Admin (Lines 251–500 approx.)
-Python
+
 # --- 6. TAB INTERFACE ---
 tabs = st.tabs(["🔍 Search & Edit", "➕ Add New", "📊 Analysis", "🧪 Trials", "⚙️ Admin"])
 
