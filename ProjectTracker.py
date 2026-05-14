@@ -507,4 +507,4 @@ elif tab_nav == "🌐 Cloud Sync":
     if not df.empty:
         st.dataframe(df, use_container_width=True, hide_index=True)
     else:
-        st.info("No local data found. Click 'Fetch from Cloud' to dow
+        st.info("No local data found. Click 'Fetch from Cloud' to download data.")
