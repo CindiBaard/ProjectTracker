@@ -20,6 +20,7 @@ COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
 SUBMISSIONS_FILE = "Submissions_History.parquet" 
 TRACKER_FILE_ID = "1LA9F5mD67vR9yYKqQ39CS-tAZ9QgCgn5KBWaY_RfFKM"
+MOULD_ASSETS_ID = "1Ix1aq6Ze63Vhqh9Pm98BegUnDaLgKC6H9vTMKafjc44"
 
 # --- 2. FIXED DESIRED ORDER ---
 DESIRED_ORDER = [
@@ -261,7 +262,22 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
         
     except Exception as e:
         st.error(f"Load Error: {e}")
-        return pd.DataFrame()    
+        return pd.DataFrame() 
+
+    @st.cache_data(ttl=600) # Cache for 10 mins so it's not slow
+def get_mould_lookup_data():
+    try:
+        client = get_gspread_client()
+        sheet = client.open_by_key(MOULD_ASSETS_ID).get_worksheet(0)
+        data = sheet.get_all_records()
+        df = pd.DataFrame(data)
+        
+        # Adjust 'Description' and 'MouldNumber' to match your actual column headers
+        # We create a dictionary: { "Description": "MouldNumber" }
+        return dict(zip(df['Description'].astype(str), df['MouldNumber'].astype(str)))
+    except Exception as e:
+        st.error(f"Error fetching Mould Assets: {e}")
+        return {}   
 
 # --- 6. UI HELPERS ---
 def display_combination_table(key_prefix):
@@ -398,6 +414,36 @@ if tab_nav == "🔍 Search & Edit":
                         updated_vals[col] = st.selectbox(col, opts, index=opts.index(cur_val), key=f"sel_{col}")
                     else:
                         updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_{col}")
+
+st.markdown("### Product Specifications")
+
+# Fetch the lookup data
+mould_mapping = get_mould_lookup_data()
+mould_descriptions = list(mould_mapping.keys())
+
+c1, c2, c3, c4, c5 = st.columns(5)
+drawing_number = c1.text_input("Drawing No.", value=str(ld.get('Drawing No', '')))
+
+# Searchable dropdown for Mould Description
+selected_desc = c2.selectbox(
+    "Mould Description (Search)", 
+    options=[""] + mould_descriptions, 
+    help="Start typing to filter descriptions"
+)
+
+# Automatically find the Mould Number based on the selection
+# If no selection is made, it tries to pull from the 'ld' (Local Data)
+default_mould_no = str(ld.get('Mould No.', ''))
+if selected_desc:
+    found_mould_no = mould_mapping.get(selected_desc, "")
+else:
+    found_mould_no = default_mould_no
+
+# Display the Mould No (either searched or from the main tracker)
+m_no = c2.text_input("Mould No.", value=found_mould_no)
+
+machine_no = c3.text_input("Machine No.", value=str(ld.get('Machine No.', '')))
+# ... continue with the rest of your columns
 
             # --- NEW SECTION 1: STATUS & CLOSURE ---
             st.divider()
