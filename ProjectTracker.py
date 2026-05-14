@@ -219,12 +219,40 @@ def get_mould_lookup_data():
     try:
         client = get_gspread_client()
         sheet = client.open_by_key(MOULD_ASSETS_ID).get_worksheet(0)
-        data = sheet.get_all_records()
-        df = pd.DataFrame(data)
-        return dict(zip(df['Description'].astype(str), df['MouldNumber'].astype(str)))
+        
+        # Get all rows as a list of lists instead of records
+        raw_data = sheet.get_all_values()
+        if not raw_data:
+            return {}
+
+        # Convert to DataFrame
+        df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
+        
+        # Clean the column names to handle duplicates/empties
+        cols = []
+        count = 0
+        for col in df.columns:
+            if col == '' or col is None:
+                cols.append(f"EmptyColumn_{count}")
+                count += 1
+            else:
+                cols.append(col)
+        df.columns = cols
+
+        # Logic to find the correct columns even if named slightly differently
+        # We look for 'Description' and 'MouldNumber' (or variations)
+        desc_col = next((c for c in df.columns if "description" in c.lower()), None)
+        mould_col = next((c for c in df.columns if "mould" in c.lower() and "no" in c.lower() or "mouldnumber" in c.lower()), None)
+
+        if desc_col and mould_col:
+            # Filter out empty descriptions and return the mapping
+            df = df[df[desc_col].str.strip() != ""]
+            return dict(zip(df[desc_col].astype(str), df[mould_col].astype(str)))
+        
+        return {}
     except Exception as e:
         st.error(f"Error fetching Mould Assets: {e}")
-        return {}   
+        return {} 
 
 # --- 6. UI HELPERS ---
 def display_combination_table(key_prefix):
