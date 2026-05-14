@@ -341,19 +341,12 @@ with st.sidebar:
 # --- TAB 1: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
     
-    # Define a clear function (This is the safest way to reset widget state)
     def clear_search():
         st.session_state["search_input_box"] = ""
         st.session_state.last_search_no = ""
 
     c_s, c_cl = st.columns([4, 1])
-    
-    # 1. Create the text input
-    # Note: We don't manually set st.session_state["search_input_box"] here
     raw_search = c_s.text_input("Search Pre-Prod No.", key="search_input_box").strip()
-
-    # 2. Use the 'on_click' parameter
-    # This triggers the function BEFORE the script reruns and redraws the text_input
     c_cl.button("♻️ Clear", use_container_width=True, on_click=clear_search)
 
     search_no = pad_preprod_id(raw_search)
@@ -394,9 +387,9 @@ if tab_nav == "🔍 Search & Edit":
                 "Injection trial received", "Blowmould trial requested", "Blowmould trial received"
             ]
 
-        st.markdown("### 📋 General Details")
+            st.markdown("### 📋 General Details")
             edit_cols = st.columns(3)
-            excluded = status_fields + trial_fields + proof_fields + plate_fields + ["Age Category", "Mould No.", "Drawing No."]
+            excluded = status_fields + trial_fields + proof_fields + plate_fields + ["Age Category", "Mould No.", "Drawing No.", "Machine No."]
             remaining_fields = [c for c in DESIRED_ORDER if c not in excluded and c != "Pre-Prod No."]
             
             for i, col in enumerate(remaining_fields):
@@ -415,15 +408,14 @@ if tab_nav == "🔍 Search & Edit":
                     else:
                         updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_{col}")
 
-            # --- CORRECTED MOULD SPECIFICATIONS SECTION ---
+            # --- MOULD & PRODUCT SPECIFICATIONS ---
             st.divider()
             st.markdown("### 🏺 Mould & Product Specifications")
             
-            # Fetch the lookup data
             mould_mapping = get_mould_lookup_data()
             mould_descriptions = list(mould_mapping.keys())
 
-            spec_c1, spec_c2, spec_c3 = st.columns(3)
+            spec_c1, spec_c2, spec_c3, spec_c4 = st.columns(4)
             
             with spec_c1:
                 updated_vals["Drawing No."] = st.text_input("Drawing No.", value=str(row.get('Drawing No.', '')))
@@ -436,42 +428,15 @@ if tab_nav == "🔍 Search & Edit":
                 )
 
             with spec_c3:
-                # Logic to decide which Mould No to show
+                # If a description is selected, pull that number; otherwise use the existing one from the row
                 default_mould_no = str(row.get('Mould No.', ''))
                 found_mould_no = mould_mapping.get(selected_desc, default_mould_no) if selected_desc else default_mould_no
                 updated_vals["Mould No."] = st.text_input("Mould No.", value=found_mould_no)
 
-st.markdown("### Product Specifications")
+            with spec_c4:
+                updated_vals["Machine No."] = st.text_input("Machine No.", value=str(row.get('Machine No.', '')))
 
-# Fetch the lookup data
-mould_mapping = get_mould_lookup_data()
-mould_descriptions = list(mould_mapping.keys())
-
-c1, c2, c3, c4, c5 = st.columns(5)
-drawing_number = c1.text_input("Drawing No.", value=str(ld.get('Drawing No', '')))
-
-# Searchable dropdown for Mould Description
-selected_desc = c2.selectbox(
-    "Mould Description (Search)", 
-    options=[""] + mould_descriptions, 
-    help="Start typing to filter descriptions"
-)
-
-# Automatically find the Mould Number based on the selection
-# If no selection is made, it tries to pull from the 'ld' (Local Data)
-default_mould_no = str(ld.get('Mould No.', ''))
-if selected_desc:
-    found_mould_no = mould_mapping.get(selected_desc, "")
-else:
-    found_mould_no = default_mould_no
-
-# Display the Mould No (either searched or from the main tracker)
-m_no = c2.text_input("Mould No.", value=found_mould_no)
-
-machine_no = c3.text_input("Machine No.", value=str(ld.get('Machine No.', '')))
-# ... continue with the rest of your columns
-
-            # --- NEW SECTION 1: STATUS & CLOSURE ---
+            # --- STATUS & CLOSURE ---
             st.divider()
             st.markdown("### 📊 Project Status & Completion")
             stat_cols = st.columns(3)
@@ -480,7 +445,7 @@ machine_no = c3.text_input("Machine No.", value=str(ld.get('Machine No.', '')))
                 with stat_cols[i % 3]:
                     updated_vals[col] = st.text_input(col, value=cur_val, key=f"stat_grp_{col}")
 
-            # --- NEW SECTION 2: PROOFING DETAILS ---
+            # --- PROOFING DETAILS ---
             st.divider()
             st.markdown("### 📝 Proof Information")
             proof_cols = st.columns(3)
@@ -489,11 +454,10 @@ machine_no = c3.text_input("Machine No.", value=str(ld.get('Machine No.', '')))
                 with proof_cols[i % 3]:
                     updated_vals[col] = st.text_input(col, value=cur_val, key=f"proof_grp_{col}")
 
-            # --- REMAINING TRIALS & PROGRESS ---
+            # --- TRIAL INFORMATION ---
             st.divider()
             st.markdown("### 🧪 Trial Information")
             t_cols = st.columns(3)
-            # Combine the remaining progress fields (Trials and Plates)
             remaining_progress = trial_fields + plate_fields
             for i, col in enumerate(remaining_progress):
                 cur_val = str(row.get(col, "")).replace('nan', '')
@@ -501,7 +465,8 @@ machine_no = c3.text_input("Machine No.", value=str(ld.get('Machine No.', '')))
                     updated_vals[col] = st.text_input(col, value=cur_val, key=f"flow_{col}")
 
             if st.form_submit_button("💾 Save Changes", use_container_width=True):
-                for k, v in updated_vals.items(): df.at[idx, k] = v
+                for k, v in updated_vals.items(): 
+                    df.at[idx, k] = v
                 save_db(df)
                 if updated_vals.get("Injection trial requested"):
                     update_tracker_status(search_no, updated_vals["Injection trial requested"])
