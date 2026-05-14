@@ -141,7 +141,6 @@ def style_df(df_to_style):
 if 'active_tab' not in st.session_state: st.session_state.active_tab = "🔍 Search & Edit"
 df = load_db()
 DROPDOWN_DATA = {k: get_options(v) for k, v in DROPDOWN_FILES.items()}
-Block 2: UI Tabs, Advanced Editing, and Admin (Lines 251–500 approx.)
 
 # --- 6. TAB INTERFACE ---
 tabs = st.tabs(["🔍 Search & Edit", "➕ Add New", "📊 Analysis", "🧪 Trials", "⚙️ Admin"])
