@@ -220,20 +220,20 @@ def get_mould_lookup_data():
         client = get_gspread_client()
         sheet = client.open_by_key(MOULD_ASSETS_ID).get_worksheet(0)
         
-        # 1. Fetch all raw data as list of lists
         raw_data = sheet.get_all_values()
         if not raw_data or len(raw_data) < 2:
             return {}
 
-        # 2. Convert to DataFrame (Top row is header)
         headers = [str(h).strip() for h in raw_data[0]]
-        data_rows = raw_data[1:]
-        df = pd.DataFrame(data_rows, columns=headers)
+        df = pd.DataFrame(raw_data[1:], columns=headers)
 
-        # 3. Identify columns (Case-insensitive search)
+        # Force all data to string to avoid 'AttributeError: str'
+        df = df.astype(str)
+
         desc_col = None
         mould_col = None
         
+        # Look for column names
         for col in df.columns:
             c_low = col.lower()
             if "description" in c_low:
@@ -241,22 +241,26 @@ def get_mould_lookup_data():
             if "mould" in c_low and ("no" in c_low or "num" in c_low):
                 mould_col = col
 
-        # FALLBACK: If names aren't found, assume Col A is Description, Col B is Mould No.
+        # Fallback to index if column names aren't found
         if not desc_col:
             desc_col = df.columns[0]
         if not mould_col:
             mould_col = df.columns[1] if len(df.columns) > 1 else df.columns[0]
 
-        # 4. Clean and Create Dictionary
-        # Only take rows where the description isn't just whitespace
+        # Filter out empty rows and strip whitespace
         df = df[df[desc_col].str.strip() != ""]
         
-        # Map {Description: MouldNumber}
-        lookup_dict = dict(zip(df[desc_col].astype(str).str.strip(), 
-                               df[mould_col].astype(str).str.strip()))
+        # Create mapping
+        lookup_dict = dict(zip(
+            df[desc_col].str.strip(), 
+            df[mould_col].str.strip()
+        ))
         
         return lookup_dict
 
+    except Exception as e:
+        st.error(f"Error fetching Mould Assets: {e}")
+        return {}
     except Exception as e:
         st.error(f"Error fetching Mould Assets: {e}")
         return {}
