@@ -71,7 +71,7 @@ DESIRED_ORDER = [
     "Comments",
 ]
 
-# --- 3. SESSION STATE INITIALIZATION FOR MOULD INFO ---
+# --- 3. SESSION STATE INITIALIZATION ---
 if "active_tab" not in st.session_state:
     st.session_state.active_tab = "🔍 Search & Edit"
 if "form_data" not in st.session_state:
@@ -81,14 +81,13 @@ if "selected_combo" not in st.session_state:
 if "last_search_no" not in st.session_state:
     st.session_state.last_search_no = ""
 
-# --- NEW MOULD ASSETS STATE INITIALIZATION ---
 if "mould_df" not in st.session_state:
     st.session_state.mould_df = None
 if "mould_descriptions" not in st.session_state:
     st.session_state.mould_descriptions = []
 
 
-# --- 4. UTILITY FUNCTIONS FOR MOULD INFO---
+# --- 4. UTILITY FUNCTIONS FOR MOULD INFO ---
 def load_mould_assets_data():
     """Loads and cleans the Mould Assets CSV for Streamlit drop-downs."""
     csv_filename = "Mould Assets.csv"
@@ -97,13 +96,22 @@ def load_mould_assets_data():
         return
 
     try:
-        # Read CSV and clean headers
-        mould_df = pd.read_csv(csv_filename)
-        mould_df.columns = mould_df.columns.str.strip()
+        # Try comma first, fallback to semicolon if it fails to parse columns
+        try:
+            mould_df = pd.read_csv(csv_filename, encoding="utf-8-sig")
+            if len(mould_df.columns) <= 1:
+                mould_df = pd.read_csv(csv_filename, sep=";", encoding="utf-8-sig")
+        except Exception:
+            mould_df = pd.read_csv(csv_filename, encoding="latin1")
+            if len(mould_df.columns) <= 1:
+                mould_df = pd.read_csv(csv_filename, sep=";", encoding="latin1")
+
+        # Clean up column headers aggressively
+        mould_df.columns = [str(c).strip().replace('"', '').replace("'", "") for c in mould_df.columns]
 
         required_cols = ["Mould Description", "Mould Number", "Drawing"]
         if not all(col in mould_df.columns for col in required_cols):
-            st.sidebar.error("Mould Assets.csv missing required columns!")
+            st.sidebar.error(f"Mould Assets.csv missing required columns! Found: {list(mould_df.columns)}")
             return
 
         # Handle Blanks & Duplicates
@@ -305,9 +313,6 @@ def load_trial_data():
     return pd.DataFrame()
 
 
-# --- 5. DATA LOADING HELPERS ---
-
-
 def smart_read(path):
     if not os.path.exists(path):
         return pd.DataFrame()
@@ -383,7 +388,6 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
         return pd.DataFrame()
 
 
-# --- 6. UI HELPERS ---
 def display_combination_table(key_prefix):
     if os.path.exists(COMBINATIONS_FILE):
         with st.expander("📂 Browse Tube & Cap Combinations", expanded=False):
@@ -431,7 +435,7 @@ def display_combination_table(key_prefix):
                 st.error(f"Combo Error: {e}")
 
 
-# --- 7. MAIN APP START ---
+# --- 5. APP EXECUTION START ---
 df = load_db_v2(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
 if df.empty:
     df = pd.DataFrame(columns=DESIRED_ORDER)
@@ -621,15 +625,12 @@ if tab_nav == "🔍 Search & Edit":
                             col, value=cur_val, key=f"txt_{col}"
                         )
 
-            # --- DYNAMIC MOULD ASSETS FIELDS ---
+            # --- DYNAMIC MOULD ASSETS FIELDS (SEARCH & EDIT) ---
             st.divider()
             st.markdown("### 🏗️ Mould Information")
             mould_cols = st.columns(3)
 
-            # 1. Determine Initial Selected Option Index
-            existing_desc = str(row.get("Mould Description", "")).replace(
-                "nan", ""
-            )
+            existing_desc = str(row.get("Mould Description", "")).replace("nan", "")
             mould_opts = [""] + st.session_state.mould_descriptions
             default_mould_idx = (
                 mould_opts.index(existing_desc) if existing_desc in mould_opts else 0
@@ -641,21 +642,18 @@ if tab_nav == "🔍 Search & Edit":
                         "Mould Description",
                         mould_opts,
                         index=default_mould_idx,
-                        key="mould_desc_select",
+                        key="mould_desc_select_edit",
                     )
                     updated_vals["Mould Description"] = selected_mould_desc
                 else:
                     selected_mould_desc = st.text_input(
                         "Mould Description",
                         value=existing_desc,
-                        key="mould_desc_text",
+                        key="mould_desc_text_edit",
                     )
                     updated_vals["Mould Description"] = selected_mould_desc
 
-            # 2. Automated value lookup logic
-            mould_number_val = str(row.get("Mould Number", "")).replace(
-                "nan", ""
-            )
+            mould_number_val = str(row.get("Mould Number", "")).replace("nan", "")
             drawing_val = str(row.get("Drawing", "")).replace("nan", "")
 
             if (
@@ -675,14 +673,13 @@ if tab_nav == "🔍 Search & Edit":
 
             with mould_cols[1]:
                 updated_vals["Mould Number"] = st.text_input(
-                    "Mould Number", value=mould_number_val, key="mould_num_input"
+                    "Mould Number", value=mould_number_val, key="mould_num_input_edit"
                 )
             with mould_cols[2]:
                 updated_vals["Drawing"] = st.text_input(
-                    "Drawing", value=drawing_val, key="drawing_input"
+                    "Drawing", value=drawing_val, key="drawing_input_edit"
                 )
 
-            # --- NEW SECTION 1: STATUS & CLOSURE ---
             st.divider()
             st.markdown("### 📊 Project Status & Completion")
             stat_cols = st.columns(3)
@@ -693,7 +690,6 @@ if tab_nav == "🔍 Search & Edit":
                         col, value=cur_val, key=f"stat_grp_{col}"
                     )
 
-            # --- NEW SECTION 2: PROOFING DETAILS ---
             st.divider()
             st.markdown("### 📝 Proof Information")
             proof_cols = st.columns(3)
@@ -704,7 +700,6 @@ if tab_nav == "🔍 Search & Edit":
                         col, value=cur_val, key=f"proof_grp_{col}"
                     )
 
-            # --- REMAINING TRIALS & PROGRESS ---
             st.divider()
             st.markdown("### 🧪 Trial Information")
             t_cols = st.columns(3)
@@ -737,43 +732,74 @@ elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
     sel = st.session_state.get("selected_combo", {})
     default_id = st.session_state.form_data.get("Pre-Prod No.", get_auto_next_no(df))
+    
     with st.form("new_job_form"):
         st.subheader("New Project Entry")
         new_id = st.text_input("Pre-Prod No.", value=default_id).strip()
         new_cols = st.columns(3)
         new_entry = {"Pre-Prod No.": new_id}
-        for i, col in enumerate(DESIRED_ORDER):
-            if col in ["Age Category", "Pre-Prod No."]:
+        
+        # We handle Mould Information explicitly outside the loop below to support autofill dependencies
+        mould_fields = ["Mould Description", "Mould Number", "Drawing"]
+        
+        # Render non-mould fields dynamically
+        field_counter = 0
+        for col in DESIRED_ORDER:
+            if col in ["Age Category", "Pre-Prod No."] + mould_fields:
                 continue
             val = sel.get(col, st.session_state.form_data.get(col, ""))
-            with new_cols[i % 3]:
+            with new_cols[field_counter % 3]:
                 if col == "Date":
                     new_entry[col] = st.date_input(
                         col, value=datetime.now()
                     ).strftime("%d/%m/%Y")
                 elif col in DROPDOWN_DATA:
-                    opts = sorted(
-                        list(
-                            set(
-                                [""]
-                                + DROPDOWN_DATA[col]
-                                + ([val] if val else [])
-                            )
-                        )
-                    )
+                    opts = sorted(list(set([""] + DROPDOWN_DATA[col] + ([val] if val else []))))
                     new_entry[col] = st.selectbox(
-                        col,
-                        opts,
-                        index=opts.index(val) if val in opts else 0,
+                        col, opts, index=opts.index(val) if val in opts else 0, key=f"new_job_sel_{col}"
                     )
                 else:
-                    new_entry[col] = st.text_input(col, value=val)
+                    new_entry[col] = st.text_input(col, value=val, key=f"new_job_txt_{col}")
+            field_counter += 1
+
+        # --- EXPLICIT MOULD ASSETS ROW (ADD NEW JOB) ---
+        st.divider()
+        st.markdown("### 🏗️ Mould Information")
+        m_cols = st.columns(3)
+        
+        # Dropdown selection for description
+        mould_opts = [""] + st.session_state.mould_descriptions
+        with m_cols[0]:
+            selected_mould_desc = st.selectbox(
+                "Mould Description",
+                mould_opts,
+                index=0,
+                key="mould_desc_select_new"
+            )
+            new_entry["Mould Description"] = selected_mould_desc
+
+        # Auto-compute defaults if details are found in local DB state
+        m_num_default = ""
+        m_drw_default = ""
+        if selected_mould_desc and st.session_state.mould_df is not None:
+            m_match = st.session_state.mould_df[st.session_state.mould_df["Mould Description"] == selected_mould_desc]
+            if not m_match.empty:
+                m_num = str(m_match.iloc[0]["Mould Number"])
+                m_drw = str(m_match.iloc[0]["Drawing"])
+                m_num_default = "" if m_num == "nan" else m_num
+                m_drw_default = "" if m_drw == "nan" else m_drw
+
+        with m_cols[1]:
+            new_entry["Mould Number"] = st.text_input("Mould Number", value=m_num_default, key="mould_num_input_new")
+        with m_cols[2]:
+            new_entry["Drawing"] = st.text_input("Drawing", value=m_drw_default, key="drawing_input_new")
 
         if st.form_submit_button("➕ Create Project", use_container_width=True):
             df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
             save_db(df)
             st.cache_data.clear()
             st.session_state.form_data = {}
+            st.success("Project Created Locally!")
             st.rerun()
 
 # --- TAB 3: AGE ANALYSIS ---
