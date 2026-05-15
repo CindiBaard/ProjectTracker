@@ -8,6 +8,11 @@ import matplotlib.pyplot as plt
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
+import tkinter as tk
+from tkinter 
+import messagebox, ttk
+
+
 
 # --- 1. INITIAL SETUP & DEPENDENCIES ---
 st.set_page_config(page_title="Project Tracker Dashboard", layout="wide")
@@ -49,7 +54,38 @@ if 'selected_combo' not in st.session_state:
 if 'last_search_no' not in st.session_state:
     st.session_state.last_search_no = ""
 
-# --- 4. UTILITY FUNCTIONS ---
+# --- 4. UTILITY FUNCTIONS FOR MOULD INFO---
+
+def load_mould_assets_data():
+    """Loads and cleans the Mould Assets CSV for Streamlit drop-downs."""
+    csv_filename = "Mould Assets.csv"
+    
+    if not os.path.exists(csv_filename):
+        return  # Fails silently or use st.sidebar.warning(f"'{csv_filename}' not found.")
+
+    try:
+        # Read CSV and clean headers
+        mould_df = pd.read_csv(csv_filename)
+        mould_df.columns = mould_df.columns.str.strip()
+
+        required_cols = ["Mould Description", "Mould Number", "Drawing"]
+        if not all(col in mould_df.columns for col in required_cols):
+            st.sidebar.error("Mould Assets.csv missing required columns!")
+            return
+
+        # Handle Blanks & Duplicates
+        mould_df = mould_df.dropna(subset=["Mould Description"])
+        for col in required_cols:
+            mould_df[col] = mould_df[col].astype(str).str.strip()
+        
+        mould_df = mould_df[mould_df["Mould Description"] != ""]
+
+        # Store to session state variables
+        st.session_state.mould_df = mould_df
+        st.session_state.mould_descriptions = sorted(mould_df["Mould Description"].unique())
+
+    except Exception as e:
+        st.sidebar.error(f"Failed to parse Mould Assets.csv: {e}")
 
 def clean_column_names(df):
     """Fixes merged headers, removes whitespace, and handles duplicates."""
@@ -249,7 +285,23 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
         
     except Exception as e:
         st.error(f"Load Error: {e}")
-        return pd.DataFrame()    
+        return pd.DataFrame() 
+
+# --- 3. SESSION STATE INITIALIZATION FOR MOULD INFO ---
+if 'active_tab' not in st.session_state:
+    st.session_state.active_tab = "🔍 Search & Edit"
+if 'form_data' not in st.session_state:
+    st.session_state.form_data = {}
+if 'selected_combo' not in st.session_state:
+    st.session_state.selected_combo = {}
+if 'last_search_no' not in st.session_state:
+    st.session_state.last_search_no = ""
+
+# --- NEW MOULD ASSETS STATE INITIALIZATION ---
+if 'mould_df' not in st.session_state:
+    st.session_state.mould_df = None
+if 'mould_descriptions' not in st.session_state:
+    st.session_state.mould_descriptions = []   
 
 # --- 6. UI HELPERS ---
 def display_combination_table(key_prefix):
@@ -278,6 +330,9 @@ def display_combination_table(key_prefix):
 # --- 7. MAIN APP START ---
 df = load_db_v2(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
 if df.empty: df = pd.DataFrame(columns=DESIRED_ORDER)
+
+# Trigger your new layout engine loader
+load_mould_assets_data()
 
 st.title("Project Tracker Dashboard")
 
@@ -383,6 +438,35 @@ if tab_nav == "🔍 Search & Edit":
                         updated_vals[col] = st.selectbox(col, opts, index=opts.index(cur_val), key=f"sel_{col}")
                     else:
                         updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_{col}")
+
+ # Check if asset data exists safely
+if st.session_state.mould_descriptions:
+    # 1. Dropdown Selector
+    selected_mould_desc = st.selectbox(
+        "Mould Description", 
+        [""] + st.session_state.mould_descriptions
+    )
+    
+    # 2. Automated value lookup backend
+    mould_number_val = ""
+    drawing_val = ""
+    
+    if selected_mould_desc:
+        m_match = st.session_state.mould_df[st.session_state.mould_df["Mould Description"] == selected_mould_desc]
+        if not m_match.empty:
+            m_num = m_match.iloc[0]["Mould Number"]
+            m_drw = m_match.iloc[0]["Drawing"]
+            mould_number_val = "" if m_num == "nan" else m_num
+            drawing_val = "" if m_drw == "nan" else m_drw
+
+    # 3. Output Textboxes autofilled automatically
+    txt_mould_num = st.text_input("Mould Number", value=mould_number_val)
+    txt_drawing = st.text_input("Drawing", value=drawing_val)
+else:
+    # Fallback to plain manual text fields if the CSV file goes missing
+    txt_mould_desc = st.text_input("Mould Description")
+    txt_mould_num = st.text_input("Mould Number")
+    txt_drawing = st.text_input("Drawing")
 
             # --- NEW SECTION 1: STATUS & CLOSURE ---
             st.divider()
