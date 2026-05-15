@@ -8,9 +8,7 @@ import matplotlib.pyplot as plt
 import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
-import tkinter as tk
-from tkinter 
-import messagebox, ttk
+
 
 
 
