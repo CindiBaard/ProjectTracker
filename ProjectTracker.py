@@ -477,7 +477,6 @@ tab_nav = st.radio(
     tabs_list,
     index=tabs_list.index(st.session_state.active_tab),
     horizontal=True,
- Mention context boundaries explicitly
 )
 st.session_state.active_tab = tab_nav
 
