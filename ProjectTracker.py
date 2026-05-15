@@ -89,46 +89,72 @@ if "mould_descriptions" not in st.session_state:
 
 # --- 4. UTILITY FUNCTIONS FOR MOULD INFO ---
 def load_mould_assets_data():
-    """Loads and cleans the Mould Assets CSV for Streamlit drop-downs."""
+    """Loads and cleans the complex Mould Assets CSV for Streamlit drop-downs."""
     csv_filename = "Mould Assets.csv"
 
     if not os.path.exists(csv_filename):
         return
 
     try:
-        # Try comma first, fallback to semicolon if it fails to parse columns
-        try:
-            mould_df = pd.read_csv(csv_filename, encoding="utf-8-sig")
-            if len(mould_df.columns) <= 1:
-                mould_df = pd.read_csv(csv_filename, sep=";", encoding="utf-8-sig")
-        except Exception:
-            mould_df = pd.read_csv(csv_filename, encoding="latin1")
-            if len(mould_df.columns) <= 1:
-                mould_df = pd.read_csv(csv_filename, sep=";", encoding="latin1")
+        # Read file but look for where the header row actually sits
+        # Your real headers start on row 3 (0-indexed line 2), because lines 0 and 1 are title labels
+        mould_df = None
+        for skip in [2, 0, 1]:
+            try:
+                df_temp = pd.read_csv(csv_filename, skiprows=skip, encoding="utf-8-sig")
+                if "MouldNumber" in df_temp.columns or "Mould Description" in df_temp.columns:
+                    mould_df = df_temp
+                    break
+            except Exception:
+                continue
+
+        if mould_df is None:
+            # Semicolon fallback routine
+            for skip in [2, 0, 1]:
+                try:
+                    df_temp = pd.read_csv(csv_filename, sep=";", skiprows=skip, encoding="utf-8-sig")
+                    if "MouldNumber" in df_temp.columns or "Mould Description" in df_temp.columns:
+                        mould_df = df_temp
+                        break
+                except Exception:
+                    continue
+
+        if mould_df is None:
+            st.sidebar.error("Could not find true data headers inside Mould Assets.csv")
+            return
 
         # Clean up column headers aggressively
         mould_df.columns = [str(c).strip().replace('"', '').replace("'", "") for c in mould_df.columns]
 
+        # Explicitly map your file's header names to the keys our app targets
+        rename_dict = {
+            "MouldNumber": "Mould Number",
+            "Drawing No.": "Drawing"
+        }
+        mould_df = mould_df.rename(columns=rename_dict)
+
         required_cols = ["Mould Description", "Mould Number", "Drawing"]
+        
+        # Check if they exist now
         if not all(col in mould_df.columns for col in required_cols):
-            st.sidebar.error(f"Mould Assets.csv missing required columns! Found: {list(mould_df.columns)}")
+            st.sidebar.error(f"Mould Assets.csv parsed headers missing targets! Found: {list(mould_df.columns)[:5]}")
             return
 
-        # Handle Blanks & Duplicates
+        # Clean strings and drop empty data lines
         mould_df = mould_df.dropna(subset=["Mould Description"])
         for col in required_cols:
-            mould_df[col] = mould_df[col].astype(str).str.strip()
+            mould_df[col] = mould_df[col].astype(str).str.strip().replace("nan", "")
 
         mould_df = mould_df[mould_df["Mould Description"] != ""]
 
-        # Store to session state variables
+        # Store parameters into state
         st.session_state.mould_df = mould_df
         st.session_state.mould_descriptions = sorted(
-            mould_df["Mould Description"].unique()
+            [d for d in mould_df["Mould Description"].unique() if d.strip()]
         )
 
     except Exception as e:
-        st.sidebar.error(f"Failed to parse Mould Assets.csv: {e}")
+        st.sidebar.error(f"Failed parsing Mould Assets.csv system: {e}")
 
 
 def clean_column_names(df):
@@ -739,10 +765,8 @@ elif tab_nav == "➕ Add New Job":
         new_cols = st.columns(3)
         new_entry = {"Pre-Prod No.": new_id}
         
-        # We handle Mould Information explicitly outside the loop below to support autofill dependencies
         mould_fields = ["Mould Description", "Mould Number", "Drawing"]
         
-        # Render non-mould fields dynamically
         field_counter = 0
         for col in DESIRED_ORDER:
             if col in ["Age Category", "Pre-Prod No."] + mould_fields:
@@ -762,12 +786,11 @@ elif tab_nav == "➕ Add New Job":
                     new_entry[col] = st.text_input(col, value=val, key=f"new_job_txt_{col}")
             field_counter += 1
 
-        # --- EXPLICIT MOULD ASSETS ROW (ADD NEW JOB) ---
+        # --- EXPLICIT MOULD ASSETS ROW (ADD NEW JOB DROPDOWN) ---
         st.divider()
         st.markdown("### 🏗️ Mould Information")
         m_cols = st.columns(3)
         
-        # Dropdown selection for description
         mould_opts = [""] + st.session_state.mould_descriptions
         with m_cols[0]:
             selected_mould_desc = st.selectbox(
@@ -778,7 +801,6 @@ elif tab_nav == "➕ Add New Job":
             )
             new_entry["Mould Description"] = selected_mould_desc
 
-        # Auto-compute defaults if details are found in local DB state
         m_num_default = ""
         m_drw_default = ""
         if selected_mould_desc and st.session_state.mould_df is not None:
