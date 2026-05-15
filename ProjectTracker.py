@@ -96,8 +96,6 @@ def load_mould_assets_data():
         return
 
     try:
-        # Read file but look for where the header row actually sits
-        # Your real headers start on row 3 (0-indexed line 2), because lines 0 and 1 are title labels
         mould_df = None
         for skip in [2, 0, 1]:
             try:
@@ -109,7 +107,6 @@ def load_mould_assets_data():
                 continue
 
         if mould_df is None:
-            # Semicolon fallback routine
             for skip in [2, 0, 1]:
                 try:
                     df_temp = pd.read_csv(csv_filename, sep=";", skiprows=skip, encoding="utf-8-sig")
@@ -123,10 +120,8 @@ def load_mould_assets_data():
             st.sidebar.error("Could not find true data headers inside Mould Assets.csv")
             return
 
-        # Clean up column headers aggressively
         mould_df.columns = [str(c).strip().replace('"', '').replace("'", "") for c in mould_df.columns]
 
-        # Explicitly map your file's header names to the keys our app targets
         rename_dict = {
             "MouldNumber": "Mould Number",
             "Drawing No.": "Drawing"
@@ -135,19 +130,16 @@ def load_mould_assets_data():
 
         required_cols = ["Mould Description", "Mould Number", "Drawing"]
         
-        # Check if they exist now
         if not all(col in mould_df.columns for col in required_cols):
             st.sidebar.error(f"Mould Assets.csv parsed headers missing targets! Found: {list(mould_df.columns)[:5]}")
             return
 
-        # Clean strings and drop empty data lines
         mould_df = mould_df.dropna(subset=["Mould Description"])
         for col in required_cols:
             mould_df[col] = mould_df[col].astype(str).str.strip().replace("nan", "")
 
         mould_df = mould_df[mould_df["Mould Description"] != ""]
 
-        # Store parameters into state
         st.session_state.mould_df = mould_df
         st.session_state.mould_descriptions = sorted(
             [d for d in mould_df["Mould Description"].unique() if d.strip()]
@@ -158,7 +150,6 @@ def load_mould_assets_data():
 
 
 def clean_column_names(df):
-    """Fixes merged headers, removes whitespace, and handles duplicates."""
     df.columns = [
         str(c).replace("\ufeff", "").replace("ï»¿", "").strip()
         for c in df.columns
@@ -574,181 +565,183 @@ if tab_nav == "🔍 Search & Edit":
 
         display_combination_table("edit")
 
-        with st.form("edit_form"):
-            st.subheader(f"Editing: {search_no}")
-            updated_vals = {}
-            sel_combo = st.session_state.get("selected_combo", {})
+        # Form fields updated outside the submission loop to maintain selection change reactivity
+        st.subheader(f"Editing: {search_no}")
+        updated_vals = {}
+        sel_combo = st.session_state.get("selected_combo", {})
 
-            status_fields = ["Status", "Open or closed", "Completion date"]
-            plate_fields = ["Ordered Plates", "Plates Arrived"]
-            proof_fields = [
-                "Date Sent on Proof",
-                "Proof Approved (Conventional)",
-                "Proof Approved (Digital)",
-            ]
-            trial_fields = [
-                "Sent on Trial",
-                "Digital trial sent",
-                "Revised Artwork After Trialling",
-                "Extrusion requested",
-                "Extrusion received",
-                "Injection trial requested",
-                "Injection trial received",
-                "Blowmould trial requested",
-                "Blowmould trial received",
-            ]
+        status_fields = ["Status", "Open or closed", "Completion date"]
+        plate_fields = ["Ordered Plates", "Plates Arrived"]
+        proof_fields = [
+            "Date Sent on Proof",
+            "Proof Approved (Conventional)",
+            "Proof Approved (Digital)",
+        ]
+        trial_fields = [
+            "Sent on Trial",
+            "Digital trial sent",
+            "Revised Artwork After Trialling",
+            "Extrusion requested",
+            "Extrusion received",
+            "Injection trial requested",
+            "Injection trial received",
+            "Blowmould trial requested",
+            "Blowmould trial received",
+        ]
 
-            st.markdown("### 📋 General Details")
-            edit_cols = st.columns(3)
-            excluded = (
-                status_fields
-                + trial_fields
-                + proof_fields
-                + plate_fields
-                + ["Age Category"]
+        st.markdown("### 📋 General Details")
+        edit_cols = st.columns(3)
+        excluded = (
+            status_fields
+            + trial_fields
+            + proof_fields
+            + plate_fields
+            + ["Age Category"]
+        )
+        remaining_fields = [
+            c
+            for c in DESIRED_ORDER
+            if c not in excluded
+            and c != "Pre-Prod No."
+            and c not in ["Mould Description", "Mould Number", "Drawing"]
+        ]
+
+        for i, col in enumerate(remaining_fields):
+            cur_val = sel_combo.get(
+                col, str(row.get(col, "")).replace("nan", "")
             )
-            remaining_fields = [
-                c
-                for c in DESIRED_ORDER
-                if c not in excluded
-                and c != "Pre-Prod No."
-                and c not in ["Mould Description", "Mould Number", "Drawing"]
-            ]
-
-            for i, col in enumerate(remaining_fields):
-                cur_val = sel_combo.get(
-                    col, str(row.get(col, "")).replace("nan", "")
-                )
-                with edit_cols[i % 3]:
-                    if "date" in col.lower() or col == "Date":
-                        try:
-                            d_parsed = pd.to_datetime(
-                                cur_val, dayfirst=True, errors="coerce"
-                            )
-                            d_val = (
-                                d_parsed.date()
-                                if pd.notnull(d_parsed)
-                                else datetime.now().date()
-                            )
-                        except:
-                            d_val = datetime.now().date()
-                        d_input = st.date_input(
-                            col, value=d_val, key=f"ed_gen_{col}"
+            with edit_cols[i % 3]:
+                if "date" in col.lower() or col == "Date":
+                    try:
+                        d_parsed = pd.to_datetime(
+                            cur_val, dayfirst=True, errors="coerce"
                         )
-                        updated_vals[col] = d_input.strftime("%d/%m/%Y")
-                    elif col in DROPDOWN_DATA:
-                        opts = sorted(
-                            list(set([""] + DROPDOWN_DATA[col] + [cur_val]))
+                        d_val = (
+                            d_parsed.date()
+                            if pd.notnull(d_parsed)
+                            else datetime.now().date()
                         )
-                        updated_vals[col] = st.selectbox(
-                            col,
-                            opts,
-                            index=opts.index(cur_val),
-                            key=f"sel_{col}",
-                        )
-                    else:
-                        updated_vals[col] = st.text_input(
-                            col, value=cur_val, key=f"txt_{col}"
-                        )
-
-            # --- DYNAMIC MOULD ASSETS FIELDS (SEARCH & EDIT) ---
-            st.divider()
-            st.markdown("### 🏗️ Mould Information")
-            mould_cols = st.columns(3)
-
-            existing_desc = str(row.get("Mould Description", "")).replace("nan", "")
-            mould_opts = [""] + st.session_state.mould_descriptions
-            default_mould_idx = (
-                mould_opts.index(existing_desc) if existing_desc in mould_opts else 0
-            )
-
-            with mould_cols[0]:
-                if st.session_state.mould_descriptions:
-                    selected_mould_desc = st.selectbox(
-                        "Mould Description",
-                        mould_opts,
-                        index=default_mould_idx,
-                        key="mould_desc_select_edit",
+                    except:
+                        d_val = datetime.now().date()
+                    d_input = st.date_input(
+                        col, value=d_val, key=f"ed_gen_{col}"
                     )
-                    updated_vals["Mould Description"] = selected_mould_desc
+                    updated_vals[col] = d_input.strftime("%d/%m/%Y")
+                elif col in DROPDOWN_DATA:
+                    opts = sorted(
+                        list(set([""] + DROPDOWN_DATA[col] + [cur_val]))
+                    )
+                    updated_vals[col] = st.selectbox(
+                        col,
+                        opts,
+                        index=opts.index(cur_val),
+                        key=f"sel_{col}",
+                    )
                 else:
-                    selected_mould_desc = st.text_input(
-                        "Mould Description",
-                        value=existing_desc,
-                        key="mould_desc_text_edit",
+                    updated_vals[col] = st.text_input(
+                        col, value=cur_val, key=f"txt_{col}"
                     )
-                    updated_vals["Mould Description"] = selected_mould_desc
 
-            mould_number_val = str(row.get("Mould Number", "")).replace("nan", "")
-            drawing_val = str(row.get("Drawing", "")).replace("nan", "")
+        # --- SEARCHABLE MOULD ASSETS ROW (SEARCH & EDIT) ---
+        st.divider()
+        st.markdown("### 🏗️ Mould Information")
+        mould_cols = st.columns(3)
 
-            if (
-                st.session_state.mould_descriptions
-                and selected_mould_desc
-                and st.session_state.mould_df is not None
-            ):
-                m_match = st.session_state.mould_df[
-                    st.session_state.mould_df["Mould Description"]
-                    == selected_mould_desc
-                ]
-                if not m_match.empty:
-                    m_num = str(m_match.iloc[0]["Mould Number"])
-                    m_drw = str(m_match.iloc[0]["Drawing"])
-                    mould_number_val = "" if m_num == "nan" else m_num
-                    drawing_val = "" if m_drw == "nan" else m_drw
+        existing_desc = str(row.get("Mould Description", "")).replace("nan", "")
+        mould_opts = [""] + st.session_state.mould_descriptions
+        default_mould_idx = (
+            mould_opts.index(existing_desc) if existing_desc in mould_opts else 0
+        )
 
-            with mould_cols[1]:
-                updated_vals["Mould Number"] = st.text_input(
-                    "Mould Number", value=mould_number_val, key="mould_num_input_edit"
+        with mould_cols[0]:
+            if st.session_state.mould_descriptions:
+                # Built-in search functionality via autocomplete select box
+                selected_mould_desc = st.selectbox(
+                    "Mould Description",
+                    mould_opts,
+                    index=default_mould_idx,
+                    key="mould_desc_select_edit",
                 )
-            with mould_cols[2]:
-                updated_vals["Drawing"] = st.text_input(
-                    "Drawing", value=drawing_val, key="drawing_input_edit"
+                updated_vals["Mould Description"] = selected_mould_desc
+            else:
+                selected_mould_desc = st.text_input(
+                    "Mould Description",
+                    value=existing_desc,
+                    key="mould_desc_text_edit",
+                )
+                updated_vals["Mould Description"] = selected_mould_desc
+
+        # Auto-query database matches based on description selection
+        mould_number_val = str(row.get("Mould Number", "")).replace("nan", "")
+        drawing_val = str(row.get("Drawing", "")).replace("nan", "")
+
+        if (
+            st.session_state.mould_descriptions
+            and selected_mould_desc
+            and st.session_state.mould_df is not None
+        ):
+            m_match = st.session_state.mould_df[
+                st.session_state.mould_df["Mould Description"]
+                == selected_mould_desc
+            ]
+            if not m_match.empty:
+                m_num = str(m_match.iloc[0]["Mould Number"])
+                m_drw = str(m_match.iloc[0]["Drawing"])
+                mould_number_val = "" if m_num == "nan" else m_num
+                drawing_val = "" if m_drw == "nan" else m_drw
+
+        with mould_cols[1]:
+            updated_vals["Mould Number"] = st.text_input(
+                "Mould Number", value=mould_number_val, key="mould_num_input_edit"
+            )
+        with mould_cols[2]:
+            updated_vals["Drawing"] = st.text_input(
+                "Drawing No.", value=drawing_val, key="drawing_input_edit"
+            )
+
+        st.divider()
+        st.markdown("### 📊 Project Status & Completion")
+        stat_cols = st.columns(3)
+        for i, col in enumerate(status_fields):
+            cur_val = str(row.get(col, "")).replace("nan", "")
+            with stat_cols[i % 3]:
+                updated_vals[col] = st.text_input(
+                    col, value=cur_val, key=f"stat_grp_{col}"
                 )
 
-            st.divider()
-            st.markdown("### 📊 Project Status & Completion")
-            stat_cols = st.columns(3)
-            for i, col in enumerate(status_fields):
-                cur_val = str(row.get(col, "")).replace("nan", "")
-                with stat_cols[i % 3]:
-                    updated_vals[col] = st.text_input(
-                        col, value=cur_val, key=f"stat_grp_{col}"
-                    )
+        st.divider()
+        st.markdown("### 📝 Proof Information")
+        proof_cols = st.columns(3)
+        for i, col in enumerate(proof_fields):
+            cur_val = str(row.get(col, "")).replace("nan", "")
+            with proof_cols[i % 3]:
+                updated_vals[col] = st.text_input(
+                    col, value=cur_val, key=f"proof_grp_{col}"
+                )
 
-            st.divider()
-            st.markdown("### 📝 Proof Information")
-            proof_cols = st.columns(3)
-            for i, col in enumerate(proof_fields):
-                cur_val = str(row.get(col, "")).replace("nan", "")
-                with proof_cols[i % 3]:
-                    updated_vals[col] = st.text_input(
-                        col, value=cur_val, key=f"proof_grp_{col}"
-                    )
+        st.divider()
+        st.markdown("### 🧪 Trial Information")
+        t_cols = st.columns(3)
+        remaining_progress = trial_fields + plate_fields
+        for i, col in enumerate(remaining_progress):
+            cur_val = str(row.get(col, "")).replace("nan", "")
+            with t_cols[i % 3]:
+                updated_vals[col] = st.text_input(
+                    col, value=cur_val, key=f"flow_{col}"
+                )
 
-            st.divider()
-            st.markdown("### 🧪 Trial Information")
-            t_cols = st.columns(3)
-            remaining_progress = trial_fields + plate_fields
-            for i, col in enumerate(remaining_progress):
-                cur_val = str(row.get(col, "")).replace("nan", "")
-                with t_cols[i % 3]:
-                    updated_vals[col] = st.text_input(
-                        col, value=cur_val, key=f"flow_{col}"
-                    )
-
-            if st.form_submit_button("💾 Save Changes", use_container_width=True):
-                for k, v in updated_vals.items():
-                    df.at[idx, k] = v
-                save_db(df)
-                if updated_vals.get("Injection trial requested"):
-                    update_tracker_status(
-                        search_no, updated_vals["Injection trial requested"]
-                    )
-                st.session_state.selected_combo = {}
-                st.cache_data.clear()
-                st.success("Saved successfully!")
-                st.rerun()
+        if st.button("💾 Save Changes", use_container_width=True, type="primary"):
+            for k, v in updated_vals.items():
+                df.at[idx, k] = v
+            save_db(df)
+            if updated_vals.get("Injection trial requested"):
+                update_tracker_status(
+                    search_no, updated_vals["Injection trial requested"]
+                )
+            st.session_state.selected_combo = {}
+            st.cache_data.clear()
+            st.success("Saved successfully!")
+            st.rerun()
 
     elif search_no:
         st.warning("No project found.")
@@ -759,70 +752,68 @@ elif tab_nav == "➕ Add New Job":
     sel = st.session_state.get("selected_combo", {})
     default_id = st.session_state.form_data.get("Pre-Prod No.", get_auto_next_no(df))
     
-    with st.form("new_job_form"):
-        st.subheader("New Project Entry")
-        new_id = st.text_input("Pre-Prod No.", value=default_id).strip()
-        new_cols = st.columns(3)
-        new_entry = {"Pre-Prod No.": new_id}
-        
-        mould_fields = ["Mould Description", "Mould Number", "Drawing"]
-        
-        field_counter = 0
-        for col in DESIRED_ORDER:
-            if col in ["Age Category", "Pre-Prod No."] + mould_fields:
-                continue
-            val = sel.get(col, st.session_state.form_data.get(col, ""))
-            with new_cols[field_counter % 3]:
-                if col == "Date":
-                    new_entry[col] = st.date_input(
-                        col, value=datetime.now()
-                    ).strftime("%d/%m/%Y")
-                elif col in DROPDOWN_DATA:
-                    opts = sorted(list(set([""] + DROPDOWN_DATA[col] + ([val] if val else []))))
-                    new_entry[col] = st.selectbox(
-                        col, opts, index=opts.index(val) if val in opts else 0, key=f"new_job_sel_{col}"
-                    )
-                else:
-                    new_entry[col] = st.text_input(col, value=val, key=f"new_job_txt_{col}")
-            field_counter += 1
+    st.subheader("New Project Entry")
+    new_id = st.text_input("Pre-Prod No.", value=default_id).strip()
+    new_cols = st.columns(3)
+    new_entry = {"Pre-Prod No.": new_id}
+    
+    mould_fields = ["Mould Description", "Mould Number", "Drawing"]
+    
+    field_counter = 0
+    for col in DESIRED_ORDER:
+        if col in ["Age Category", "Pre-Prod No."] + mould_fields:
+            continue
+        val = sel.get(col, st.session_state.form_data.get(col, ""))
+        with new_cols[field_counter % 3]:
+            if col == "Date":
+                date_val = st.date_input(col, value=datetime.now())
+                new_entry[col] = date_val.strftime("%d/%m/%Y")
+            elif col in DROPDOWN_DATA:
+                opts = sorted(list(set([""] + DROPDOWN_DATA[col] + ([val] if val else []))))
+                new_entry[col] = st.selectbox(
+                    col, opts, index=opts.index(val) if val in opts else 0, key=f"new_job_sel_{col}"
+                )
+            else:
+                new_entry[col] = st.text_input(col, value=val, key=f"new_job_txt_{col}")
+        field_counter += 1
 
-        # --- EXPLICIT MOULD ASSETS ROW (ADD NEW JOB DROPDOWN) ---
-        st.divider()
-        st.markdown("### 🏗️ Mould Information")
-        m_cols = st.columns(3)
-        
-        mould_opts = [""] + st.session_state.mould_descriptions
-        with m_cols[0]:
-            selected_mould_desc = st.selectbox(
-                "Mould Description",
-                mould_opts,
-                index=0,
-                key="mould_desc_select_new"
-            )
-            new_entry["Mould Description"] = selected_mould_desc
+    # --- SEARCHABLE MOULD ASSETS ROW (ADD NEW JOB) ---
+    st.divider()
+    st.markdown("### 🏗️ Mould Information")
+    m_cols = st.columns(3)
+    
+    mould_opts = [""] + st.session_state.mould_descriptions
+    with m_cols[0]:
+        selected_mould_desc = st.selectbox(
+            "Mould Description",
+            mould_opts,
+            index=0,
+            key="mould_desc_select_new"
+        )
+        new_entry["Mould Description"] = selected_mould_desc
 
-        m_num_default = ""
-        m_drw_default = ""
-        if selected_mould_desc and st.session_state.mould_df is not None:
-            m_match = st.session_state.mould_df[st.session_state.mould_df["Mould Description"] == selected_mould_desc]
-            if not m_match.empty:
-                m_num = str(m_match.iloc[0]["Mould Number"])
-                m_drw = str(m_match.iloc[0]["Drawing"])
-                m_num_default = "" if m_num == "nan" else m_num
-                m_drw_default = "" if m_drw == "nan" else m_drw
+    m_num_default = ""
+    m_drw_default = ""
+    if selected_mould_desc and st.session_state.mould_df is not None:
+        m_match = st.session_state.mould_df[st.session_state.mould_df["Mould Description"] == selected_mould_desc]
+        if not m_match.empty:
+            m_num = str(m_match.iloc[0]["Mould Number"])
+            m_drw = str(m_match.iloc[0]["Drawing"])
+            m_num_default = "" if m_num == "nan" else m_num
+            m_drw_default = "" if m_drw == "nan" else m_drw
 
-        with m_cols[1]:
-            new_entry["Mould Number"] = st.text_input("Mould Number", value=m_num_default, key="mould_num_input_new")
-        with m_cols[2]:
-            new_entry["Drawing"] = st.text_input("Drawing", value=m_drw_default, key="drawing_input_new")
+    with m_cols[1]:
+        new_entry["Mould Number"] = st.text_input("Mould Number", value=m_num_default, key="mould_num_input_new")
+    with m_cols[2]:
+        new_entry["Drawing"] = st.text_input("Drawing No.", value=m_drw_default, key="drawing_input_new")
 
-        if st.form_submit_button("➕ Create Project", use_container_width=True):
-            df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
-            save_db(df)
-            st.cache_data.clear()
-            st.session_state.form_data = {}
-            st.success("Project Created Locally!")
-            st.rerun()
+    if st.button("➕ Create Project", use_container_width=True, type="primary"):
+        df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
+        save_db(df)
+        st.cache_data.clear()
+        st.session_state.form_data = {}
+        st.success("Project Created Locally!")
+        st.rerun()
 
 # --- TAB 3: AGE ANALYSIS ---
 elif tab_nav == "📊 Detailed Age Analysis":
