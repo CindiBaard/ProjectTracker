@@ -126,7 +126,7 @@ def load_mould_assets_data():
 
         rename_dict = {
             "MouldNumber": "Mould Number",
-            "Drawing No.": "Drawing"
+            "Drawing No.": "Drawing No."
         }
         mould_df = mould_df.rename(columns=rename_dict)
 
@@ -605,7 +605,7 @@ if tab_nav == "🔍 Search & Edit":
             for c in DESIRED_ORDER
             if c not in excluded
             and c != "Pre-Prod No."
-            and c not in ["Mould Description", "Mould Number", "Drawing"]
+            and c not in ["Mould Description", "MouldNumber", "Drawing No."]
         ]
 
         for i, col in enumerate(remaining_fields):
@@ -675,7 +675,7 @@ if tab_nav == "🔍 Search & Edit":
 
         # Auto-query database matches based on description selection
         mould_number_val = str(row.get("Mould Number", "")).replace("nan", "")
-        drawing_val = str(row.get("Drawing", "")).replace("nan", "")
+        drawing_val = str(row.get("Drawing No.", "")).replace("nan", "")
 
         if (
             st.session_state.mould_descriptions
@@ -697,7 +697,7 @@ if tab_nav == "🔍 Search & Edit":
                 "MouldNumber", value=mould_number_val, key="mould_num_input_edit"
             )
         with mould_cols[2]:
-            updated_vals["Drawing"] = st.text_input(
+            updated_vals["Drawing No."] = st.text_input(
                 "Drawing No.", value=drawing_val, key="drawing_input_edit"
             )
 
