@@ -805,9 +805,9 @@ elif tab_nav == "➕ Add New Job":
             m_drw_default = "" if m_drw == "nan" else m_drw
 
     with m_cols[1]:
-        new_entry["Mould Number"] = st.text_input("Mould Number", value=m_num_default, key="mould_num_input_new")
+        new_entry["MouldNumber"] = st.text_input("MouldNumber", value=m_num_default, key="mould_num_input_new")
     with m_cols[2]:
-        new_entry["Drawing"] = st.text_input("Drawing No.", value=m_drw_default, key="drawing_input_new")
+        new_entry["Drawing No."] = st.text_input("Drawing No.", value=m_drw_default, key="drawing_input_new")
 
     if st.button("➕ Create Project", use_container_width=True, type="primary"):
         df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
