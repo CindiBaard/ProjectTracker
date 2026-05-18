@@ -759,7 +759,7 @@ elif tab_nav == "➕ Add New Job":
     new_cols = st.columns(3)
     new_entry = {"Pre-Prod No.": new_id}
     
-    mould_fields = ["Mould Description", "Mould Number", "Drawing"]
+    mould_fields = ["Mould Description", "MouldNumber", "Drawing No."]
     
     field_counter = 0
     for col in DESIRED_ORDER:
@@ -799,8 +799,8 @@ elif tab_nav == "➕ Add New Job":
     if selected_mould_desc and st.session_state.mould_df is not None:
         m_match = st.session_state.mould_df[st.session_state.mould_df["Mould Description"] == selected_mould_desc]
         if not m_match.empty:
-            m_num = str(m_match.iloc[0]["Mould Number"])
-            m_drw = str(m_match.iloc[0]["Drawing"])
+            m_num = str(m_match.iloc[0]["MouldNumber"])
+            m_drw = str(m_match.iloc[0]["Drawing No."])
             m_num_default = "" if m_num == "nan" else m_num
             m_drw_default = "" if m_drw == "nan" else m_drw
 
