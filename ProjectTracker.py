@@ -68,7 +68,11 @@ DESIRED_ORDER = [
     "Injection trial received",
     "Blowmould trial requested",
     "Blowmould trial received",
-    "Comments",
+    "Trial Comments",
+    "Mould Description",
+    "Mould Number",
+    "Drawing No."
+
 ]
 
 # --- 3. SESSION STATE INITIALIZATION ---
