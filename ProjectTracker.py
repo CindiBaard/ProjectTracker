@@ -401,7 +401,7 @@ def load_db_v2(tracker_path, digital_path, parquet_path):
         return combined
 
     except Exception as e:
-        st.error(f"Load Error: {e}")
+        st.error(f"Load Error. Use Cloud Sync: {e}")
         return pd.DataFrame()
 
 
