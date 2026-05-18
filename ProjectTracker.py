@@ -68,10 +68,8 @@ DESIRED_ORDER = [
     "Injection trial received",
     "Blowmould trial requested",
     "Blowmould trial received",
-    "Trial Comments",
-    "Mould Description",
-    "MouldNumber",
-    "Drawing No."
+    "Trial Comments"
+   
 
 ]
 
@@ -689,14 +687,14 @@ if tab_nav == "🔍 Search & Edit":
                 == selected_mould_desc
             ]
             if not m_match.empty:
-                m_num = str(m_match.iloc[0]["Mould Number"])
-                m_drw = str(m_match.iloc[0]["Drawing"])
+                m_num = str(m_match.iloc[0]["MouldNumber"])
+                m_drw = str(m_match.iloc[0]["Drawing No."])
                 mould_number_val = "" if m_num == "nan" else m_num
                 drawing_val = "" if m_drw == "nan" else m_drw
 
         with mould_cols[1]:
-            updated_vals["Mould Number"] = st.text_input(
-                "Mould Number", value=mould_number_val, key="mould_num_input_edit"
+            updated_vals["MouldNumber"] = st.text_input(
+                "MouldNumber", value=mould_number_val, key="mould_num_input_edit"
             )
         with mould_cols[2]:
             updated_vals["Drawing"] = st.text_input(
