@@ -132,7 +132,7 @@ def load_mould_assets_data():
         }
         mould_df = mould_df.rename(columns=rename_dict)
 
-        required_cols = ["Mould Description", "MouldNumber", "Drawing"]
+        required_cols = ["Mould Description", "MouldNumber", "Drawing No."]
         
         if not all(col in mould_df.columns for col in required_cols):
             st.sidebar.error(f"Mould Assets.csv parsed headers missing targets! Found: {list(mould_df.columns)[:5]}")
