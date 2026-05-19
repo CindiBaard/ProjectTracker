@@ -104,7 +104,6 @@ def load_mould_assets_data():
         with open(csv_filename, "r", encoding="utf-8-sig", errors="ignore") as f:
             lines = f.readlines()
             for idx, line in enumerate(lines):
-                # Look for columns ignoring spaces/case
                 cleaned_line = line.replace(" ", "").lower()
                 if "mouldnumber" in cleaned_line or "moulddescription" in cleaned_line:
                     target_row_index = idx
@@ -116,15 +115,11 @@ def load_mould_assets_data():
             for separator in [",", ";"]:
                 try:
                     df_temp = pd.read_csv(csv_filename, skiprows=skip, sep=separator, encoding="utf-8-sig")
-                    # Strict column cleanup
+                    
+                    # Deduplicate column names immediately on load to prevent DataFrame collisions
                     df_temp.columns = [str(c).strip() for c in df_temp.columns]
-                    
-                    # Normalize columns names to find matches
-                    col_map = {c.replace(" ", "").lower(): c for c in df_temp.columns}
-                    
-                    if "mouldnumber" in col_map or "moulddescription" in col_map:
-                        mould_df = df_temp
-                        break
+                    mould_df = df_temp
+                    break
                 except Exception:
                     continue
             if mould_df is not None:
@@ -134,49 +129,66 @@ def load_mould_assets_data():
             st.sidebar.error("Could not locate headers in Mould Assets.csv")
             return
 
-        # 2. Standardize Column Names
+        # 2. Standardize Column Names (safely tracking down indices instead of text names)
         final_cols = {}
-        for c in mould_df.columns:
+        for idx, c in enumerate(mould_df.columns):
             norm = c.replace(" ", "").lower()
-            if "mouldnumber" in norm:
+            if "mouldnumber" in norm and "MouldNumber" not in final_cols.values():
                 final_cols[c] = "MouldNumber"
-            elif "drawing" in norm:
+            elif "drawing" in norm and "Drawing No." not in final_cols.values():
                 final_cols[c] = "Drawing No."
-            elif "moulddescription" in norm or "description" in norm:
+            elif ("moulddescription" in norm or "description" in norm) and "Mould Description" not in final_cols.values():
                 final_cols[c] = "Mould Description"
                 
         mould_df = mould_df.rename(columns=final_cols)
 
-        # 3. Handle missing crucial columns safely
-        if "Mould Description" not in mould_df.columns:
+        # 3. Handle missing crucial columns safely & Force them to be Series (not DataFrames)
+        if "Mould Description" in mould_df.columns:
+            # If duplicates exist, select only the first instance as a Series
+            desc_data = mould_df["Mould Description"]
+            if isinstance(desc_data, pd.DataFrame):
+                desc_data = desc_data.iloc[:, 0]
+        else:
             possible_desc = [c for c in mould_df.columns if "desc" in c.lower()]
             if possible_desc:
-                mould_df = mould_df.rename(columns={possible_desc[0]: "Mould Description"})
+                desc_data = mould_df[possible_desc[0]]
+                if isinstance(desc_data, pd.DataFrame):
+                    desc_data = desc_data.iloc[:, 0]
             elif "MouldNumber" in mould_df.columns:
-                mould_df["Mould Description"] = mould_df["MouldNumber"]
+                desc_data = mould_df["MouldNumber"]
+                if isinstance(desc_data, pd.DataFrame):
+                    desc_data = desc_data.iloc[:, 0]
             else:
-                mould_df["Mould Description"] = mould_df.iloc[:, 0]
+                desc_data = mould_df.iloc[:, 0]
 
-        if "MouldNumber" not in mould_df.columns:
-            mould_df["MouldNumber"] = ""
-        if "Drawing No." not in mould_df.columns:
-            mould_df["Drawing No."] = ""
+        # Extract singular series for other fields too
+        num_data = mould_df["MouldNumber"] if "MouldNumber" in mould_df.columns else ""
+        if isinstance(num_data, pd.DataFrame): num_data = num_data.iloc[:, 0]
+            
+        draw_data = mould_df["Drawing No."] if "Drawing No." in mould_df.columns else ""
+        if isinstance(draw_data, pd.DataFrame): draw_data = draw_data.iloc[:, 0]
 
-        # 4. Deep Clean Data values to guarantee matching works
-        for col in ["Mould Description", "MouldNumber", "Drawing No."]:
-            if col in mould_df.columns:
-                mould_df[col] = mould_df[col].astype(str).str.strip().replace("nan", "")
+        # 4. Build a completely fresh, isolated DataFrame to break any weird reference chains
+        clean_df = pd.DataFrame({
+            "Mould Description": desc_data,
+            "MouldNumber": num_data,
+            "Drawing No.": draw_data
+        })
+
+        # 5. Safe Element-wise string cleaning 
+        for col in clean_df.columns:
+            clean_df[col] = clean_df[col].astype(str).str.strip().replace("nan", "")
 
         # Exclude completely blank rows
-        mould_df = mould_df[mould_df["Mould Description"].astype(str).str.strip() != ""]
+        clean_df = clean_df[clean_df["Mould Description"].str.strip() != ""]
         
-        # Force conversion to a clean string series before modifying string mutations
-        desc_series = mould_df["Mould Description"].astype(str)
-        mould_df["_match_key"] = desc_series.str.replace(" ", "").str.lower()
+        # Build the exact matching key
+        clean_df["_match_key"] = clean_df["Mould Description"].str.replace(" ", "").str.lower()
 
-        st.session_state.mould_df = mould_df
+        # Update Session States securely
+        st.session_state.mould_df = clean_df
         st.session_state.mould_descriptions = sorted(
-            [d for d in mould_df["Mould Description"].unique() if d.strip()]
+            [str(d) for d in clean_df["Mould Description"].unique() if str(d).strip()]
         )
 
     except Exception as e:
