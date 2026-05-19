@@ -99,10 +99,12 @@ def load_mould_assets_data():
 
     try:
         mould_df = None
+        # Loop through common structural formats
         for skip in [2, 0, 1]:
             try:
                 df_temp = pd.read_csv(csv_filename, skiprows=skip, encoding="utf-8-sig")
-                if "MouldNumber" in df_temp.columns or "Mould Description" in df_temp.columns:
+                # Look for either variation of the identifier column
+                if "MouldNumber" in df_temp.columns or "Mould Number" in df_temp.columns or "Mould Description" in df_temp.columns:
                     mould_df = df_temp
                     break
             except Exception:
@@ -112,7 +114,7 @@ def load_mould_assets_data():
             for skip in [2, 0, 1]:
                 try:
                     df_temp = pd.read_csv(csv_filename, sep=";", skiprows=skip, encoding="utf-8-sig")
-                    if "MouldNumber" in df_temp.columns or "Mould Description" in df_temp.columns:
+                    if "MouldNumber" in df_temp.columns or "Mould Number" in df_temp.columns or "Mould Description" in df_temp.columns:
                         mould_df = df_temp
                         break
                 except Exception:
@@ -122,23 +124,34 @@ def load_mould_assets_data():
             st.sidebar.error("Could not find true data headers inside Mould Assets.csv")
             return
 
+        # Clean whitespace and strip quotes out of columns
         mould_df.columns = [str(c).strip().replace('"', '').replace("'", "") for c in mould_df.columns]
 
+        # Standardize target header lookups map
         rename_dict = {
             "MouldNumber": "Mould Number",
+            "Mould Number": "Mould Number",
             "Drawing No.": "Drawing No."
         }
         mould_df = mould_df.rename(columns=rename_dict)
 
-        required_cols = ["Mould Description", "MouldNumber", "Drawing No."]
-        
-        if not all(col in mould_df.columns for col in required_cols):
-            st.sidebar.error(f"Mould Assets.csv parsed headers missing targets! Found: {list(mould_df.columns)[:5]}")
-            return
+        # Fail-safe handling if columns don't exist in this specific asset layout
+        if "Mould Description" not in mould_df.columns:
+            # Fallback mapping: use Mould Number as descriptive string if distinct description column is missing
+            if "Mould Number" in mould_df.columns:
+                mould_df["Mould Description"] = mould_df["Mould Number"]
+            else:
+                mould_df["Mould Description"] = "Unknown Mould Asset"
+
+        if "Drawing No." not in mould_df.columns:
+            mould_df["Drawing No."] = ""
+
+        required_cols = ["Mould Description", "Mould Number", "Drawing No."]
 
         mould_df = mould_df.dropna(subset=["Mould Description"])
         for col in required_cols:
-            mould_df[col] = mould_df[col].astype(str).str.strip().replace("nan", "")
+            if col in mould_df.columns:
+                mould_df[col] = mould_df[col].astype(str).str.strip().replace("nan", "")
 
         mould_df = mould_df[mould_df["Mould Description"] != ""]
 
@@ -149,7 +162,6 @@ def load_mould_assets_data():
 
     except Exception as e:
         st.sidebar.error(f"Failed parsing Mould Assets.csv system: {e}")
-
 
 def clean_column_names(df):
     df.columns = [
@@ -645,6 +657,7 @@ if tab_nav == "🔍 Search & Edit":
                     )
 
         # --- SEARCHABLE MOULD ASSETS ROW (SEARCH & EDIT) ---
+        # --- SEARCHABLE MOULD ASSETS ROW (SEARCH & EDIT) ---
         st.divider()
         st.markdown("### 🏗️ Mould Information")
         mould_cols = st.columns(3)
@@ -657,7 +670,6 @@ if tab_nav == "🔍 Search & Edit":
 
         with mould_cols[0]:
             if st.session_state.mould_descriptions:
-                # Built-in search functionality via autocomplete select box
                 selected_mould_desc = st.selectbox(
                     "Mould Description",
                     mould_opts,
@@ -683,18 +695,18 @@ if tab_nav == "🔍 Search & Edit":
             and st.session_state.mould_df is not None
         ):
             m_match = st.session_state.mould_df[
-                st.session_state.mould_df["Mould Description"]
-                == selected_mould_desc
+                st.session_state.mould_df["Mould Description"] == selected_mould_desc
             ]
             if not m_match.empty:
-                m_num = str(m_match.iloc[0]["MouldNumber"])
-                m_drw = str(m_match.iloc[0]["Drawing No."])
+                # FIXED: Standardized dictionary lookups to use "Mould Number" (with space)
+                m_num = str(m_match.iloc[0].get("Mould Number", m_match.iloc[0].get("MouldNumber", "")))
+                m_drw = str(m_match.iloc[0].get("Drawing No.", ""))
                 mould_number_val = "" if m_num == "nan" else m_num
                 drawing_val = "" if m_drw == "nan" else m_drw
 
         with mould_cols[1]:
-            updated_vals["MouldNumber"] = st.text_input(
-                "MouldNumber", value=mould_number_val, key="mould_num_input_edit"
+            updated_vals["Mould Number"] = st.text_input(
+                "Mould Number", value=mould_number_val, key="mould_num_input_edit"
             )
         with mould_cols[2]:
             updated_vals["Drawing No."] = st.text_input(
