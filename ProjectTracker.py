@@ -168,10 +168,11 @@ def load_mould_assets_data():
                 mould_df[col] = mould_df[col].astype(str).str.strip().replace("nan", "")
 
         # Exclude completely blank rows
-        mould_df = mould_df[mould_df["Mould Description"] != ""]
+        mould_df = mould_df[mould_df["Mould Description"].astype(str).str.strip() != ""]
         
-        # Create a hidden matching key that ignores case and whitespace
-        mould_df["_match_key"] = mould_df["Mould Description"].str.replace(" ", "").str.lower()
+        # Force conversion to a clean string series before modifying string mutations
+        desc_series = mould_df["Mould Description"].astype(str)
+        mould_df["_match_key"] = desc_series.str.replace(" ", "").str.lower()
 
         st.session_state.mould_df = mould_df
         st.session_state.mould_descriptions = sorted(
@@ -180,7 +181,7 @@ def load_mould_assets_data():
 
     except Exception as e:
         st.sidebar.error(f"Failed parsing Mould Assets.csv system: {e}")
-
+        
 def clean_column_names(df):
     df.columns = [
         str(c).replace("\ufeff", "").replace("ï»¿", "").strip()
@@ -818,8 +819,7 @@ elif tab_nav == "➕ Add New Job":
     m_num_default = ""
     m_drw_default = ""
     if selected_mould_desc and st.session_state.mould_df is not None:
-        lookup_key = selected_mould_desc.replace(" ", "").lower()
-        m_match = st.session_state.mould_df[st.session_state.mould_df["_match_key"] == lookup_key]
+        m_match = st.session_state.mould_df[st.session_state.mould_df["Mould Description"] == selected_mould_desc]
         if not m_match.empty:
             m_num = str(m_match.iloc[0].get("MouldNumber", ""))
             m_drw = str(m_match.iloc[0].get("Drawing No.", ""))
