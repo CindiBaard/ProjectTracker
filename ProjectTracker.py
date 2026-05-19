@@ -903,4 +903,3 @@ elif tab_nav == "🌐 Cloud Sync":
         st.info(
             "No local data found. Click 'Fetch from Cloud' to download data."
         )
-``` Use the button **"🔄 Rebuild Local DB"** inside your Streamlit sidebar right after replacing this code. This forces the file parser to rebuild cache states using the new row detection logic!
