@@ -100,25 +100,29 @@ def load_mould_assets_data():
         mould_df = None
         target_row_index = None
         
-        # Open file as plain text first to find exactly where headers sit
+        # 1. Clean read and search for header row
         with open(csv_filename, "r", encoding="utf-8-sig", errors="ignore") as f:
             lines = f.readlines()
             for idx, line in enumerate(lines):
-                if "MouldNumber" in line or "Mould Number" in line:
+                # Look for columns ignoring spaces/case
+                cleaned_line = line.replace(" ", "").lower()
+                if "mouldnumber" in cleaned_line or "moulddescription" in cleaned_line:
                     target_row_index = idx
                     break
         
-        # If text matching fails, default to trying different skips
         skips_to_try = [target_row_index] if target_row_index is not None else [3, 4, 2, 0]
         
         for skip in skips_to_try:
             for separator in [",", ";"]:
                 try:
                     df_temp = pd.read_csv(csv_filename, skiprows=skip, sep=separator, encoding="utf-8-sig")
-                    # Clean up header white-spacing
+                    # Strict column cleanup
                     df_temp.columns = [str(c).strip() for c in df_temp.columns]
                     
-                    if "MouldNumber" in df_temp.columns or "Mould Number" in df_temp.columns:
+                    # Normalize columns names to find matches
+                    col_map = {c.replace(" ", "").lower(): c for c in df_temp.columns}
+                    
+                    if "mouldnumber" in col_map or "moulddescription" in col_map:
                         mould_df = df_temp
                         break
                 except Exception:
@@ -127,32 +131,47 @@ def load_mould_assets_data():
                 break
 
         if mould_df is None:
-            st.sidebar.error("Could not find data headers ('MouldNumber') inside Mould Assets.csv")
+            st.sidebar.error("Could not locate headers in Mould Assets.csv")
             return
 
-        # Explicitly enforce clean mappings
-        rename_dict = {
-            "Mould Number": "MouldNumber",
-            "MouldNumber": "MouldNumber",
-            "Drawing No.": "Drawing No."
-        }
-        mould_df = mould_df.rename(columns=rename_dict)
+        # 2. Standardize Column Names
+        final_cols = {}
+        for c in mould_df.columns:
+            norm = c.replace(" ", "").lower()
+            if "mouldnumber" in norm:
+                final_cols[c] = "MouldNumber"
+            elif "drawing" in norm:
+                final_cols[c] = "Drawing No."
+            elif "moulddescription" in norm or "description" in norm:
+                final_cols[c] = "Mould Description"
+                
+        mould_df = mould_df.rename(columns=final_cols)
 
+        # 3. Handle missing crucial columns safely
         if "Mould Description" not in mould_df.columns:
-            mould_df["Mould Description"] = mould_df["MouldNumber"]
+            possible_desc = [c for c in mould_df.columns if "desc" in c.lower()]
+            if possible_desc:
+                mould_df = mould_df.rename(columns={possible_desc[0]: "Mould Description"})
+            elif "MouldNumber" in mould_df.columns:
+                mould_df["Mould Description"] = mould_df["MouldNumber"]
+            else:
+                mould_df["Mould Description"] = mould_df.iloc[:, 0]
 
+        if "MouldNumber" not in mould_df.columns:
+            mould_df["MouldNumber"] = ""
         if "Drawing No." not in mould_df.columns:
             mould_df["Drawing No."] = ""
 
-        # Normalize string details
-        required_cols = ["Mould Description", "MouldNumber", "Drawing No."]
-        mould_df = mould_df.dropna(subset=["Mould Description"])
-        
-        for col in required_cols:
+        # 4. Deep Clean Data values to guarantee matching works
+        for col in ["Mould Description", "MouldNumber", "Drawing No."]:
             if col in mould_df.columns:
                 mould_df[col] = mould_df[col].astype(str).str.strip().replace("nan", "")
 
+        # Exclude completely blank rows
         mould_df = mould_df[mould_df["Mould Description"] != ""]
+        
+        # Create a hidden matching key that ignores case and whitespace
+        mould_df["_match_key"] = mould_df["Mould Description"].str.replace(" ", "").str.lower()
 
         st.session_state.mould_df = mould_df
         st.session_state.mould_descriptions = sorted(
@@ -799,7 +818,8 @@ elif tab_nav == "➕ Add New Job":
     m_num_default = ""
     m_drw_default = ""
     if selected_mould_desc and st.session_state.mould_df is not None:
-        m_match = st.session_state.mould_df[st.session_state.mould_df["Mould Description"] == selected_mould_desc]
+        lookup_key = selected_mould_desc.replace(" ", "").lower()
+        m_match = st.session_state.mould_df[st.session_state.mould_df["_match_key"] == lookup_key]
         if not m_match.empty:
             m_num = str(m_match.iloc[0].get("MouldNumber", ""))
             m_drw = str(m_match.iloc[0].get("Drawing No.", ""))
