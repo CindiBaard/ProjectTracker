@@ -886,14 +886,23 @@ elif tab_nav == "📊 Detailed Age Analysis":
 # --- TAB 4: TRIAL TRENDS ---
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("Trial Turnaround Performance")
+    
     trial_df = load_trial_data()
+    
     if not trial_df.empty:
-        st.metric("Avg Turnaround", f"{trial_df['Days_Taken'].mean():.1f} Days")
-        fig, ax = plt.subplots(figsize=(10, 4))
-        ax.plot(trial_df.index, trial_df["Days_Taken"], marker="o", color="#2ca02c")
-        st.pyplot(fig)
+        # Check if the column exists and has data before calculating the average
+        if 'Days_Taken' in trial_df.columns and not trial_df['Days_Taken'].dropna().empty:
+            avg_days = trial_df['Days_Taken'].mean()
+            avg_days_str = f"{avg_days:.1f} Days" if not pd.isna(avg_days) else "N/A"
+        else:
+            avg_days_str = "N/A"
+            
+        # Put your existing metrics layout / chart code here!
+        # Make sure to pass avg_days_str to your metric component like this:
+        st.metric("Avg Turnaround", avg_days_str)
+        
     else:
-        st.info("No trial data found.")
+        st.info("No trial data available to display trends.")
 
 # --- TAB 5: CLOUD SYNC ---
 elif tab_nav == "🌐 Cloud Sync":
