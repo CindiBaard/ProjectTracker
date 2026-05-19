@@ -69,8 +69,6 @@ DESIRED_ORDER = [
     "Blowmould trial requested",
     "Blowmould trial received",
     "Trial Comments"
-   
-
 ]
 
 # --- 3. SESSION STATE INITIALIZATION ---
@@ -99,11 +97,9 @@ def load_mould_assets_data():
 
     try:
         mould_df = None
-        # Loop through common structural formats
         for skip in [2, 0, 1]:
             try:
                 df_temp = pd.read_csv(csv_filename, skiprows=skip, encoding="utf-8-sig")
-                # Look for either variation of the identifier column
                 if "MouldNumber" in df_temp.columns or "Mould Number" in df_temp.columns or "Mould Description" in df_temp.columns:
                     mould_df = df_temp
                     break
@@ -124,10 +120,8 @@ def load_mould_assets_data():
             st.sidebar.error("Could not find true data headers inside Mould Assets.csv")
             return
 
-        # Clean whitespace and strip quotes out of columns
         mould_df.columns = [str(c).strip().replace('"', '').replace("'", "") for c in mould_df.columns]
 
-        # Standardize target header lookups map
         rename_dict = {
             "MouldNumber": "Mould Number",
             "Mould Number": "Mould Number",
@@ -135,9 +129,7 @@ def load_mould_assets_data():
         }
         mould_df = mould_df.rename(columns=rename_dict)
 
-        # Fail-safe handling if columns don't exist in this specific asset layout
         if "Mould Description" not in mould_df.columns:
-            # Fallback mapping: use Mould Number as descriptive string if distinct description column is missing
             if "Mould Number" in mould_df.columns:
                 mould_df["Mould Description"] = mould_df["Mould Number"]
             else:
@@ -349,11 +341,11 @@ def smart_read(path):
         return pd.DataFrame()
     try:
         df = pd.read_csv(
-            path, sep=",", on_bad_lines="skip", encoding="utf-8-sig"
+            path, sep=",", on_bad_lines="skip", encoding="utf-8-sig", low_memory=False
         )
         if len(df.columns) <= 1:
             df = pd.read_csv(
-                path, sep=";", on_bad_lines="skip", encoding="utf-8-sig"
+                path, sep=";", on_bad_lines="skip", encoding="utf-8-sig", low_memory=False
             )
 
         df = df.replace("#REF!", np.nan)
@@ -579,7 +571,6 @@ if tab_nav == "🔍 Search & Edit":
 
         display_combination_table("edit")
 
-        # Form fields updated outside the submission loop to maintain selection change reactivity
         st.subheader(f"Editing: {search_no}")
         updated_vals = {}
         sel_combo = st.session_state.get("selected_combo", {})
@@ -617,7 +608,7 @@ if tab_nav == "🔍 Search & Edit":
             for c in DESIRED_ORDER
             if c not in excluded
             and c != "Pre-Prod No."
-            and c not in ["Mould Description", "MouldNumber", "Drawing No."]
+            and c not in ["Mould Description", "Mould Number", "Drawing No."]
         ]
 
         for i, col in enumerate(remaining_fields):
@@ -657,7 +648,6 @@ if tab_nav == "🔍 Search & Edit":
                     )
 
         # --- SEARCHABLE MOULD ASSETS ROW (SEARCH & EDIT) ---
-        # --- SEARCHABLE MOULD ASSETS ROW (SEARCH & EDIT) ---
         st.divider()
         st.markdown("### 🏗️ Mould Information")
         mould_cols = st.columns(3)
@@ -685,7 +675,6 @@ if tab_nav == "🔍 Search & Edit":
                 )
                 updated_vals["Mould Description"] = selected_mould_desc
 
-        # Auto-query database matches based on description selection
         mould_number_val = str(row.get("Mould Number", "")).replace("nan", "")
         drawing_val = str(row.get("Drawing No.", "")).replace("nan", "")
 
@@ -698,8 +687,8 @@ if tab_nav == "🔍 Search & Edit":
                 st.session_state.mould_df["Mould Description"] == selected_mould_desc
             ]
             if not m_match.empty:
-                # FIXED: Standardized dictionary lookups to use "Mould Number" (with space)
-                m_num = str(m_match.iloc[0].get("Mould Number", m_match.iloc[0].get("MouldNumber", "")))
+                # FIXED: Pull key using space standard "Mould Number"
+                m_num = str(m_match.iloc[0].get("Mould Number", ""))
                 m_drw = str(m_match.iloc[0].get("Drawing No.", ""))
                 mould_number_val = "" if m_num == "nan" else m_num
                 drawing_val = "" if m_drw == "nan" else m_drw
@@ -771,7 +760,7 @@ elif tab_nav == "➕ Add New Job":
     new_cols = st.columns(3)
     new_entry = {"Pre-Prod No.": new_id}
     
-    mould_fields = ["Mould Description", "MouldNumber", "Drawing No."]
+    mould_fields = ["Mould Description", "Mould Number", "Drawing No."]
     
     field_counter = 0
     for col in DESIRED_ORDER:
@@ -811,13 +800,14 @@ elif tab_nav == "➕ Add New Job":
     if selected_mould_desc and st.session_state.mould_df is not None:
         m_match = st.session_state.mould_df[st.session_state.mould_df["Mould Description"] == selected_mould_desc]
         if not m_match.empty:
-            m_num = str(m_match.iloc[0]["MouldNumber"])
-            m_drw = str(m_match.iloc[0]["Drawing No."])
+            # FIXED: Pulled dictionary mapping standard "Mould Number"
+            m_num = str(m_match.iloc[0].get("Mould Number", ""))
+            m_drw = str(m_match.iloc[0].get("Drawing No.", ""))
             m_num_default = "" if m_num == "nan" else m_num
             m_drw_default = "" if m_drw == "nan" else m_drw
 
     with m_cols[1]:
-        new_entry["MouldNumber"] = st.text_input("MouldNumber", value=m_num_default, key="mould_num_input_new")
+        new_entry["Mould Number"] = st.text_input("Mould Number", value=m_num_default, key="mould_num_input_new")
     with m_cols[2]:
         new_entry["Drawing No."] = st.text_input("Drawing No.", value=m_drw_default, key="drawing_input_new")
 
