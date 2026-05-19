@@ -100,7 +100,7 @@ def load_mould_assets_data():
         mould_df = None
         target_row_index = None
         
-        # 1. Clean read and search for header row
+        # 1. Clean read and search for header row location
         with open(csv_filename, "r", encoding="utf-8-sig", errors="ignore") as f:
             lines = f.readlines()
             for idx, line in enumerate(lines):
@@ -115,8 +115,6 @@ def load_mould_assets_data():
             for separator in [",", ";"]:
                 try:
                     df_temp = pd.read_csv(csv_filename, skiprows=skip, sep=separator, encoding="utf-8-sig")
-                    
-                    # Deduplicate column names immediately on load to prevent DataFrame collisions
                     df_temp.columns = [str(c).strip() for c in df_temp.columns]
                     mould_df = df_temp
                     break
@@ -129,63 +127,51 @@ def load_mould_assets_data():
             st.sidebar.error("Could not locate headers in Mould Assets.csv")
             return
 
-        # 2. Standardize Column Names (safely tracking down indices instead of text names)
-        final_cols = {}
-        for idx, c in enumerate(mould_df.columns):
-            norm = c.replace(" ", "").lower()
-            if "mouldnumber" in norm and "MouldNumber" not in final_cols.values():
-                final_cols[c] = "MouldNumber"
-            elif "drawing" in norm and "Drawing No." not in final_cols.values():
-                final_cols[c] = "Drawing No."
-            elif ("moulddescription" in norm or "description" in norm) and "Mould Description" not in final_cols.values():
-                final_cols[c] = "Mould Description"
-                
-        mould_df = mould_df.rename(columns=final_cols)
+        # 2. Map columns using safe case/space-insensitive normalization
+        desc_data = None
+        num_data = None
+        draw_data = None
 
-        # 3. Handle missing crucial columns safely & Force them to be Series (not DataFrames)
-        if "Mould Description" in mould_df.columns:
-            # If duplicates exist, select only the first instance as a Series
-            desc_data = mould_df["Mould Description"]
-            if isinstance(desc_data, pd.DataFrame):
-                desc_data = desc_data.iloc[:, 0]
-        else:
-            possible_desc = [c for c in mould_df.columns if "desc" in c.lower()]
-            if possible_desc:
-                desc_data = mould_df[possible_desc[0]]
-                if isinstance(desc_data, pd.DataFrame):
-                    desc_data = desc_data.iloc[:, 0]
-            elif "MouldNumber" in mould_df.columns:
-                desc_data = mould_df["MouldNumber"]
-                if isinstance(desc_data, pd.DataFrame):
-                    desc_data = desc_data.iloc[:, 0]
-            else:
-                desc_data = mould_df.iloc[:, 0]
-
-        # Extract singular series for other fields too
-        num_data = mould_df["MouldNumber"] if "MouldNumber" in mould_df.columns else ""
-        if isinstance(num_data, pd.DataFrame): num_data = num_data.iloc[:, 0]
+        for col in mould_df.columns:
+            norm = col.replace(" ", "").replace("_", "").replace(".", "").lower()
             
-        draw_data = mould_df["Drawing No."] if "Drawing No." in mould_df.columns else ""
-        if isinstance(draw_data, pd.DataFrame): draw_data = draw_data.iloc[:, 0]
+            # Extract out the data series safely, catching any duplicated columns
+            if "moulddescription" in norm or "description" in norm:
+                if desc_data is None:
+                    desc_data = mould_df[col].iloc[:, 0] if isinstance(mould_df[col], pd.DataFrame) else mould_df[col]
+            elif "mouldnumber" in norm or "mouldno" in norm:
+                if num_data is None:
+                    num_data = mould_df[col].iloc[:, 0] if isinstance(mould_df[col], pd.DataFrame) else mould_df[col]
+            elif "drawing" in norm or "drawno" in norm:
+                if draw_data is None:
+                    draw_data = mould_df[col].iloc[:, 0] if isinstance(mould_df[col], pd.DataFrame) else mould_df[col]
 
-        # 4. Build a completely fresh, isolated DataFrame to break any weird reference chains
+        # Fallbacks if columns weren't hit by exact string names
+        if desc_data is None:
+            desc_data = mould_df.iloc[:, 0]
+        if num_data is None:
+            num_data = pd.Series([""] * len(mould_df))
+        if draw_data is None:
+            draw_data = pd.Series([""] * len(mould_df))
+
+        # 3. Rebuild an isolated, clean dataframe
         clean_df = pd.DataFrame({
             "Mould Description": desc_data,
             "MouldNumber": num_data,
             "Drawing No.": draw_data
         })
 
-        # 5. Safe Element-wise string cleaning 
+        # 4. Enforce clean text formatting across all values
         for col in clean_df.columns:
             clean_df[col] = clean_df[col].astype(str).str.strip().replace("nan", "")
 
-        # Exclude completely blank rows
-        clean_df = clean_df[clean_df["Mould Description"].str.strip() != ""]
+        # Remove rows missing descriptions
+        clean_df = clean_df[clean_df["Mould Description"] != ""]
         
-        # Build the exact matching key
+        # Build strict lookup keys
         clean_df["_match_key"] = clean_df["Mould Description"].str.replace(" ", "").str.lower()
 
-        # Update Session States securely
+        # Save to Streamlit state cache variables
         st.session_state.mould_df = clean_df
         st.session_state.mould_descriptions = sorted(
             [str(d) for d in clean_df["Mould Description"].unique() if str(d).strip()]
@@ -193,7 +179,7 @@ def load_mould_assets_data():
 
     except Exception as e:
         st.sidebar.error(f"Failed parsing Mould Assets.csv system: {e}")
-        
+
 def clean_column_names(df):
     df.columns = [
         str(c).replace("\ufeff", "").replace("ï»¿", "").strip()
@@ -697,25 +683,6 @@ if tab_nav == "🔍 Search & Edit":
             mould_opts.index(existing_desc) if existing_desc in mould_opts else 0
         )
 
-        mould_number_val = str(row.get("MouldNumber", "")).replace("nan", "")
-        drawing_val = str(row.get("Drawing No.", "")).replace("nan", "")
-
-        selected_mould_desc = st.session_state.get("mould_desc_select_edit", existing_desc)
-
-        if (
-            st.session_state.mould_descriptions
-            and selected_mould_desc
-            and st.session_state.mould_df is not None
-        ):
-            m_match = st.session_state.mould_df[
-                st.session_state.mould_df["Mould Description"] == selected_mould_desc
-            ]
-            if not m_match.empty:
-                m_num = str(m_match.iloc[0].get("MouldNumber", ""))
-                m_drw = str(m_match.iloc[0].get("Drawing No.", ""))
-                mould_number_val = "" if m_num == "nan" else m_num
-                drawing_val = "" if m_drw == "nan" else m_drw
-
         with mould_cols[0]:
             if st.session_state.mould_descriptions:
                 selected_mould_desc = st.selectbox(
@@ -732,6 +699,21 @@ if tab_nav == "🔍 Search & Edit":
                     key="mould_desc_text_edit",
                 )
                 updated_vals["Mould Description"] = selected_mould_desc
+
+        # Auto-lookup matching row logic
+        mould_number_val = str(row.get("MouldNumber", "")).replace("nan", "")
+        drawing_val = str(row.get("Drawing No.", "")).replace("nan", "")
+
+        if selected_mould_desc and st.session_state.mould_df is not None:
+            lookup_key = selected_mould_desc.replace(" ", "").lower()
+            df_lookup = st.session_state.mould_df
+            match_rows = df_lookup[df_lookup["_match_key"] == lookup_key]
+            
+            if not match_rows.empty:
+                m_num = str(match_rows.iloc[0].get("MouldNumber", ""))
+                m_drw = str(match_rows.iloc[0].get("Drawing No.", ""))
+                mould_number_val = "" if m_num == "nan" else m_num
+                drawing_val = "" if m_drw == "nan" else m_drw
 
         with mould_cols[1]:
             updated_vals["MouldNumber"] = st.text_input(
@@ -821,23 +803,13 @@ elif tab_nav == "➕ Add New Job":
         field_counter += 1
 
     # --- SEARCHABLE MOULD ASSETS ROW (ADD NEW JOB) ---
+    # --- SEARCHABLE MOULD ASSETS ROW (ADD NEW JOB) ---
     st.divider()
     st.markdown("### 🏗️ Mould Information")
     m_cols = st.columns(3)
     
     mould_opts = [""] + st.session_state.mould_descriptions
-    selected_mould_desc = st.session_state.get("mould_desc_select_new", "")
-
-    m_num_default = ""
-    m_drw_default = ""
-    if selected_mould_desc and st.session_state.mould_df is not None:
-        m_match = st.session_state.mould_df[st.session_state.mould_df["Mould Description"] == selected_mould_desc]
-        if not m_match.empty:
-            m_num = str(m_match.iloc[0].get("MouldNumber", ""))
-            m_drw = str(m_match.iloc[0].get("Drawing No.", ""))
-            m_num_default = "" if m_num == "nan" else m_num
-            m_drw_default = "" if m_drw == "nan" else m_drw
-
+    
     with m_cols[0]:
         selected_mould_desc = st.selectbox(
             "Mould Description",
@@ -846,6 +818,26 @@ elif tab_nav == "➕ Add New Job":
             key="mould_desc_select_new"
         )
         new_entry["Mould Description"] = selected_mould_desc
+
+    # Auto-lookup matching row logic for New Entries
+    m_num_default = ""
+    m_drw_default = ""
+    
+    if selected_mould_desc and st.session_state.mould_df is not None:
+        lookup_key = selected_mould_desc.replace(" ", "").lower()
+        df_lookup = st.session_state.mould_df
+        match_rows = df_lookup[df_lookup["_match_key"] == lookup_key]
+        
+        if not match_rows.empty:
+            m_num = str(match_rows.iloc[0].get("MouldNumber", ""))
+            m_drw = str(match_rows.iloc[0].get("Drawing No.", ""))
+            m_num_default = "" if m_num == "nan" else m_num
+            m_drw_default = "" if m_drw == "nan" else m_drw
+
+    with m_cols[1]:
+        new_entry["MouldNumber"] = st.text_input("Mould Number", value=m_num_default, key="mould_num_input_new")
+    with m_cols[2]:
+        new_entry["Drawing No."] = st.text_input("Drawing No.", value=m_drw_default, key="drawing_input_new")
 
     with m_cols[1]:
         new_entry["MouldNumber"] = st.text_input("Mould Number", value=m_num_default, key="mould_num_input_new")
