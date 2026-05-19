@@ -672,7 +672,7 @@ if tab_nav == "🔍 Search & Edit":
                         col, value=cur_val, key=f"txt_{col}"
                     )
 
-        # --- SEARCHABLE MOULD ASSETS ROW (SEARCH & EDIT) ---
+
         # --- SEARCHABLE MOULD ASSETS ROW (SEARCH & EDIT) ---
         st.divider()
         st.markdown("### 🏗️ Mould Information")
@@ -884,25 +884,46 @@ elif tab_nav == "📊 Detailed Age Analysis":
         )
 
 # --- TAB 4: TRIAL TRENDS ---
+# --- TAB 4: TRIAL TRENDS ---
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("Trial Turnaround Performance")
     
     trial_df = load_trial_data()
     
     if not trial_df.empty:
-        # Check if the column exists and has data before calculating the average
+        # 1. Clean up column names to avoid hidden whitespace issues
+        trial_df.columns = [str(c).strip() for c in trial_df.columns]
+        
+        # 2. Dynamic Calculation Fallback: If 'Days_Taken' isn't in your CSV, calculate it from dates
+        if 'Days_Taken' not in trial_df.columns and 'Trial Date' in trial_df.columns and 'Request Date' in trial_df.columns:
+            try:
+                t_date = pd.to_datetime(trial_df['Trial Date'], dayfirst=True, errors='coerce')
+                r_date = pd.to_datetime(trial_df['Request Date'], dayfirst=True, errors='coerce')
+                trial_df['Days_Taken'] = (t_date - r_date).dt.days
+            except Exception as e:
+                st.error(f"Could not calculate turnaround days: {e}")
+
+        # 3. Force conversion to numeric to ensure .mean() doesn't fail on mixed data types
+        if 'Days_Taken' in trial_df.columns:
+            trial_df['Days_Taken'] = pd.to_numeric(trial_df['Days_Taken'], errors='coerce')
+
+        # 4. Safe calculation of the average metrics
         if 'Days_Taken' in trial_df.columns and not trial_df['Days_Taken'].dropna().empty:
             avg_days = trial_df['Days_Taken'].mean()
             avg_days_str = f"{avg_days:.1f} Days" if not pd.isna(avg_days) else "N/A"
         else:
             avg_days_str = "N/A"
             
-        # Put your existing metrics layout / chart code here!
-        # Make sure to pass avg_days_str to your metric component like this:
-        st.metric("Avg Turnaround", avg_days_str)
+        # 5. Displaying Metrics & Visualizations cleanly
+        st.metric(label="Average Turnaround Time", value=avg_days_str)
         
+        # Simple rendering fallback for your charts
+        if 'Days_Taken' in trial_df.columns:
+            st.markdown("### Turnaround Distribution")
+            st.bar_chart(trial_df['Days_Taken'].value_counts())
+            st.dataframe(trial_df, use_container_width=True)
     else:
-        st.info("No trial data available to display trends.")
+        st.info("No trial data available. Check if Combined_Weekly_Trials_Weeks_3_12_2026.csv exists.")
 
 # --- TAB 5: CLOUD SYNC ---
 elif tab_nav == "🌐 Cloud Sync":
