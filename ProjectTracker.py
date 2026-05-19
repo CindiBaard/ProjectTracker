@@ -122,23 +122,24 @@ def load_mould_assets_data():
 
         mould_df.columns = [str(c).strip().replace('"', '').replace("'", "") for c in mould_df.columns]
 
+        # FIXED: Standardizing column names to single-word "MouldNumber" matching Google Sheets
         rename_dict = {
-            "MouldNumber": "Mould Number",
-            "Mould Number": "Mould Number",
+            "Mould Number": "MouldNumber",
+            "MouldNumber": "MouldNumber",
             "Drawing No.": "Drawing No."
         }
         mould_df = mould_df.rename(columns=rename_dict)
 
         if "Mould Description" not in mould_df.columns:
-            if "Mould Number" in mould_df.columns:
-                mould_df["Mould Description"] = mould_df["Mould Number"]
+            if "MouldNumber" in mould_df.columns:
+                mould_df["Mould Description"] = mould_df["MouldNumber"]
             else:
                 mould_df["Mould Description"] = "Unknown Mould Asset"
 
         if "Drawing No." not in mould_df.columns:
             mould_df["Drawing No."] = ""
 
-        required_cols = ["Mould Description", "Mould Number", "Drawing No."]
+        required_cols = ["Mould Description", "MouldNumber", "Drawing No."]
 
         mould_df = mould_df.dropna(subset=["Mould Description"])
         for col in required_cols:
@@ -608,7 +609,7 @@ if tab_nav == "🔍 Search & Edit":
             for c in DESIRED_ORDER
             if c not in excluded
             and c != "Pre-Prod No."
-            and c not in ["Mould Description", "Mould Number", "Drawing No."]
+            and c not in ["Mould Description", "MouldNumber", "Drawing No."]
         ]
 
         for i, col in enumerate(remaining_fields):
@@ -658,25 +659,12 @@ if tab_nav == "🔍 Search & Edit":
             mould_opts.index(existing_desc) if existing_desc in mould_opts else 0
         )
 
-        with mould_cols[0]:
-            if st.session_state.mould_descriptions:
-                selected_mould_desc = st.selectbox(
-                    "Mould Description",
-                    mould_opts,
-                    index=default_mould_idx,
-                    key="mould_desc_select_edit",
-                )
-                updated_vals["Mould Description"] = selected_mould_desc
-            else:
-                selected_mould_desc = st.text_input(
-                    "Mould Description",
-                    value=existing_desc,
-                    key="mould_desc_text_edit",
-                )
-                updated_vals["Mould Description"] = selected_mould_desc
-
-        mould_number_val = str(row.get("Mould Number", "")).replace("nan", "")
+        # Handle explicit update calculations BEFORE declaring elements to ensure synchronization
+        mould_number_val = str(row.get("MouldNumber", "")).replace("nan", "")
         drawing_val = str(row.get("Drawing No.", "")).replace("nan", "")
+
+        # Look ahead intercept for current selectbox state
+        selected_mould_desc = st.session_state.get("mould_desc_select_edit", existing_desc)
 
         if (
             st.session_state.mould_descriptions
@@ -687,14 +675,32 @@ if tab_nav == "🔍 Search & Edit":
                 st.session_state.mould_df["Mould Description"] == selected_mould_desc
             ]
             if not m_match.empty:
-                # FIXED: Pull key using space standard "Mould Number"
-                m_num = str(m_match.iloc[0].get("Mould Number", ""))
+                m_num = str(m_match.iloc[0].get("MouldNumber", ""))
                 m_drw = str(m_match.iloc[0].get("Drawing No.", ""))
                 mould_number_val = "" if m_num == "nan" else m_num
                 drawing_val = "" if m_drw == "nan" else m_drw
 
+        with mould_cols[0]:
+            if st.session_state.mould_descriptions:
+                selected_mould_desc = st.selectbox(
+                    "Mould Description",
+                    mould_opts,
+                    index=default_mould_idx,
+                    key="mould_desc_select_edit",
+                    on_change=None # Let natural re-run recalculate matching values
+                )
+                updated_vals["Mould Description"] = selected_mould_desc
+            else:
+                selected_mould_desc = st.text_input(
+                    "Mould Description",
+                    value=existing_desc,
+                    key="mould_desc_text_edit",
+                )
+                updated_vals["Mould Description"] = selected_mould_desc
+
         with mould_cols[1]:
-            updated_vals["Mould Number"] = st.text_input(
+            # FIXED: Saved database write targeting "MouldNumber" without a space
+            updated_vals["MouldNumber"] = st.text_input(
                 "Mould Number", value=mould_number_val, key="mould_num_input_edit"
             )
         with mould_cols[2]:
@@ -760,7 +766,7 @@ elif tab_nav == "➕ Add New Job":
     new_cols = st.columns(3)
     new_entry = {"Pre-Prod No.": new_id}
     
-    mould_fields = ["Mould Description", "Mould Number", "Drawing No."]
+    mould_fields = ["Mould Description", "MouldNumber", "Drawing No."]
     
     field_counter = 0
     for col in DESIRED_ORDER:
@@ -786,6 +792,19 @@ elif tab_nav == "➕ Add New Job":
     m_cols = st.columns(3)
     
     mould_opts = [""] + st.session_state.mould_descriptions
+    
+    selected_mould_desc = st.session_state.get("mould_desc_select_new", "")
+
+    m_num_default = ""
+    m_drw_default = ""
+    if selected_mould_desc and st.session_state.mould_df is not None:
+        m_match = st.session_state.mould_df[st.session_state.mould_df["Mould Description"] == selected_mould_desc]
+        if not m_match.empty:
+            m_num = str(m_match.iloc[0].get("MouldNumber", ""))
+            m_drw = str(m_match.iloc[0].get("Drawing No.", ""))
+            m_num_default = "" if m_num == "nan" else m_num
+            m_drw_default = "" if m_drw == "nan" else m_drw
+
     with m_cols[0]:
         selected_mould_desc = st.selectbox(
             "Mould Description",
@@ -795,19 +814,8 @@ elif tab_nav == "➕ Add New Job":
         )
         new_entry["Mould Description"] = selected_mould_desc
 
-    m_num_default = ""
-    m_drw_default = ""
-    if selected_mould_desc and st.session_state.mould_df is not None:
-        m_match = st.session_state.mould_df[st.session_state.mould_df["Mould Description"] == selected_mould_desc]
-        if not m_match.empty:
-            # FIXED: Pulled dictionary mapping standard "Mould Number"
-            m_num = str(m_match.iloc[0].get("Mould Number", ""))
-            m_drw = str(m_match.iloc[0].get("Drawing No.", ""))
-            m_num_default = "" if m_num == "nan" else m_num
-            m_drw_default = "" if m_drw == "nan" else m_drw
-
     with m_cols[1]:
-        new_entry["Mould Number"] = st.text_input("Mould Number", value=m_num_default, key="mould_num_input_new")
+        new_entry["MouldNumber"] = st.text_input("Mould Number", value=m_num_default, key="mould_num_input_new")
     with m_cols[2]:
         new_entry["Drawing No."] = st.text_input("Drawing No.", value=m_drw_default, key="drawing_input_new")
 
