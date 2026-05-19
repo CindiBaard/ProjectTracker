@@ -22,6 +22,7 @@ COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
 TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
 SUBMISSIONS_FILE = "Submissions_History.parquet"
 TRACKER_FILE_ID = "1LA9F5mD67vR9yYKqQ39CS-tAZ9QgCgn5KBWaY_RfFKM"
+MOULD_ASSETS = "1NoA6JvnxkqCpeBF8OZNcrdWhD2SF7umM7lPBVyWDoT8"
 
 # --- 2. FIXED DESIRED ORDER ---
 DESIRED_ORDER = [
@@ -89,7 +90,7 @@ if "mould_descriptions" not in st.session_state:
 
 # --- 4. UTILITY FUNCTIONS FOR MOULD INFO ---
 def load_mould_assets_data():
-    """Loads and cleans the complex Mould Assets CSV for Streamlit drop-downs."""
+    """Loads and dynamically aligns the complex Mould Assets CSV for Streamlit drop-downs."""
     csv_filename = "Mould Assets.csv"
 
     if not os.path.exists(csv_filename):
@@ -97,32 +98,39 @@ def load_mould_assets_data():
 
     try:
         mould_df = None
-        for skip in [2, 0, 1]:
-            try:
-                df_temp = pd.read_csv(csv_filename, skiprows=skip, encoding="utf-8-sig")
-                if "MouldNumber" in df_temp.columns or "Mould Number" in df_temp.columns or "Mould Description" in df_temp.columns:
-                    mould_df = df_temp
+        target_row_index = None
+        
+        # Open file as plain text first to find exactly where headers sit
+        with open(csv_filename, "r", encoding="utf-8-sig", errors="ignore") as f:
+            lines = f.readlines()
+            for idx, line in enumerate(lines):
+                if "MouldNumber" in line or "Mould Number" in line:
+                    target_row_index = idx
                     break
-            except Exception:
-                continue
-
-        if mould_df is None:
-            for skip in [2, 0, 1]:
+        
+        # If text matching fails, default to trying different skips
+        skips_to_try = [target_row_index] if target_row_index is not None else [3, 4, 2, 0]
+        
+        for skip in skips_to_try:
+            for separator in [",", ";"]:
                 try:
-                    df_temp = pd.read_csv(csv_filename, sep=";", skiprows=skip, encoding="utf-8-sig")
-                    if "MouldNumber" in df_temp.columns or "Mould Number" in df_temp.columns or "Mould Description" in df_temp.columns:
+                    df_temp = pd.read_csv(csv_filename, skiprows=skip, sep=separator, encoding="utf-8-sig")
+                    # Clean up header white-spacing
+                    df_temp.columns = [str(c).strip() for c in df_temp.columns]
+                    
+                    if "MouldNumber" in df_temp.columns or "Mould Number" in df_temp.columns:
                         mould_df = df_temp
                         break
                 except Exception:
                     continue
+            if mould_df is not None:
+                break
 
         if mould_df is None:
-            st.sidebar.error("Could not find true data headers inside Mould Assets.csv")
+            st.sidebar.error("Could not find data headers ('MouldNumber') inside Mould Assets.csv")
             return
 
-        mould_df.columns = [str(c).strip().replace('"', '').replace("'", "") for c in mould_df.columns]
-
-        # FIXED: Standardizing column names to single-word "MouldNumber" matching Google Sheets
+        # Explicitly enforce clean mappings
         rename_dict = {
             "Mould Number": "MouldNumber",
             "MouldNumber": "MouldNumber",
@@ -131,17 +139,15 @@ def load_mould_assets_data():
         mould_df = mould_df.rename(columns=rename_dict)
 
         if "Mould Description" not in mould_df.columns:
-            if "MouldNumber" in mould_df.columns:
-                mould_df["Mould Description"] = mould_df["MouldNumber"]
-            else:
-                mould_df["Mould Description"] = "Unknown Mould Asset"
+            mould_df["Mould Description"] = mould_df["MouldNumber"]
 
         if "Drawing No." not in mould_df.columns:
             mould_df["Drawing No."] = ""
 
+        # Normalize string details
         required_cols = ["Mould Description", "MouldNumber", "Drawing No."]
-
         mould_df = mould_df.dropna(subset=["Mould Description"])
+        
         for col in required_cols:
             if col in mould_df.columns:
                 mould_df[col] = mould_df[col].astype(str).str.strip().replace("nan", "")
@@ -659,11 +665,9 @@ if tab_nav == "🔍 Search & Edit":
             mould_opts.index(existing_desc) if existing_desc in mould_opts else 0
         )
 
-        # Handle explicit update calculations BEFORE declaring elements to ensure synchronization
         mould_number_val = str(row.get("MouldNumber", "")).replace("nan", "")
         drawing_val = str(row.get("Drawing No.", "")).replace("nan", "")
 
-        # Look ahead intercept for current selectbox state
         selected_mould_desc = st.session_state.get("mould_desc_select_edit", existing_desc)
 
         if (
@@ -686,8 +690,7 @@ if tab_nav == "🔍 Search & Edit":
                     "Mould Description",
                     mould_opts,
                     index=default_mould_idx,
-                    key="mould_desc_select_edit",
-                    on_change=None # Let natural re-run recalculate matching values
+                    key="mould_desc_select_edit"
                 )
                 updated_vals["Mould Description"] = selected_mould_desc
             else:
@@ -699,7 +702,6 @@ if tab_nav == "🔍 Search & Edit":
                 updated_vals["Mould Description"] = selected_mould_desc
 
         with mould_cols[1]:
-            # FIXED: Saved database write targeting "MouldNumber" without a space
             updated_vals["MouldNumber"] = st.text_input(
                 "Mould Number", value=mould_number_val, key="mould_num_input_edit"
             )
@@ -792,7 +794,6 @@ elif tab_nav == "➕ Add New Job":
     m_cols = st.columns(3)
     
     mould_opts = [""] + st.session_state.mould_descriptions
-    
     selected_mould_desc = st.session_state.get("mould_desc_select_new", "")
 
     m_num_default = ""
@@ -902,3 +903,4 @@ elif tab_nav == "🌐 Cloud Sync":
         st.info(
             "No local data found. Click 'Fetch from Cloud' to download data."
         )
+``` Use the button **"🔄 Rebuild Local DB"** inside your Streamlit sidebar right after replacing this code. This forces the file parser to rebuild cache states using the new row detection logic!
