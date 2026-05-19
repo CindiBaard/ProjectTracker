@@ -673,6 +673,7 @@ if tab_nav == "🔍 Search & Edit":
                     )
 
         # --- SEARCHABLE MOULD ASSETS ROW (SEARCH & EDIT) ---
+        # --- SEARCHABLE MOULD ASSETS ROW (SEARCH & EDIT) ---
         st.divider()
         st.markdown("### 🏗️ Mould Information")
         mould_cols = st.columns(3)
@@ -700,10 +701,14 @@ if tab_nav == "🔍 Search & Edit":
                 )
                 updated_vals["Mould Description"] = selected_mould_desc
 
-        # Auto-lookup matching row logic
-        mould_number_val = str(row.get("MouldNumber", "")).replace("nan", "")
-        drawing_val = str(row.get("Drawing No.", "")).replace("nan", "")
+        # --- SESSION STATE OVERRIDE LOGIC ---
+        # Initialize the widget keys in session state if they don't exist yet
+        if "mould_num_input_edit" not in st.session_state:
+            st.session_state["mould_num_input_edit"] = str(row.get("MouldNumber", "")).replace("nan", "")
+        if "drawing_input_edit" not in st.session_state:
+            st.session_state["drawing_input_edit"] = str(row.get("Drawing No.", "")).replace("nan", "")
 
+        # If user picked a description, fetch the matches and FORCE overwrite the session state keys
         if selected_mould_desc and st.session_state.mould_df is not None:
             lookup_key = selected_mould_desc.replace(" ", "").lower()
             df_lookup = st.session_state.mould_df
@@ -712,16 +717,17 @@ if tab_nav == "🔍 Search & Edit":
             if not match_rows.empty:
                 m_num = str(match_rows.iloc[0].get("MouldNumber", ""))
                 m_drw = str(match_rows.iloc[0].get("Drawing No.", ""))
-                mould_number_val = "" if m_num == "nan" else m_num
-                drawing_val = "" if m_drw == "nan" else m_drw
+                st.session_state["mould_num_input_edit"] = "" if m_num == "nan" else m_num
+                st.session_state["drawing_input_edit"] = "" if m_drw == "nan" else m_drw
 
         with mould_cols[1]:
+            # Notice we use 'key' and remove 'value' completely to let session_state drive it
             updated_vals["MouldNumber"] = st.text_input(
-                "Mould Number", value=mould_number_val, key="mould_num_input_edit"
+                "Mould Number", key="mould_num_input_edit"
             )
         with mould_cols[2]:
             updated_vals["Drawing No."] = st.text_input(
-                "Drawing No.", value=drawing_val, key="drawing_input_edit"
+                "Drawing No.", key="drawing_input_edit"
             )
 
         st.divider()
@@ -803,6 +809,7 @@ elif tab_nav == "➕ Add New Job":
         field_counter += 1
 
     # --- SEARCHABLE MOULD ASSETS ROW (ADD NEW JOB) ---
+  
     # --- SEARCHABLE MOULD ASSETS ROW (ADD NEW JOB) ---
     st.divider()
     st.markdown("### 🏗️ Mould Information")
@@ -819,10 +826,13 @@ elif tab_nav == "➕ Add New Job":
         )
         new_entry["Mould Description"] = selected_mould_desc
 
-    # Auto-lookup matching row logic for New Entries
-    m_num_default = ""
-    m_drw_default = ""
+    # --- SESSION STATE OVERRIDE LOGIC FOR NEW ENTRIES ---
+    if "mould_num_input_new" not in st.session_state:
+        st.session_state["mould_num_input_new"] = ""
+    if "drawing_input_new" not in st.session_state:
+        st.session_state["drawing_input_new"] = ""
     
+    # Force update the fields if a matching description is picked
     if selected_mould_desc and st.session_state.mould_df is not None:
         lookup_key = selected_mould_desc.replace(" ", "").lower()
         df_lookup = st.session_state.mould_df
@@ -831,13 +841,17 @@ elif tab_nav == "➕ Add New Job":
         if not match_rows.empty:
             m_num = str(match_rows.iloc[0].get("MouldNumber", ""))
             m_drw = str(match_rows.iloc[0].get("Drawing No.", ""))
-            m_num_default = "" if m_num == "nan" else m_num
-            m_drw_default = "" if m_drw == "nan" else m_drw
+            st.session_state["mould_num_input_new"] = "" if m_num == "nan" else m_num
+            st.session_state["drawing_input_new"] = "" if m_drw == "nan" else m_drw
+    elif not selected_mould_desc:
+        # Clear fields if user resets selection to blank space
+        st.session_state["mould_num_input_new"] = ""
+        st.session_state["drawing_input_new"] = ""
 
     with m_cols[1]:
-        new_entry["MouldNumber"] = st.text_input("Mould Number", value=m_num_default, key="mould_num_input_new")
+        new_entry["MouldNumber"] = st.text_input("Mould Number", key="mould_num_input_new")
     with m_cols[2]:
-        new_entry["Drawing No."] = st.text_input("Drawing No.", value=m_drw_default, key="drawing_input_new")
+        new_entry["Drawing No."] = st.text_input("Drawing No.", key="drawing_input_new")
 
     with m_cols[1]:
         new_entry["MouldNumber"] = st.text_input("Mould Number", value=m_num_default, key="mould_num_input_new")
