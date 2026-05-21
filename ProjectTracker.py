@@ -253,7 +253,11 @@ def pad_preprod_id(val):
     return val_str
 
 
-def update_tracker_status(pre_prod_no, current_trial_ref, manual_date=None):
+def update_tracker_status(pre_prod_no, updated_row_dict):
+    """
+    Finds the row corresponding to pre_prod_no in Google Sheets and updates 
+    all columns present in updated_row_dict matching the sheet's headers.
+    """
     try:
         scope = [
             "https://www.googleapis.com/auth/spreadsheets",
@@ -274,29 +278,28 @@ def update_tracker_status(pre_prod_no, current_trial_ref, manual_date=None):
         search_id = str(pre_prod_no).strip().split(".")[0]
         cell = tracker_worksheet.find(search_id, in_column=1)
         if not cell:
-            return False, f"ID {search_id} not found."
+            return False, f"ID {search_id} not found on Google Sheets."
 
-        trial_suffix = (
-            current_trial_ref.split("_")[-1]
-            if "_" in current_trial_ref
-            else current_trial_ref
-        )
-        date_str = (
-            manual_date
-            if manual_date
-            else datetime.now().strftime("%d/%m/%Y")
-        )
-        combined_value = f"{trial_suffix} - {date_str}"
-
+        # Fetch headers to locate column coordinates dynamically
         headers = [h.strip() for h in tracker_worksheet.row_values(1)]
-        col_name = "Injection trial requested"
-        if col_name in headers:
-            col_idx = headers.index(col_name) + 1
-            tracker_worksheet.update_cell(cell.row, col_idx, combined_value)
-            return True, combined_value
-        return False, "Column not found."
+        
+        # Build a batch update payload to optimize execution speed
+        updates = []
+        for col_name, value in updated_row_dict.items():
+            if col_name in headers:
+                col_idx = headers.index(col_name) + 1
+                updates.append({
+                    'range': gspread.utils.rowcol_to_a1(cell.row, col_idx),
+                    'values': [[str(value)]]
+                })
+        
+        if updates:
+            tracker_worksheet.batch_update(updates)
+            return True, "Google Sheet sync successful!"
+        return False, "No matching columns found to update."
+        
     except Exception as e:
-        return False, str(e)
+        return False, f"Google Sheet update failed: {str(e)}"
 
 
 def calculate_age_category(row):
@@ -762,16 +765,29 @@ if tab_nav == "🔍 Search & Edit":
                 )
 
         if st.button("💾 Save Changes", use_container_width=True, type="primary"):
+            # 1. Update the local pandas dataframe instance
             for k, v in updated_vals.items():
                 df.at[idx, k] = v
             save_db(df)
-            if updated_vals.get("Injection trial requested"):
-                update_tracker_status(
-                    search_no, updated_vals["Injection trial requested"]
-                )
+            
+            # 2. Process special custom rules for Injection Trial Suffix if altered
+            if updated_vals.get("Injection trial requested") and " - " not in str(updated_vals["Injection trial requested"]):
+                trial_suffix = updated_vals["Injection trial requested"].split("_")[-1] if "_" in updated_vals["Injection trial requested"] else updated_vals["Injection trial requested"]
+                date_str = datetime.now().strftime("%d/%m/%Y")
+                updated_vals["Injection trial requested"] = f"{trial_suffix} - {date_str}"
+                df.at[idx, "Injection trial requested"] = updated_vals["Injection trial requested"]
+                save_db(df)
+
+            # 3. Stream all changes (including Mould Info) up to Google Sheets
+            success, message = update_tracker_status(search_no, updated_vals)
+            
+            if success:
+                st.success(message)
+            else:
+                st.warning(f"Saved locally, but Google Sheets didn't sync: {message}")
+                
             st.session_state.selected_combo = {}
             st.cache_data.clear()
-            st.success("Saved successfully!")
             st.rerun()
 
     elif search_no:
@@ -808,9 +824,24 @@ elif tab_nav == "➕ Add New Job":
                 new_entry[col] = st.text_input(col, value=val, key=f"new_job_txt_{col}")
         field_counter += 1
 
-    # --- SEARCHABLE MOULD ASSETS ROW (ADD NEW JOB) ---
   
     # --- SEARCHABLE MOULD ASSETS ROW (ADD NEW JOB) ---
+    st.divider()
+    st.markdown("### 🏗️ Mould Information")
+    m_cols = st.columns(3)
+    
+    mould_opts = [""] + st.session_state.mould_descriptions
+    
+    with m_cols[0]:
+        selected_mould_desc = st.selectbox(
+            "Mould Description",
+            mould_opts,
+            index=0,
+            key="mould_desc_select_new"
+        )
+        new_entry["Mould Description"] = selected_mould_desc
+
+    # --- SESSION STATE OVERRIDE LOGIC FOR NEW ENTRIES ---
     st.divider()
     st.markdown("### 🏗️ Mould Information")
     m_cols = st.columns(3)
@@ -832,7 +863,7 @@ elif tab_nav == "➕ Add New Job":
     if "drawing_input_new" not in st.session_state:
         st.session_state["drawing_input_new"] = ""
     
-    # Force update the fields if a matching description is picked
+    # Force update the tracking context fields if a match is picked
     if selected_mould_desc and st.session_state.mould_df is not None:
         lookup_key = selected_mould_desc.replace(" ", "").lower()
         df_lookup = st.session_state.mould_df
@@ -844,7 +875,6 @@ elif tab_nav == "➕ Add New Job":
             st.session_state["mould_num_input_new"] = "" if m_num == "nan" else m_num
             st.session_state["drawing_input_new"] = "" if m_drw == "nan" else m_drw
     elif not selected_mould_desc:
-        # Clear fields if user resets selection to blank space
         st.session_state["mould_num_input_new"] = ""
         st.session_state["drawing_input_new"] = ""
 
@@ -852,11 +882,6 @@ elif tab_nav == "➕ Add New Job":
         new_entry["MouldNumber"] = st.text_input("Mould Number", key="mould_num_input_new")
     with m_cols[2]:
         new_entry["Drawing No."] = st.text_input("Drawing No.", key="drawing_input_new")
-
-    with m_cols[1]:
-        new_entry["MouldNumber"] = st.text_input("Mould Number", value=m_num_default, key="mould_num_input_new")
-    with m_cols[2]:
-        new_entry["Drawing No."] = st.text_input("Drawing No.", value=m_drw_default, key="drawing_input_new")
 
     if st.button("➕ Create Project", use_container_width=True, type="primary"):
         df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
