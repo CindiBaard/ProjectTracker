@@ -749,7 +749,8 @@ if search_pp:
         st.markdown("### 🏗️ Mould Information")
         mould_cols = st.columns(3)
 
-        existing_desc = str(row.get("Mould Description", "")).replace("nan", "")
+        # Replace line 752 with this:
+        existing_desc = str(row["Mould Description"]) if "Mould Description" in row and pd.notna(row["Mould Description"]) else ""
         mould_opts = [""] + st.session_state.mould_descriptions
         default_mould_idx = (
             mould_opts.index(existing_desc) if existing_desc in mould_opts else 0
