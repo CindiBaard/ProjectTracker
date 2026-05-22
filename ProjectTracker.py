@@ -1029,13 +1029,6 @@ elif tab_nav == "🌐 Cloud Sync":
             "No local data found. Click 'Fetch from Cloud' to download data."
         )
 
-    import pandas as pd
-
-
-    except Exception as e:
-        print(f"An error occurred while extracting PP data: {e}")
-        return pd.DataFrame()
-
 # 1. Ensure the function is clean and outside other blocks
 def get_pp_dates(file_path, pp_number):
     try:
