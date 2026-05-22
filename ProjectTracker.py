@@ -19,7 +19,7 @@ FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
 TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
 DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
 COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
-TRIALS_FILE_CURRENT = "Combined_Weekly_Trials_Weeks_3_12_2026.csv"
+TRIALS_FILE_CURRENT = "ProjectTracker/Merged_Weekly_Trackers_Layout_Preserved.csv
 SUBMISSIONS_FILE = "Submissions_History.parquet"
 TRACKER_FILE_ID = "1LA9F5mD67vR9yYKqQ39CS-tAZ9QgCgn5KBWaY_RfFKM"
 MOULD_ASSETS = "1NoA6JvnxkqCpeBF8OZNcrdWhD2SF7umM7lPBVyWDoT8"
@@ -908,7 +908,7 @@ elif tab_nav == "📊 Detailed Age Analysis":
             use_container_width=True,
         )
 
-# --- TAB 4: TRIAL TRENDS ---
+
 # --- TAB 4: TRIAL TRENDS ---
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("Trial Turnaround Performance")
