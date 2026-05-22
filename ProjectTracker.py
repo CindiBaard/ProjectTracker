@@ -59,6 +59,7 @@ def get_pp_dates(file_path, pp_number):
         return pd.DataFrame()
 
 # --- LOAD DATA AND CALCULATE METRICS ---
+
 tracker_file = "Merged_Weekly_Trackers_Layout_Preserved.csv"
 avg_days_display = "N/A"
 total_completed = 0
@@ -66,44 +67,80 @@ active_backlog = 0
 
 if os.path.exists(tracker_file):
     try:
-        # 1. Read layout files safely by catching delimiter anomalies
-        try:
-            # First try standard comma separation
-            df_tracker = pd.read_csv(tracker_file)
-            if df_tracker.shape[1] <= 1: # If it parsed everything into 1 single messy column, drop to fallback
-                raise ValueError
-        except:
-            # Fallback to catch Semicolon or Tab separated exports
-            df_tracker = pd.read_csv(tracker_file, sep=None, engine='python')
+        parsed_rows = []
+        
+        # Open file as raw text to completely ignore structural line-length mismatches
+        with open(tracker_file, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                # Split line by comma (adjust to ';' if your file uses semicolons)
+                columns = [col.strip() for col in line.split(",")]
+                
+                # Filter for rows that actually look like your trial tracking data rows
+                # This drops metadata headers, empty spacer lines, or broken blocks
+                if len(columns) >= 7:
+                    parsed_rows.append(columns)
 
-        # Clean column names in case there are hidden trailing spaces
-        df_tracker.columns = df_tracker.columns.str.strip()
+        if parsed_rows:
+            # Dynamically determine the maximum column count found to prevent truncation
+            max_cols = max(len(row) for row in parsed_rows)
+            
+            # Pad shorter rows with empty strings so DataFrame creation never throws an error
+            padded_rows = [row + [""] * (max_cols - len(row)) for row in parsed_rows]
+            
+            # Create a temporary dataframe from the raw matrix strings
+            raw_df = pd.DataFrame(padded_rows)
+            
+            # Promote the first row containing data keys as headers if applicable
+            # Or manually assign based on your known system index mapping
+            # Let's search row-by-row for your specific target headers:
+            header_idx = None
+            for idx, row in raw_df.iterrows():
+                row_str = row.astype(str).tolist()
+                if any("Date Logged" in s or "Date_Log" in s for s in row_str):
+                    header_idx = idx
+                    break
+            
+            if header_idx is not None:
+                # Assign cleaned headers
+                raw_df.columns = raw_df.iloc[header_idx].str.strip()
+                df_tracker = raw_df.iloc[header_idx + 1 :].copy()
+            else:
+                # Fallback: Assign known index tracking name columns if header match fails
+                df_tracker = raw_df.copy()
+                # If headers are missing, map typical positions safely:
+                # e.g., df_tracker.rename(columns={2: 'Date Logged', 11: 'Complete'}, inplace=True)
 
-        # 2. Check if the required columns exist before attempting math
-        if "Date Logged" in df_tracker.columns and "Complete" in df_tracker.columns:
-            # Parse dates safely
-            df_tracker["Date_Logged_dt"] = pd.to_datetime(df_tracker["Date Logged"], errors="coerce")
-            df_tracker["Complete_dt"] = pd.to_datetime(df_tracker["Complete"], errors="coerce")
-            
-            # Calculate days to complete
-            df_tracker["Days_To_Complete"] = (df_tracker["Complete_dt"] - df_tracker["Date_Logged_dt"]).dt.days
-            
-            # Extract valid rows
-            valid_days = df_tracker[df_tracker["Days_To_Complete"] >= 0]["Days_To_Complete"]
-            
-            if not valid_days.empty:
-                avg_days_display = f"{int(valid_days.mean())} Days"
-                total_completed = int(valid_days.count())
-            
-            # Safely calculate backlog from rows where Date Logged exists but Complete is blank
-            active_backlog = int((df_tracker["Date_Logged_dt"].notna() & df_tracker["Complete_dt"].isna()).sum())
+            # Clean column strings to handle layout shifts smoothly
+            df_tracker.columns = df_tracker.columns.astype(str).str.strip()
+
+            # Find matching variations of your target column names
+            log_col = next((c for c in df_tracker.columns if "Date Logged" in c or "Date_Log" in c), None)
+            comp_col = next((c for c in df_tracker.columns if "Complete" in c), None)
+
+            if log_col and comp_col:
+                # Run metric math safely using the isolated column structures
+                df_tracker["Date_Logged_dt"] = pd.to_datetime(df_tracker[log_col], errors="coerce")
+                df_tracker["Complete_dt"] = pd.to_datetime(df_tracker[comp_col], errors="coerce")
+                
+                df_tracker["Days_To_Complete"] = (df_tracker["Complete_dt"] - df_tracker["Date_Logged_dt"]).dt.days
+                
+                valid_days = df_tracker[df_tracker["Days_To_Complete"] >= 0]["Days_To_Complete"]
+                
+                if not valid_days.empty:
+                    avg_days_display = f"{int(valid_days.mean())} Days"
+                    total_completed = int(valid_days.count())
+                
+                # Active backlog math using the safe text mapping
+                active_backlog = int((df_tracker["Date_Logged_dt"].notna() & df_tracker["Complete_dt"].isna()).sum())
+            else:
+                st.info("⏱️ Specific 'Date Logged' or 'Complete' headers not detected in layout matrix rows yet.")
         else:
-            st.warning("⏱️ Turnaround metrics unavailable: Could not find 'Date Logged' or 'Complete' headers in layout file.")
+            st.warning("⚠️ No data records detected inside the tracker layout file.")
 
     except Exception as e:
-        # Keeps your UI functional even if the file structure breaks completely
-        st.error(f"Error reading metrics tracker file: {e}")
-
+        # Failsafe logging that prevents dashboard block crashes
+        st.warning(f"Metrics engine running on empty layout baseline: {e}")
+        
 # --- 1. INITIAL SETUP & DEPENDENCIES ---
 st.set_page_config(page_title="Project Tracker Dashboard", layout="wide")
 pd.set_option("styler.render.max_elements", 1000000)
