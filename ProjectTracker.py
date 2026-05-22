@@ -746,7 +746,7 @@ if search_pp:
             st.sidebar.warning(f"No records found for PP# {search_pp}")
 
     # --- SEARCHABLE MOULD ASSETS ROW (SEARCH & EDIT) ---
-    st.divider()
+        st.divider()
     st.markdown("### 🏗️ Mould Information")
     mould_cols = st.columns(3)
 
