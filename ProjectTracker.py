@@ -65,73 +65,84 @@ avg_days_display = "N/A"
 total_completed = 0
 active_backlog = 0
 
-# 1. Initialize df_tracker as a completely empty DataFrame with our target columns 
-# This guarantees that lookups like df_tracker["Complete_dt"] will NEVER throw a KeyError
-df_tracker = pd.DataFrame(columns=["Date_Logged_dt", "Complete_dt", "Days_To_Complete"])
-
 if os.path.exists(tracker_file):
     try:
-        parsed_rows = []
-        
-        # Open file as raw text to completely ignore structural line-length mismatches
+        raw_lines = []
+        # 1. Read the file completely as lines to completely isolate messy structure shifts
         with open(tracker_file, "r", encoding="utf-8", errors="ignore") as f:
             for line in f:
-                columns = [col.strip() for col in line.split(",")]
-                if len(columns) >= 7:
-                    parsed_rows.append(columns)
-
-        if parsed_rows:
-            max_cols = max(len(row) for row in parsed_rows)
-            padded_rows = [row + [""] * (max_cols - len(row)) for row in parsed_rows]
-            raw_df = pd.DataFrame(padded_rows)
+                cols = [c.strip() for c in line.split(",")]
+                # Keep lines that have content and represent a real data width
+                if len(cols) >= 5 and any(cols):
+                    raw_lines.append(cols)
+        
+        if raw_lines:
+            # Pad all rows cleanly to the max columns found so pandas doesn't fail
+            max_cols = max(len(row) for row in raw_lines)
+            padded_rows = [r + [""] * (max_cols - len(r)) for r in raw_lines]
+            temp_df = pd.DataFrame(padded_rows)
             
-            header_idx = None
-            for idx, row in raw_df.iterrows():
-                row_str = row.astype(str).tolist()
-                if any("Date Logged" in s or "Date_Log" in s for s in row_str):
-                    header_idx = idx
+            # 2. Find the row index that contains our actual data headers
+            header_row_idx = None
+            for idx, row in temp_df.iterrows():
+                row_list = [str(x).lower() for x in row]
+                # Look for the sweet spot: rows that mention Date Log or Promise Complete
+                if any("date_log" in x or "date log" in x for x in row_list):
+                    header_row_idx = idx
                     break
             
-            if header_idx is not None:
-                raw_df.columns = raw_df.iloc[header_idx].str.strip()
-                # Overwrite df_tracker with data rows if headers match
-                df_tracker = raw_df.iloc[header_idx + 1 :].copy()
+            if header_row_idx is not None:
+                # Set real headers and discard any structural garbage or notes above it
+                temp_df.columns = temp_df.iloc[header_row_idx].str.strip()
+                df_tracker = temp_df.iloc[header_row_idx + 1:].copy()
             else:
-                df_tracker = raw_df.copy()
-
-            df_tracker.columns = df_tracker.columns.astype(str).str.strip()
-
-            # Find matching variations of your target column names
-            log_col = next((c for c in df_tracker.columns if "Date Logged" in c or "Date_Log" in c), None)
-            comp_col = next((c for c in df_tracker.columns if "Complete" in c), None)
-
-            if log_col and comp_col:
-                # Add the calculated columns to our active dataframe instance
-                df_tracker["Date_Logged_dt"] = pd.to_datetime(df_tracker[log_col], errors="coerce")
-                df_tracker["Complete_dt"] = pd.to_datetime(df_tracker[comp_col], errors="coerce")
-                df_tracker["Days_To_Complete"] = (df_tracker["Complete_dt"] - df_tracker["Date_Logged_dt"]).dt.days
+                # Fallback: use first row if no header key keyword matches
+                temp_df.columns = temp_df.iloc[0].str.strip()
+                df_tracker = temp_df.iloc[1:].copy()
                 
-                valid_days = df_tracker[df_tracker["Days_To_Complete"] >= 0]["Days_To_Complete"]
+            # Clean column strings to guarantee matching security
+            df_tracker.columns = df_tracker.columns.astype(str).str.strip()
+            
+            # 3. Match columns with fuzzy logic variations
+            log_col = next((c for c in df_tracker.columns if any(h in c.lower() for h in ["date_log", "date logged", "date log"])), None)
+            comp_col = next((c for c in df_tracker.columns if any(h in c.lower() for h in ["complete", "promise_complete", "promise complete"])), None)
+            
+            if log_col and comp_col:
+                # 4. Clean out empty cells or template strings (like column names repeated in the data body)
+                df_clean = df_tracker[
+                    (df_tracker[log_col] != "") & 
+                    (~df_tracker[log_col].str.lower().str.contains("date", na=False))
+                ].copy()
+                
+                # 5. Convert to datetime formats dynamically
+                df_clean["Date_Logged_dt"] = pd.to_datetime(df_clean[log_col], errors="coerce", format="mixed")
+                df_clean["Complete_dt"] = pd.to_datetime(df_clean[comp_col], errors="coerce", format="mixed")
+                
+                # 6. Run Turnaround Math
+                df_clean["Days_To_Complete"] = (df_clean["Complete_dt"] - df_clean["Date_Logged_dt"]).dt.days
+                
+                valid_days = df_clean[df_clean["Days_To_Complete"] >= 0]["Days_To_Complete"]
                 
                 if not valid_days.empty:
                     avg_days_display = f"{int(valid_days.mean())} Days"
                     total_completed = int(valid_days.count())
+                
+                # 7. Calculate real-time backlog 
+                # (Row has a log date, but the completion date field is still empty)
+                active_backlog = int((df_clean["Date_Logged_dt"].notna() & df_clean["Complete_dt"].isna()).sum())
             else:
-                # Fallback: Make sure columns exist even if parsing didn't find them in the raw layout headers
-                if "Date_Logged_dt" not in df_tracker.columns:
-                    df_tracker["Date_Logged_dt"] = pd.NaT
-                if "Complete_dt" not in df_tracker.columns:
-                    df_tracker["Complete_dt"] = pd.NaT
-
+                # Safe structure placeholder initialization
+                df_clean = pd.DataFrame(columns=["Date_Logged_dt", "Complete_dt"])
+                
+        else:
+            df_clean = pd.DataFrame(columns=["Date_Logged_dt", "Complete_dt"])
+            
     except Exception as e:
-        st.warning(f"Metrics engine running on empty layout baseline: {e}")
-
-# --- SAFE EVALUATION (Line 698 onwards) ---
-# Now this lookup will execute perfectly fine even if the file is empty or missing headers
-if "Complete_dt" in df_tracker.columns and "Date_Logged_dt" in df_tracker.columns:
-    active_backlog = int((df_tracker["Date_Logged_dt"].notna() & df_tracker["Complete_dt"].isna()).sum())
+        st.warning(f"Metrics loading fallback enabled: {e}")
+        df_clean = pd.DataFrame(columns=["Date_Logged_dt", "Complete_dt"])
 else:
-    active_backlog = 0
+    df_clean = pd.DataFrame(columns=["Date_Logged_dt", "Complete_dt"])
+
 
 # --- 1. INITIAL SETUP & DEPENDENCIES ---
 st.set_page_config(page_title="Project Tracker Dashboard", layout="wide")
@@ -667,30 +678,27 @@ st.session_state.active_tab = tab_nav
 
 # --- SIDEBAR ---
 
-# --- METRIC DISPLAY PANEL ---
-st.markdown("## 📊 Trial Performance Insights")
-
-# Creating a responsive columns layout for your dashboard metrics
+# --- DASHBOARD INSIGHT METRICS DISPLAY ---
+st.markdown("### 📊 Trial Performance Insights")
 m_col1, m_col2, m_col3 = st.columns(3)
 
 with m_col1:
-    st.metric(
-        label="⏱️ Avg. Turnaround Time", 
-        value=avg_days_display, 
-        help="Average calendar days calculated from 'Date Logged' to 'Complete'."
-    )
-
+    st.metric(label="⏱️ Avg. Turnaround Time", value=avg_days_display)
 with m_col2:
-    # Optional extra operational metric
-    total_completed = int(valid_days.count()) if 'valid_days' in locals() else 0
     st.metric(label="✅ Total Logged Closures", value=total_completed)
-
 with m_col3:
-    # Optional extra operational metric
-    active_backlog = int(df_tracker["Complete_dt"].isna().sum()) if os.path.exists(tracker_file) else 0
     st.metric(label="⏳ Open / Active Projects", value=active_backlog)
 
 st.divider()
+
+# --- VALIDATION VIEW PANEL ---
+st.markdown("### Trial Turnaround Performance")
+if 'df_clean' in locals() and not df_clean.empty and "Days_To_Complete" in df_clean.columns:
+    # Display a mini preview of the calculated rows so you can see the math working live
+    preview_cols = [c for c in [log_col, comp_col, "Days_To_Complete"] if c in df_clean.columns]
+    st.dataframe(df_clean[preview_cols].dropna(subset=["Days_To_Complete"]).head(10), use_container_width=True, hide_index=True)
+else:
+    st.info("💡 Data layout processed successfully. Enter a 'Complete' timestamp in your project tracking records to compile active cycle speeds.")
 
 with st.sidebar:
     st.title("Navigation")
