@@ -749,19 +749,18 @@ if search_pp:
         st.markdown("### 🏗️ Mould Information")
         mould_cols = st.columns(3)
 
-        # Replace line 752 with this:
-        # Safe dynamic extraction for Dictionaries, Series, or Tuples
-    if hasattr(row, "get"):  # It's a dictionary or Series
-        raw_desc = row.get("Mould Description", "")
-    elif hasattr(row, "Mould_Description"):  # It's an itertuples object
-    raw_desc = getattr(row, "Mould_Description", "")
-    else:  # Fallback bracket lookups
-        try:
-            raw_desc = row["Mould Description"]
-        except Exception:
-            raw_desc = ""
+        # Dynamic extraction fallback for Dictionaries, Series, or Tuples
+        if hasattr(row, "get"):  
+            raw_desc = row.get("Mould Description", "")
+        elif hasattr(row, "Mould_Description"):  
+            raw_desc = getattr(row, "Mould_Description", "")
+        else:  
+            try:
+                raw_desc = row["Mould Description"]
+            except Exception:
+                raw_desc = ""
 
-    existing_desc = str(raw_desc).replace("nan", "").strip()
+        existing_desc = str(raw_desc).replace("nan", "").strip()
         default_mould_idx = (
             mould_opts.index(existing_desc) if existing_desc in mould_opts else 0
         )
@@ -782,7 +781,6 @@ if search_pp:
                     key="mould_desc_text_edit",
                 )
                 updated_vals["Mould Description"] = selected_mould_desc
-
         # --- SESSION STATE OVERRIDE LOGIC ---
         # Initialize the widget keys in session state if they don't exist yet
         if "mould_num_input_edit" not in st.session_state:
