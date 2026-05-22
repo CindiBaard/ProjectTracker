@@ -541,7 +541,13 @@ def get_pp_dates(file_path, pp_number):
 
 
 # --- 5. APP EXECUTION START ---
-df = load_db_v2(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
+try:
+    # ... existing code ...
+    df = load_db_v2(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
+    
+except Exception as e:
+    st.error(f"Error loading database: {e}")
+    # Or just 'pass' if you want to skip it, but an except block MUST be here
 if df.empty:
     df = pd.DataFrame(columns=DESIRED_ORDER)
 
@@ -1058,20 +1064,44 @@ elif tab_nav == "🌐 Cloud Sync":
         print(f"An error occurred while extracting PP data: {e}")
         return pd.DataFrame()
 
-    # --- Example of incorporating it into your execution block ---
+# 1. Ensure the function is clean and outside other blocks
+def get_pp_dates(file_path, pp_number):
+    try:
+        import pandas as pd
+        if file_path.endswith('.xlsx'):
+            df = pd.read_excel(file_path)
+        else:
+            df = pd.read_csv(file_path)
+            
+        df.columns = df.columns.str.strip()
+        if 'PP_Num' not in df.columns:
+            return pd.DataFrame()
+            
+        df['PP_Num_str'] = df['PP_Num'].astype(str)
+        search_term = str(pp_number).strip()
+        filtered_df = df[df['PP_Num_str'].str.contains(search_term, na=False)].copy()
+        
+        date_log_col = 'Date_Log' if 'Date_Log' in df.columns else 'Date Log'
+        complete_col = 'Promise_Complete' if 'Promise_Complete' in df.columns else 'Promise Complete'
+        
+        return filtered_df[['PP_Num', date_log_col, complete_col]].rename(columns={
+            'PP_Num': 'PP Number',
+            date_log_col: 'Date Log',
+            complete_col: 'Complete Date'
+        })
+    except Exception:
+        return pd.DataFrame()
 
-# Define your file path (change to .xlsx if that's what you use locally)
-tracker_file = "Combined_Weekly_Trials_3_51_2025.csv" 
+# 2. Add to your Streamlit UI components layout section (e.g., in your sidebar or a separate tab)
+st.sidebar.markdown("---")
+st.sidebar.subheader("Quick PP# Date Lookup")
+search_pp = st.sidebar.text_input("Enter PP Number:")
 
-# Target PP number to find
-search_pp = "20135"
-
-# Call the new section function
-results = get_pp_dates(tracker_file, search_pp)
-
-# Print or process the results
-if not results.empty:
-    print(f"\n>>> Found records for PP# {search_pp}:")
-    print(results.to_string(index=False))
-else:
-    print(f"\n>>> No records found matching PP# {search_pp}")
+if search_pp:
+    # Use your tracked CSV or Parquet file path here
+    results = get_pp_dates("Combined_Weekly_Trials_3_51_2025.csv", search_pp)
+    
+    if not results.empty:
+        st.sidebar.dataframe(results, hide_index=True)
+    else:
+        st.sidebar.warning(f"No records found for PP# {search_pp}")
