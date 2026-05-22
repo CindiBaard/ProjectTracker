@@ -810,12 +810,24 @@ if search_pp:
             st.cache_data.clear()
             st.rerun()
 
-if search_pp:
-    pass  # Keeps Python happy until you add the logic
-elif search_no:
+# 1. SEARCH SECTION INSIDE THE TAB
+    if search_pp:
+        # Use your function to pull the records
+        results = get_pp_dates("Combined_Weekly_Trials_3_51_2025.csv", search_pp)
+        if not results.empty:
+            st.dataframe(results, hide_index=True)
+        else:
+            st.warning(f"No records found for PP# {search_pp}")
 
-# --- TAB 2: ADD NEW JOB ---
-    elif tab_nav == "➕ Add New Job":
+    elif search_no:
+        # Placeholder or existing search logic for Drawing Number/Mould
+        pass  # <--- This 'pass' prevents the empty block error!
+
+
+# =====================================================================
+# 2. TAB 2 NAVIGATION (Ensure this aligns horizontally with 'if tab_nav ==')
+# =====================================================================
+elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
     sel = st.session_state.get("selected_combo", {})
     default_id = st.session_state.form_data.get("Pre-Prod No.", get_auto_next_no(df))
@@ -844,7 +856,6 @@ elif search_no:
             else:
                 new_entry[col] = st.text_input(col, value=val, key=f"new_job_txt_{col}")
         field_counter += 1
-
   
     # --- SEARCHABLE MOULD ASSETS ROW (ADD NEW JOB) ---
     st.divider()
