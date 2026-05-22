@@ -750,8 +750,18 @@ if search_pp:
         mould_cols = st.columns(3)
 
         # Replace line 752 with this:
-        existing_desc = str(row["Mould Description"]) if "Mould Description" in row and pd.notna(row["Mould Description"]) else ""
-        mould_opts = [""] + st.session_state.mould_descriptions
+        # Safe dynamic extraction for Dictionaries, Series, or Tuples
+    if hasattr(row, "get"):  # It's a dictionary or Series
+        raw_desc = row.get("Mould Description", "")
+    elif hasattr(row, "Mould_Description"):  # It's an itertuples object
+    raw_desc = getattr(row, "Mould_Description", "")
+    else:  # Fallback bracket lookups
+        try:
+            raw_desc = row["Mould Description"]
+        except Exception:
+            raw_desc = ""
+
+    existing_desc = str(raw_desc).replace("nan", "").strip()
         default_mould_idx = (
             mould_opts.index(existing_desc) if existing_desc in mould_opts else 0
         )
