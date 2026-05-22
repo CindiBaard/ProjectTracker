@@ -680,7 +680,7 @@ if tab_nav == "🔍 Search & Edit":
                     updated_vals[col] = st.text_input(
                         col, value=cur_val, key=f"txt_{col}"
                     )
-                    
+
 # Add this code block where you construct your Streamlit UI elements:
 
 st.sidebar.markdown("---")
@@ -810,8 +810,9 @@ if search_pp:
             st.cache_data.clear()
             st.rerun()
 
-    elif search_no:
-        st.warning("No project found.")
+if search_pp:
+    pass  # Keeps Python happy until you add the logic
+elif search_no:
 
 # --- TAB 2: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
