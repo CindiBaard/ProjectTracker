@@ -815,7 +815,7 @@ if search_pp:
 elif search_no:
 
 # --- TAB 2: ADD NEW JOB ---
-elif tab_nav == "➕ Add New Job":
+    elif tab_nav == "➕ Add New Job":
     display_combination_table("new")
     sel = st.session_state.get("selected_combo", {})
     default_id = st.session_state.form_data.get("Pre-Prod No.", get_auto_next_no(df))
