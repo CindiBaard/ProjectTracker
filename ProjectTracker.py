@@ -680,7 +680,21 @@ if tab_nav == "🔍 Search & Edit":
                     updated_vals[col] = st.text_input(
                         col, value=cur_val, key=f"txt_{col}"
                     )
+                    
+# Add this code block where you construct your Streamlit UI elements:
 
+st.sidebar.markdown("---")
+st.sidebar.subheader("Quick PP# Date Lookup")
+search_pp = st.sidebar.text_input("Enter PP Number to view logs:")
+
+if search_pp:
+    # This automatically references your uploaded weekly trials database file
+    results = get_pp_dates("Combined_Weekly_Trials_3_51_2025.csv", search_pp)
+    
+    if not results.empty:
+        st.sidebar.dataframe(results, hide_index=True)
+    else:
+        st.sidebar.warning(f"No records found for PP# {search_pp}")
 
         # --- SEARCHABLE MOULD ASSETS ROW (SEARCH & EDIT) ---
         st.divider()
