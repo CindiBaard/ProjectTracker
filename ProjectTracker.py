@@ -735,52 +735,55 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Quick PP# Date Lookup")
 search_pp = st.sidebar.text_input("Enter PP Number to view logs:")
 
-if search_pp:
-    # This automatically references your uploaded weekly trials database file
-    results = get_pp_dates("Combined_Weekly_Trials_3_51_2025.csv", search_pp)
+# --- QUICK PP# DATE LOOKUP (SIDEBAR DISPATCH) ---
+    if search_pp:
+        # This automatically references your uploaded weekly trials database file
+        results = get_pp_dates("Combined_Weekly_Trials_3_51_2025.csv", search_pp)
+        
+        if not results.empty:
+            st.sidebar.dataframe(results, hide_index=True)
+        else:
+            st.sidebar.warning(f"No records found for PP# {search_pp}")
+
+    # --- SEARCHABLE MOULD ASSETS ROW (SEARCH & EDIT) ---
+    st.divider()
+    st.markdown("### 🏗️ Mould Information")
+    mould_cols = st.columns(3)
+
+    # Safe dynamic extraction for Dictionaries, Series, or Tuples
+    if hasattr(row, "get"):  # It's a dictionary or pandas Series
+        raw_desc = row.get("Mould Description", "")
+    elif hasattr(row, "Mould_Description"):  # It's an itertuples object
+        raw_desc = getattr(row, "Mould_Description", "")
+    else:  # Fallback bracket lookups
+        try:
+            raw_desc = row["Mould Description"]
+        except Exception:
+            raw_desc = ""
+
+    existing_desc = str(raw_desc).replace("nan", "").strip()
     
-    if not results.empty:
-        st.sidebar.dataframe(results, hide_index=True)
-    else:
-        st.sidebar.warning(f"No records found for PP# {search_pp}")
+    default_mould_idx = (
+        mould_opts.index(existing_desc) if existing_desc in mould_opts else 0
+    )
 
-        # --- SEARCHABLE MOULD ASSETS ROW (SEARCH & EDIT) ---
-        st.divider()
-        st.markdown("### 🏗️ Mould Information")
-        mould_cols = st.columns(3)
-
-        # Dynamic extraction fallback for Dictionaries, Series, or Tuples
-        if hasattr(row, "get"):  
-            raw_desc = row.get("Mould Description", "")
-        elif hasattr(row, "Mould_Description"):  
-            raw_desc = getattr(row, "Mould_Description", "")
-        else:  
-            try:
-                raw_desc = row["Mould Description"]
-            except Exception:
-                raw_desc = ""
-
-        existing_desc = str(raw_desc).replace("nan", "").strip()
-        default_mould_idx = (
-            mould_opts.index(existing_desc) if existing_desc in mould_opts else 0
-        )
-
-        with mould_cols[0]:
-            if st.session_state.mould_descriptions:
-                selected_mould_desc = st.selectbox(
-                    "Mould Description",
-                    mould_opts,
-                    index=default_mould_idx,
-                    key="mould_desc_select_edit"
-                )
-                updated_vals["Mould Description"] = selected_mould_desc
-            else:
-                selected_mould_desc = st.text_input(
-                    "Mould Description",
-                    value=existing_desc,
-                    key="mould_desc_text_edit",
-                )
-                updated_vals["Mould Description"] = selected_mould_desc
+    with mould_cols[0]:
+        if st.session_state.mould_descriptions:
+            selected_mould_desc = st.selectbox(
+                "Mould Description",
+                mould_opts,
+                index=default_mould_idx,
+                key="mould_desc_select_edit"
+            )
+            updated_vals["Mould Description"] = selected_mould_desc
+        else:
+            selected_mould_desc = st.text_input(
+                "Mould Description",
+                value=existing_desc,
+                key="mould_desc_text_edit",
+            )
+            updated_vals["Mould Description"] = selected_mould_desc
+            
         # --- SESSION STATE OVERRIDE LOGIC ---
         # Initialize the widget keys in session state if they don't exist yet
         if "mould_num_input_edit" not in st.session_state:
