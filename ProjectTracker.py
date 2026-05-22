@@ -9,54 +9,6 @@ import pandas as pd
 import streamlit as st
 from google.oauth2.service_account import Credentials
 
-# --- LOAD DATA AND CALCULATE METRICS ---
-tracker_file = "Merged_Weekly_Trackers_Layout_Preserved.csv"
-avg_days_display = "N/A"
-
-if os.path.exists(tracker_file):
-    try:
-        # Load data
-        df_tracker = pd.read_csv(tracker_file)
-        
-        # Parse dates safely
-        df_tracker["Date_Logged_dt"] = pd.to_datetime(df_tracker["Date Logged"], errors="coerce")
-        df_tracker["Complete_dt"] = pd.to_datetime(df_tracker["Complete"], errors="coerce")
-        
-        # Calculate days to complete
-        df_tracker["Days_To_Complete"] = (df_tracker["Complete_dt"] - df_tracker["Date_Logged_dt"]).dt.days
-        
-        # Calculate the average (ignoring negative anomalies or missing data)
-        valid_days = df_tracker[df_tracker["Days_To_Complete"] >= 0]["Days_To_Complete"]
-        if not valid_days.empty:
-            avg_days_display = f"{int(valid_days.mean())} Days"
-            
-    except Exception as e:
-        st.error(f"Error calculating metrics: {e}")
-
-# --- METRIC DISPLAY PANEL ---
-st.markdown("## 📊 Trial Performance Insights")
-
-# Creating a responsive columns layout for your dashboard metrics
-m_col1, m_col2, m_col3 = st.columns(3)
-
-with m_col1:
-    st.metric(
-        label="⏱️ Avg. Turnaround Time", 
-        value=avg_days_display, 
-        help="Average calendar days calculated from 'Date Logged' to 'Complete'."
-    )
-
-with m_col2:
-    # Optional extra operational metric
-    total_completed = int(valid_days.count()) if 'valid_days' in locals() else 0
-    st.metric(label="✅ Total Logged Closures", value=total_completed)
-
-with m_col3:
-    # Optional extra operational metric
-    active_backlog = int(df_tracker["Complete_dt"].isna().sum()) if os.path.exists(tracker_file) else 0
-    st.metric(label="⏳ Open / Active Projects", value=active_backlog)
-
-st.divider()
 
 # =====================================================================
 # DATA EXTRACTION HELPERS (Place this near the top of the file)
@@ -106,6 +58,30 @@ def get_pp_dates(file_path, pp_number):
     except Exception:
         return pd.DataFrame()
 
+# --- LOAD DATA AND CALCULATE METRICS ---
+tracker_file = "Merged_Weekly_Trackers_Layout_Preserved.csv"
+avg_days_display = "N/A"
+
+if os.path.exists(tracker_file):
+    try:
+        # Load data
+        df_tracker = pd.read_csv(tracker_file)
+        
+        # Parse dates safely
+        df_tracker["Date_Logged_dt"] = pd.to_datetime(df_tracker["Date Logged"], errors="coerce")
+        df_tracker["Complete_dt"] = pd.to_datetime(df_tracker["Complete"], errors="coerce")
+        
+        # Calculate days to complete
+        df_tracker["Days_To_Complete"] = (df_tracker["Complete_dt"] - df_tracker["Date_Logged_dt"]).dt.days
+        
+        # Calculate the average (ignoring negative anomalies or missing data)
+        valid_days = df_tracker[df_tracker["Days_To_Complete"] >= 0]["Days_To_Complete"]
+        if not valid_days.empty:
+            avg_days_display = f"{int(valid_days.mean())} Days"
+            
+    except Exception as e:
+        st.error(f"Error calculating metrics: {e}")
+        
 # --- 1. INITIAL SETUP & DEPENDENCIES ---
 st.set_page_config(page_title="Project Tracker Dashboard", layout="wide")
 pd.set_option("styler.render.max_elements", 1000000)
