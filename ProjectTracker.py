@@ -61,26 +61,48 @@ def get_pp_dates(file_path, pp_number):
 # --- LOAD DATA AND CALCULATE METRICS ---
 tracker_file = "Merged_Weekly_Trackers_Layout_Preserved.csv"
 avg_days_display = "N/A"
+total_completed = 0
+active_backlog = 0
 
 if os.path.exists(tracker_file):
     try:
-        # Load data
-        df_tracker = pd.read_csv(tracker_file)
-        
-        # Parse dates safely
-        df_tracker["Date_Logged_dt"] = pd.to_datetime(df_tracker["Date Logged"], errors="coerce")
-        df_tracker["Complete_dt"] = pd.to_datetime(df_tracker["Complete"], errors="coerce")
-        
-        # Calculate days to complete
-        df_tracker["Days_To_Complete"] = (df_tracker["Complete_dt"] - df_tracker["Date_Logged_dt"]).dt.days
-        
-        # Calculate the average (ignoring negative anomalies or missing data)
-        valid_days = df_tracker[df_tracker["Days_To_Complete"] >= 0]["Days_To_Complete"]
-        if not valid_days.empty:
-            avg_days_display = f"{int(valid_days.mean())} Days"
+        # 1. Read layout files safely by catching delimiter anomalies
+        try:
+            # First try standard comma separation
+            df_tracker = pd.read_csv(tracker_file)
+            if df_tracker.shape[1] <= 1: # If it parsed everything into 1 single messy column, drop to fallback
+                raise ValueError
+        except:
+            # Fallback to catch Semicolon or Tab separated exports
+            df_tracker = pd.read_csv(tracker_file, sep=None, engine='python')
+
+        # Clean column names in case there are hidden trailing spaces
+        df_tracker.columns = df_tracker.columns.str.strip()
+
+        # 2. Check if the required columns exist before attempting math
+        if "Date Logged" in df_tracker.columns and "Complete" in df_tracker.columns:
+            # Parse dates safely
+            df_tracker["Date_Logged_dt"] = pd.to_datetime(df_tracker["Date Logged"], errors="coerce")
+            df_tracker["Complete_dt"] = pd.to_datetime(df_tracker["Complete"], errors="coerce")
             
+            # Calculate days to complete
+            df_tracker["Days_To_Complete"] = (df_tracker["Complete_dt"] - df_tracker["Date_Logged_dt"]).dt.days
+            
+            # Extract valid rows
+            valid_days = df_tracker[df_tracker["Days_To_Complete"] >= 0]["Days_To_Complete"]
+            
+            if not valid_days.empty:
+                avg_days_display = f"{int(valid_days.mean())} Days"
+                total_completed = int(valid_days.count())
+            
+            # Safely calculate backlog from rows where Date Logged exists but Complete is blank
+            active_backlog = int((df_tracker["Date_Logged_dt"].notna() & df_tracker["Complete_dt"].isna()).sum())
+        else:
+            st.warning("⏱️ Turnaround metrics unavailable: Could not find 'Date Logged' or 'Complete' headers in layout file.")
+
     except Exception as e:
-        st.error(f"Error calculating metrics: {e}")
+        # Keeps your UI functional even if the file structure breaks completely
+        st.error(f"Error reading metrics tracker file: {e}")
 
 # --- 1. INITIAL SETUP & DEPENDENCIES ---
 st.set_page_config(page_title="Project Tracker Dashboard", layout="wide")
