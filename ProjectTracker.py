@@ -1071,7 +1071,7 @@ if search_pp:
     else:
         st.sidebar.warning(f"No records found for PP# {search_pp}")
 
-#=====================================================================
+# =====================================================================
 # SECTION: DATA EXTRACTION HELPERS
 # =====================================================================
 
@@ -1123,6 +1123,10 @@ def get_pp_dates(file_path, pp_number):
             complete_col: 'Complete Date'
         })
         
-        return result
+        return result  # <--- Changed from 'return result:' to fix the syntax error
+
+    except Exception as e:
+        print(f"An error occurred while extracting PP data: {e}")
+        return pd.DataFrame()
 
 
