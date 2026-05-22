@@ -996,3 +996,81 @@ elif tab_nav == "🌐 Cloud Sync":
         st.info(
             "No local data found. Click 'Fetch from Cloud' to download data."
         )
+
+    import pandas as pd
+
+# =====================================================================
+# SECTION: DATA EXTRACTION HELPERS
+# =====================================================================
+
+def get_pp_dates(file_path, pp_number):
+    """
+    Searches for a specific PP# in the dataset and extracts 
+    the corresponding 'Date Log' and 'Complete' (Promise_Complete) dates.
+    
+    Parameters:
+    - file_path (str): Path to the .csv or .xlsx tracker file.
+    - pp_number (str/int): The PP number to search for (e.g., 20114 or '20114').
+    
+    Returns:
+    - pd.DataFrame: A filtered DataFrame with columns: PP Number, Date Log, Complete Date
+    """
+    try:
+        # 1. Load the file depending on its extension (.csv or .xlsx)
+        if file_path.endswith('.xlsx'):
+            df = pd.read_excel(file_path)
+        elif file_path.endswith('.csv'):
+            df = pd.read_csv(file_path)
+        else:
+            print("Error: Unsupported file format. Please use a .csv or .xlsx file.")
+            return pd.DataFrame()
+        
+        # 2. Standardize columns to handle potential spaces or case mismatches
+        df.columns = df.columns.str.strip()
+        
+        # 3. Ensure the PP column exists
+        if 'PP_Num' not in df.columns:
+            print("Error: 'PP_Num' column not found in the file.")
+            return pd.DataFrame()
+            
+        # 4. Convert to string to safely perform text search (handles combined cells like '20114 / 5/ 6')
+        df['PP_Num_str'] = df['PP_Num'].astype(str)
+        search_term = str(pp_number).strip()
+        
+        # 5. Filter rows matching the PP number
+        filtered_df = df[df['PP_Num_str'].str.contains(search_term, na=False)].copy()
+        
+        # 6. Extract and rename target columns (using fallback column names if necessary)
+        date_log_col = 'Date_Log' if 'Date_Log' in df.columns else 'Date Log'
+        complete_col = 'Promise_Complete' if 'Promise_Complete' in df.columns else 'Promise Complete'
+        
+        # Build final display table
+        result = filtered_df[[ 'PP_Num', date_log_col, complete_col ]].rename(columns={
+            'PP_Num': 'PP Number',
+            date_log_col: 'Date Log',
+            complete_col: 'Complete Date'
+        })
+        
+        return result
+
+    except Exception as e:
+        print(f"An error occurred while extracting PP data: {e}")
+        return pd.DataFrame()
+
+    # --- Example of incorporating it into your execution block ---
+
+# Define your file path (change to .xlsx if that's what you use locally)
+tracker_file = "Combined_Weekly_Trials_3_51_2025.csv" 
+
+# Target PP number to find
+search_pp = "20135"
+
+# Call the new section function
+results = get_pp_dates(tracker_file, search_pp)
+
+# Print or process the results
+if not results.empty:
+    print(f"\n>>> Found records for PP# {search_pp}:")
+    print(results.to_string(index=False))
+else:
+    print(f"\n>>> No records found matching PP# {search_pp}")
