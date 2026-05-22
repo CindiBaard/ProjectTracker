@@ -1058,12 +1058,15 @@ def get_pp_dates(file_path, pp_number):
         return pd.DataFrame()
 
 # 2. Add to your Streamlit UI components layout section (e.g., in your sidebar or a separate tab)
+# Place this flush against the left wall (0 spaces indentation) 
+# where your sidebar or layout elements are drawn
+
 st.sidebar.markdown("---")
 st.sidebar.subheader("Quick PP# Date Lookup")
-search_pp = st.sidebar.text_input("Enter PP Number:")
+search_pp = st.sidebar.text_input("Enter PP Number:", key="sidebar_pp_search")
 
 if search_pp:
-    # Use your tracked CSV or Parquet file path here
+    # Safely calls the cleaned helper function
     results = get_pp_dates("Combined_Weekly_Trials_3_51_2025.csv", search_pp)
     
     if not results.empty:
@@ -1079,54 +1082,38 @@ def get_pp_dates(file_path, pp_number):
     """
     Searches for a specific PP# in the dataset and extracts 
     the corresponding 'Date Log' and 'Complete' (Promise_Complete) dates.
-    
-    Parameters:
-    - file_path (str): Path to the .csv or .xlsx tracker file.
-    - pp_number (str/int): The PP number to search for (e.g., 20114 or '20114').
-    
-    Returns:
-    - pd.DataFrame: A filtered DataFrame with columns: PP Number, Date Log, Complete Date
     """
     try:
-        # 1. Load the file depending on its extension (.csv or .xlsx)
+        import pandas as pd
         if file_path.endswith('.xlsx'):
             df = pd.read_excel(file_path)
         elif file_path.endswith('.csv'):
             df = pd.read_csv(file_path)
         else:
-            print("Error: Unsupported file format. Please use a .csv or .xlsx file.")
             return pd.DataFrame()
         
-        # 2. Standardize columns to handle potential spaces or case mismatches
         df.columns = df.columns.str.strip()
         
-        # 3. Ensure the PP column exists
         if 'PP_Num' not in df.columns:
-            print("Error: 'PP_Num' column not found in the file.")
             return pd.DataFrame()
             
-        # 4. Convert to string to safely perform text search (handles combined cells like '20114 / 5/ 6')
         df['PP_Num_str'] = df['PP_Num'].astype(str)
         search_term = str(pp_number).strip()
         
-        # 5. Filter rows matching the PP number
         filtered_df = df[df['PP_Num_str'].str.contains(search_term, na=False)].copy()
         
-        # 6. Extract and rename target columns (using fallback column names if necessary)
         date_log_col = 'Date_Log' if 'Date_Log' in df.columns else 'Date Log'
         complete_col = 'Promise_Complete' if 'Promise_Complete' in df.columns else 'Promise Complete'
         
-        # Build final display table
-        result = filtered_df[[ 'PP_Num', date_log_col, complete_col ]].rename(columns={
+        result = filtered_df[['PP_Num', date_log_col, complete_col]].rename(columns={
             'PP_Num': 'PP Number',
             date_log_col: 'Date Log',
             complete_col: 'Complete Date'
         })
         
-        return result  # <--- Changed from 'return result:' to fix the syntax error
+        return result
 
     except Exception as e:
-        print(f"An error occurred while extracting PP data: {e}")
+        # Grounded catch to safely return an empty dataframe if file reading fails
         return pd.DataFrame()
-
 
