@@ -9,6 +9,54 @@ import pandas as pd
 import streamlit as st
 from google.oauth2.service_account import Credentials
 
+# =====================================================================
+# DATA EXTRACTION HELPERS (Place this near the top of the file)
+# =====================================================================
+
+def get_pp_dates(file_path, pp_number):
+    """
+    Searches for a specific PP# in the dataset and extracts 
+    the corresponding 'Date Log' and 'Complete' (Promise_Complete) dates.
+    """
+    try:
+        import pandas as pd
+        import os
+
+        # Safety check: make sure the file exists before reading it
+        if not os.path.exists(file_path):
+            return pd.DataFrame()
+
+        if file_path.endswith('.xlsx'):
+            df = pd.read_excel(file_path)
+        elif file_path.endswith('.csv'):
+            df = pd.read_csv(file_path)
+        else:
+            return pd.DataFrame()
+        
+        df.columns = df.columns.str.strip()
+        
+        if 'PP_Num' not in df.columns:
+            return pd.DataFrame()
+            
+        df['PP_Num_str'] = df['PP_Num'].astype(str)
+        search_term = str(pp_number).strip()
+        
+        filtered_df = df[df['PP_Num_str'].str.contains(search_term, na=False)].copy()
+        
+        date_log_col = 'Date_Log' if 'Date_Log' in df.columns else 'Date Log'
+        complete_col = 'Promise_Complete' if 'Promise_Complete' in df.columns else 'Promise Complete'
+        
+        result = filtered_df[['PP_Num', date_log_col, complete_col]].rename(columns={
+            'PP_Num': 'PP Number',
+            date_log_col: 'Date Log',
+            complete_col: 'Complete Date'
+        })
+        
+        return result
+
+    except Exception:
+        return pd.DataFrame()
+
 # --- 1. INITIAL SETUP & DEPENDENCIES ---
 st.set_page_config(page_title="Project Tracker Dashboard", layout="wide")
 pd.set_option("styler.render.max_elements", 1000000)
@@ -1074,46 +1122,4 @@ if search_pp:
     else:
         st.sidebar.warning(f"No records found for PP# {search_pp}")
 
-# =====================================================================
-# SECTION: DATA EXTRACTION HELPERS
-# =====================================================================
-
-def get_pp_dates(file_path, pp_number):
-    """
-    Searches for a specific PP# in the dataset and extracts 
-    the corresponding 'Date Log' and 'Complete' (Promise_Complete) dates.
-    """
-    try:
-        import pandas as pd
-        if file_path.endswith('.xlsx'):
-            df = pd.read_excel(file_path)
-        elif file_path.endswith('.csv'):
-            df = pd.read_csv(file_path)
-        else:
-            return pd.DataFrame()
-        
-        df.columns = df.columns.str.strip()
-        
-        if 'PP_Num' not in df.columns:
-            return pd.DataFrame()
-            
-        df['PP_Num_str'] = df['PP_Num'].astype(str)
-        search_term = str(pp_number).strip()
-        
-        filtered_df = df[df['PP_Num_str'].str.contains(search_term, na=False)].copy()
-        
-        date_log_col = 'Date_Log' if 'Date_Log' in df.columns else 'Date Log'
-        complete_col = 'Promise_Complete' if 'Promise_Complete' in df.columns else 'Promise Complete'
-        
-        result = filtered_df[['PP_Num', date_log_col, complete_col]].rename(columns={
-            'PP_Num': 'PP Number',
-            date_log_col: 'Date Log',
-            complete_col: 'Complete Date'
-        })
-        
-        return result
-
-    except Exception as e:
-        # Grounded catch to safely return an empty dataframe if file reading fails
-        return pd.DataFrame()
 
