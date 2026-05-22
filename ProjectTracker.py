@@ -1089,25 +1089,26 @@ elif tab_nav == "🌐 Cloud Sync":
             "No local data found. Click 'Fetch from Cloud' to download data."
         )
 
-# 1. Ensure the function is clean and outside other blocks
+# =====================================================================
+# HELPER FUNCTIONS (Placed cleanly outside UI conditional blocks)
+# =====================================================================
 def get_pp_dates(file_path, pp_number):
     try:
-        import pandas as pd
         if file_path.endswith('.xlsx'):
-            df = pd.read_excel(file_path)
+            df_trials = pd.read_excel(file_path)
         else:
-            df = pd.read_csv(file_path)
+            df_trials = pd.read_csv(file_path)
             
-        df.columns = df.columns.str.strip()
-        if 'PP_Num' not in df.columns:
+        df_trials.columns = df_trials.columns.str.strip()
+        if 'PP_Num' not in df_trials.columns:
             return pd.DataFrame()
             
-        df['PP_Num_str'] = df['PP_Num'].astype(str)
+        df_trials['PP_Num_str'] = df_trials['PP_Num'].astype(str)
         search_term = str(pp_number).strip()
-        filtered_df = df[df['PP_Num_str'].str.contains(search_term, na=False)].copy()
+        filtered_df = df_trials[df_trials['PP_Num_str'].str.contains(search_term, na=False)].copy()
         
-        date_log_col = 'Date_Log' if 'Date_Log' in df.columns else 'Date Log'
-        complete_col = 'Promise_Complete' if 'Promise_Complete' in df.columns else 'Promise Complete'
+        date_log_col = 'Date_Log' if 'Date_Log' in df_trials.columns else 'Date Log'
+        complete_col = 'Promise_Complete' if 'Promise_Complete' in df_trials.columns else 'Promise Complete'
         
         return filtered_df[['PP_Num', date_log_col, complete_col]].rename(columns={
             'PP_Num': 'PP Number',
@@ -1117,21 +1118,467 @@ def get_pp_dates(file_path, pp_number):
     except Exception:
         return pd.DataFrame()
 
-# 2. Add to your Streamlit UI components layout section (e.g., in your sidebar or a separate tab)
-# Place this flush against the left wall (0 spaces indentation) 
-# where your sidebar or layout elements are drawn
 
-st.sidebar.markdown("---")
-st.sidebar.subheader("Quick PP# Date Lookup")
-search_pp = st.sidebar.text_input("Enter PP Number:", key="sidebar_pp_search")
+# =====================================================================
+# NAVIGATION & SIDEBAR SETUP
+# =====================================================================
+tabs_list = [
+    "🔍 Search & Edit",
+    "➕ Add New Job",
+    "📊 Detailed Age Analysis",
+    "🧪 Trial Trends",
+    "🌐 Cloud Sync",
+]
+tab_nav = st.radio(
+    "Navigation",
+    tabs_list,
+    index=tabs_list.index(st.session_state.active_tab),
+    horizontal=True,
+)
+st.session_state.active_tab = tab_nav
 
-if search_pp:
-    # Safely calls the cleaned helper function
-    results = get_pp_dates("Combined_Weekly_Trials_3_51_2025.csv", search_pp)
+with st.sidebar:
+    st.title("Navigation")
+    st.page_link(
+        "https://injectiontrial-996rcfrtn9rkgafzsejzrn.streamlit.app/",
+        label="🧪 Go to Injection Trial App",
+        icon="🚀",
+    )
+    st.divider()
+    if st.button("🔄 Rebuild Local DB", use_container_width=True):
+        st.cache_data.clear()
+        if os.path.exists(FILENAME_PARQUET):
+            os.remove(FILENAME_PARQUET)
+        st.rerun()
+
+    # Consolidated Sidebar Quick Lookup Row
+    st.markdown("---")
+    st.sidebar.subheader("Quick PP# Date Lookup")
+    search_pp = st.sidebar.text_input("Enter PP Number:", key="sidebar_pp_search")
+
+    if search_pp:
+        results = get_pp_dates("Combined_Weekly_Trials_3_51_2025.csv", search_pp)
+        if not results.empty:
+            st.sidebar.dataframe(results, hide_index=True)
+        else:
+            st.sidebar.warning(f"No records found for PP# {search_pp}")
+
+
+# =====================================================================
+# --- TAB 1: SEARCH & EDIT ---
+# =====================================================================
+if tab_nav == "🔍 Search & Edit":
+
+    def clear_search():
+        st.session_state["search_input_box"] = ""
+        st.session_state.last_search_no = ""
+
+    c_s, c_cl = st.columns([4, 1])
+    raw_search = c_s.text_input(
+        "Search Pre-Prod No.", key="search_input_box"
+    ).strip()
+    c_cl.button("♻️ Clear", use_container_width=True, on_click=clear_search)
+
+    search_no = pad_preprod_id(raw_search)
+    match = (
+        df[df["Pre-Prod No."] == search_no] if not df.empty else pd.DataFrame()
+    )
+
+    if search_no and not match.empty:
+        idx, row = match.index[0], match.iloc[0]
+        btn_col1, btn_col2 = st.columns(2)
+
+        with btn_col1:
+            if st.button("👯 Clone Project", use_container_width=True):
+                new_clone = row.to_dict()
+                new_clone.update(
+                    {
+                        "Pre-Prod No.": get_next_available_id(
+                            search_no, df["Pre-Prod No."]
+                        ),
+                        "Date": datetime.now().strftime("%d/%m/%Y"),
+                    }
+                )
+                st.session_state.form_data = new_clone
+                st.session_state.active_tab = "➕ Add New Job"
+                st.rerun()
+
+        with btn_col2:
+            if st.checkbox(f"Confirm Delete {search_no}"):
+                if st.button(
+                    "🗑️ Delete Project", type="primary", use_container_width=True
+                ):
+                    df = df.drop(idx)
+                    save_db(df)
+                    st.cache_data.clear()
+                    st.rerun()
+
+        display_combination_table("edit")
+
+        st.subheader(f"Editing: {search_no}")
+        updated_vals = {}
+        sel_combo = st.session_state.get("selected_combo", {})
+
+        status_fields = ["Status", "Open or closed", "Completion date"]
+        plate_fields = ["Ordered Plates", "Plates Arrived"]
+        proof_fields = [
+            "Date Sent on Proof",
+            "Proof Approved (Conventional)",
+            "Proof Approved (Digital)",
+        ]
+        trial_fields = [
+            "Sent on Trial",
+            "Digital trial sent",
+            "Revised Artwork After Trialling",
+            "Extrusion requested",
+            "Extrusion received",
+            "Injection trial requested",
+            "Injection trial received",
+            "Blowmould trial requested",
+            "Blowmould trial received",
+        ]
+
+        st.markdown("### 📋 General Details")
+        edit_cols = st.columns(3)
+        excluded = (
+            status_fields
+            + trial_fields
+            + proof_fields
+            + plate_fields
+            + ["Age Category"]
+        )
+        remaining_fields = [
+            c
+            for c in DESIRED_ORDER
+            if c not in excluded
+            and c != "Pre-Prod No."
+            and c not in ["Mould Description", "MouldNumber", "Drawing No."]
+        ]
+
+        for i, col in enumerate(remaining_fields):
+            cur_val = sel_combo.get(
+                col, str(row.get(col, "")).replace("nan", "")
+            )
+            with edit_cols[i % 3]:
+                if "date" in col.lower() or col == "Date":
+                    try:
+                        d_parsed = pd.to_datetime(
+                            cur_val, dayfirst=True, errors="coerce"
+                        )
+                        d_val = (
+                            d_parsed.date()
+                            if pd.notnull(d_parsed)
+                            else datetime.now().date()
+                        )
+                    except:
+                        d_val = datetime.now().date()
+                    d_input = st.date_input(
+                        col, value=d_val, key=f"ed_gen_{col}"
+                    )
+                    updated_vals[col] = d_input.strftime("%d/%m/%Y")
+                elif col in DROPDOWN_DATA:
+                    opts = sorted(
+                        list(set([""] + DROPDOWN_DATA[col] + [cur_val]))
+                    )
+                    updated_vals[col] = st.selectbox(
+                        col,
+                        opts,
+                        index=opts.index(cur_val),
+                        key=f"sel_{col}",
+                    )
+                else:
+                    updated_vals[col] = st.text_input(
+                        col, value=cur_val, key=f"txt_{col}"
+                    )
+
+        # --- SEARCHABLE MOULD ASSETS ROW (SEARCH & EDIT) ---
+        st.divider()
+        st.markdown("### 🏗️ Mould Information")
+        mould_cols = st.columns(3)
+
+        if hasattr(row, "get"):
+            raw_desc = row.get("Mould Description", "")
+        elif hasattr(row, "Mould_Description"):
+            raw_desc = getattr(row, "Mould_Description", "")
+        else:
+            try:
+                raw_desc = row["Mould Description"]
+            except Exception:
+                raw_desc = ""
+
+        existing_desc = str(raw_desc).replace("nan", "").strip()
+        mould_opts = [""] + st.session_state.mould_descriptions
+        default_mould_idx = (
+            mould_opts.index(existing_desc) if existing_desc in mould_opts else 0
+        )
+
+        with mould_cols[0]:
+            if st.session_state.mould_descriptions:
+                selected_mould_desc = st.selectbox(
+                    "Mould Description",
+                    mould_opts,
+                    index=default_mould_idx,
+                    key="mould_desc_select_edit"
+                )
+                updated_vals["Mould Description"] = selected_mould_desc
+            else:
+                selected_mould_desc = st.text_input(
+                    "Mould Description",
+                    value=existing_desc,
+                    key="mould_desc_text_edit",
+                )
+                updated_vals["Mould Description"] = selected_mould_desc    
+
+        # --- SESSION STATE OVERRIDE LOGIC ---
+        if "mould_num_input_edit" not in st.session_state:
+            st.session_state["mould_num_input_edit"] = str(row.get("MouldNumber", "")).replace("nan", "")
+        if "drawing_input_edit" not in st.session_state:
+            st.session_state["drawing_input_edit"] = str(row.get("Drawing No.", "")).replace("nan", "")
+
+        if selected_mould_desc and st.session_state.mould_df is not None:
+            lookup_key = selected_mould_desc.replace(" ", "").lower()
+            df_lookup = st.session_state.mould_df
+            match_rows = df_lookup[df_lookup["_match_key"] == lookup_key]
+            
+            if not match_rows.empty:
+                m_num = str(match_rows.iloc[0].get("MouldNumber", ""))
+                m_drw = str(match_rows.iloc[0].get("Drawing No.", ""))
+                st.session_state["mould_num_input_edit"] = "" if m_num == "nan" else m_num
+                st.session_state["drawing_input_edit"] = "" if m_drw == "nan" else m_drw
+
+        with mould_cols[1]:
+            updated_vals["MouldNumber"] = st.text_input(
+                "Mould Number", key="mould_num_input_edit"
+            )
+        with mould_cols[2]:
+            updated_vals["Drawing No."] = st.text_input(
+                "Drawing No.", key="drawing_input_edit"
+            )
+
+        st.divider()
+        st.markdown("### 📊 Project Status & Completion")
+        stat_cols = st.columns(3)
+        for i, col in enumerate(status_fields):
+            cur_val = str(row.get(col, "")).replace("nan", "")
+            with stat_cols[i % 3]:
+                updated_vals[col] = st.text_input(
+                    col, value=cur_val, key=f"stat_grp_{col}"
+                )
+
+        st.divider()
+        st.markdown("### 📝 Proof Information")
+        proof_cols = st.columns(3)
+        for i, col in enumerate(proof_fields):
+            cur_val = str(row.get(col, "")).replace("nan", "")
+            with proof_cols[i % 3]:
+                updated_vals[col] = st.text_input(
+                    col, value=cur_val, key=f"proof_grp_{col}"
+                )
+
+        st.divider()
+        st.markdown("### 🧪 Trial Information")
+        t_cols = st.columns(3)
+        remaining_progress = trial_fields + plate_fields
+        for i, col in enumerate(remaining_progress):
+            cur_val = str(row.get(col, "")).replace("nan", "")
+            with t_cols[i % 3]:
+                updated_vals[col] = st.text_input(
+                    col, value=cur_val, key=f"flow_{col}"
+                )
+
+        if st.button("💾 Save Changes", use_container_width=True, type="primary"):
+            for k, v in updated_vals.items():
+                df.at[idx, k] = v
+            save_db(df)
+            
+            if updated_vals.get("Injection trial requested") and " - " not in str(updated_vals["Injection trial requested"]):
+                trial_suffix = updated_vals["Injection trial requested"].split("_")[-1] if "_" in updated_vals["Injection trial requested"] else updated_vals["Injection trial requested"]
+                date_str = datetime.now().strftime("%d/%m/%Y")
+                updated_vals["Injection trial requested"] = f"{trial_suffix} - {date_str}"
+                df.at[idx, "Injection trial requested"] = updated_vals["Injection trial requested"]
+                save_db(df)
+
+            success, message = update_tracker_status(search_no, updated_vals)
+            if success:
+                st.success(message)
+            else:
+                st.warning(f"Saved locally, but Google Sheets didn't sync: {message}")
+                
+            st.session_state.selected_combo = {}
+            st.cache_data.clear()
+            st.rerun()
+
+
+# =====================================================================
+# --- TAB 2: ADD NEW JOB ---
+# =====================================================================
+elif tab_nav == "➕ Add New Job":
+    display_combination_table("new")
+    sel = st.session_state.get("selected_combo", {})
+    default_id = st.session_state.form_data.get("Pre-Prod No.", get_auto_next_no(df))
     
-    if not results.empty:
-        st.sidebar.dataframe(results, hide_index=True)
+    st.subheader("New Project Entry")
+    new_id = st.text_input("Pre-Prod No.", value=default_id).strip()
+    new_cols = st.columns(3)
+    new_entry = {"Pre-Prod No.": new_id}
+    
+    mould_fields = ["Mould Description", "MouldNumber", "Drawing No."]
+    
+    field_counter = 0
+    for col in DESIRED_ORDER:
+        if col in ["Age Category", "Pre-Prod No."] + mould_fields:
+            continue
+        val = sel.get(col, st.session_state.form_data.get(col, ""))
+        with new_cols[field_counter % 3]:
+            if col == "Date":
+                date_val = st.date_input(col, value=datetime.now())
+                new_entry[col] = date_val.strftime("%d/%m/%Y")
+            elif col in DROPDOWN_DATA:
+                opts = sorted(list(set([""] + DROPDOWN_DATA[col] + ([val] if val else []))))
+                new_entry[col] = st.selectbox(
+                    col, opts, index=opts.index(val) if val in opts else 0, key=f"new_job_sel_{col}"
+                )
+            else:
+                new_entry[col] = st.text_input(col, value=val, key=f"new_job_txt_{col}")
+        field_counter += 1
+  
+    # --- SEARCHABLE MOULD ASSETS ROW (ADD NEW JOB) ---
+    st.divider()
+    st.markdown("### 🏗️ Mould Information")
+    m_cols = st.columns(3)
+    mould_opts = [""] + st.session_state.mould_descriptions
+    
+    with m_cols[0]:
+        selected_mould_desc = st.selectbox(
+            "Mould Description",
+            mould_opts,
+            index=0,
+            key="mould_desc_select_new"
+        )
+        new_entry["Mould Description"] = selected_mould_desc
+
+    # --- SESSION STATE OVERRIDE LOGIC FOR NEW ENTRIES ---
+    if "mould_num_input_new" not in st.session_state:
+        st.session_state["mould_num_input_new"] = ""
+    if "drawing_input_new" not in st.session_state:
+        st.session_state["drawing_input_new"] = ""
+    
+    if selected_mould_desc and st.session_state.mould_df is not None:
+        lookup_key = selected_mould_desc.replace(" ", "").lower()
+        df_lookup = st.session_state.mould_df
+        match_rows = df_lookup[df_lookup["_match_key"] == lookup_key]
+        
+        if not match_rows.empty:
+            m_num = str(match_rows.iloc[0].get("MouldNumber", ""))
+            m_drw = str(match_rows.iloc[0].get("Drawing No.", ""))
+            st.session_state["mould_num_input_new"] = "" if m_num == "nan" else m_num
+            st.session_state["drawing_input_new"] = "" if m_drw == "nan" else m_drw
+    elif not selected_mould_desc:
+        st.session_state["mould_num_input_new"] = ""
+        st.session_state["drawing_input_new"] = ""
+
+    with m_cols[1]:
+        new_entry["MouldNumber"] = st.text_input("Mould Number", key="mould_num_input_new")
+    with m_cols[2]:
+        new_entry["Drawing No."] = st.text_input("Drawing No.", key="drawing_input_new")
+
+    if st.button("➕ Create Project", use_container_width=True, type="primary"):
+        df = pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True)
+        save_db(df)
+        st.cache_data.clear()
+        st.session_state.form_data = {}
+        st.success("Project Created Locally!")
+        st.rerun()
+
+
+# =====================================================================
+# --- TAB 3: AGE ANALYSIS ---
+# =====================================================================
+elif tab_nav == "📊 Detailed Age Analysis":
+    st.subheader("Project Age Distribution")
+    if not df.empty and "Age Category" in df.columns:
+        st.bar_chart(df["Age Category"].value_counts())
+        st.dataframe(
+            df[["Pre-Prod No.", "Client", "Project Description", "Age Category"]],
+            use_container_width=True,
+        )
+
+
+# =====================================================================
+# --- TAB 4: TRIAL TRENDS ---
+# =====================================================================
+elif tab_nav == "🧪 Trial Trends":
+    st.subheader("Trial Turnaround Performance")
+    trial_df = load_trial_data()
+    
+    if not trial_df.empty:
+        trial_df.columns = [str(c).strip() for c in trial_df.columns]
+        
+        if 'Days_Taken' not in trial_df.columns and 'Trial Date' in trial_df.columns and 'Request Date' in trial_df.columns:
+            try:
+                t_date = pd.to_datetime(trial_df['Trial Date'], dayfirst=True, errors='coerce')
+                r_date = pd.to_datetime(trial_df['Request Date'], dayfirst=True, errors='coerce')
+                trial_df['Days_Taken'] = (t_date - r_date).dt.days
+            except Exception as e:
+                st.error(f"Could not calculate turnaround days: {e}")
+
+        if 'Days_Taken' in trial_df.columns:
+            trial_df['Days_Taken'] = pd.to_numeric(trial_df['Days_Taken'], errors='coerce')
+
+        if 'Days_Taken' in trial_df.columns and not trial_df['Days_Taken'].dropna().empty:
+            avg_days = trial_df['Days_Taken'].mean()
+            avg_days_str = f"{avg_days:.1f} Days" if not pd.isna(avg_days) else "N/A"
+        else:
+            avg_days_str = "N/A"
+            
+        st.metric(label="Average Turnaround Time", value=avg_days_str)
+        
+        if 'Days_Taken' in trial_df.columns:
+            st.markdown("### Turnaround Distribution")
+            st.bar_chart(trial_df['Days_Taken'].value_counts())
+            st.dataframe(trial_df, use_container_width=True)
     else:
-        st.sidebar.warning(f"No records found for PP# {search_pp}")
+        st.info("No trial data available. Check if Merged_Weekly_Trackers_Layout_Preserved.csv exists.")
 
 
+# =====================================================================
+# --- TAB 5: CLOUD SYNC ---
+# =====================================================================
+elif tab_nav == "🌐 Cloud Sync":
+    st.subheader("Google Sheets Sync")
+
+    if st.button("📥 Fetch from Cloud", use_container_width=True):
+        with st.spinner("Syncing..."):
+            try:
+                scope = [
+                    "https://www.googleapis.com/auth/spreadsheets",
+                    "https://www.googleapis.com/auth/drive",
+                ]
+                creds_info = st.secrets.get(
+                    "gcp_service_account",
+                    st.secrets.get("connections", {}).get("gsheets"),
+                )
+
+                if isinstance(creds_info, dict) and "private_key" in creds_info:
+                    creds_info["private_key"] = creds_info["private_key"].replace("\\n", "\n")
+
+                creds = Credentials.from_service_account_info(creds_info, scopes=scope)
+                client = gspread.authorize(creds)
+                ws = client.open_by_key(TRACKER_FILE_ID).get_worksheet(0)
+                raw_data = ws.get_all_values()
+
+                if raw_data:
+                    new_df = pd.DataFrame(raw_data[1:], columns=raw_data[0])
+                    new_df.to_parquet(FILENAME_PARQUET, index=False)
+                    st.cache_data.clear()
+                    st.success("Fetched successfully!")
+                    st.rerun()
+            except Exception as e:
+                st.error(f"Sync failed: {e}")
+
+    st.divider()
+    st.subheader("Local Database Preview")
+    if not df.empty:
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No local data found. Click 'Fetch from Cloud' to download data.")
