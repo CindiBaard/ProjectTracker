@@ -736,7 +736,7 @@ st.sidebar.subheader("Quick PP# Date Lookup")
 search_pp = st.sidebar.text_input("Enter PP Number to view logs:")
 
 # --- QUICK PP# DATE LOOKUP (SIDEBAR DISPATCH) ---
-    if search_pp:
+if search_pp:
         # This automatically references your uploaded weekly trials database file
         results = get_pp_dates("Combined_Weekly_Trials_3_51_2025.csv", search_pp)
         
@@ -782,8 +782,8 @@ search_pp = st.sidebar.text_input("Enter PP Number to view logs:")
                 value=existing_desc,
                 key="mould_desc_text_edit",
             )
-            updated_vals["Mould Description"] = selected_mould_desc
-            
+            updated_vals["Mould Description"] = selected_mould_desc    
+
         # --- SESSION STATE OVERRIDE LOGIC ---
         # Initialize the widget keys in session state if they don't exist yet
         if "mould_num_input_edit" not in st.session_state:
