@@ -948,7 +948,7 @@ elif tab_nav == "🧪 Trial Trends":
             st.bar_chart(trial_df['Days_Taken'].value_counts())
             st.dataframe(trial_df, use_container_width=True)
     else:
-        st.info("No trial data available. Check if Combined_Weekly_Trials_Weeks_3_12_2026.csv exists.")
+        st.info("No trial data available. Check if Merged_Weekly_Trackers_Layout_Preserved.csv exists.")
 
 # --- TAB 5: CLOUD SYNC ---
 elif tab_nav == "🌐 Cloud Sync":
