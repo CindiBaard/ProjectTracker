@@ -16,7 +16,7 @@ from google.oauth2.service_account import Credentials
 
 def get_pp_dates(file_path, pp_number):
     """
-    Searches for a specific PP# in the dataset and extracts 
+    Searches for a specific PP # in the dataset and extracts 
     the corresponding PP Number, Description, 'Date Log', and 'Complete' dates.
     """
     try:
@@ -712,7 +712,7 @@ if 'df_clean' in locals() and not df_clean.empty and "Days_To_Complete" in df_cl
     # 1. Dynamically find the Description column name if it exists
     desc_col = next((c for c in df_clean.columns if c.lower() in ['description', 'desc']), None)
     
-    # 2. Build the display columns list, putting PP# and Description at the front
+    # 2. Build the display columns list, putting PP # and Description at the front
     preview_cols = []
     if 'PP_Num' in df_clean.columns:
         preview_cols.append('PP_Num')
@@ -747,7 +747,7 @@ with st.sidebar:
             os.remove(FILENAME_PARQUET)
         st.rerun()
 
-    # --- QUICK PP# DATE LOOKUP (SIDEBAR DISPATCH) ---
+    # --- QUICK PP # DATE LOOKUP (SIDEBAR DISPATCH) ---
     st.markdown("---")
     st.subheader("Quick PP# Date Lookup")
     search_pp = st.text_input("Enter PP Number to view logs:", key="sidebar_pp_search")
@@ -758,7 +758,7 @@ with st.sidebar:
         if not results.empty:
             st.dataframe(results, hide_index=True)
         else:
-            st.warning(f"No records found for PP# {search_pp}")
+            st.warning(f"No records found for PP # {search_pp}")
 
 
         pass  # <--- This 'pass' prevents the empty block error!
