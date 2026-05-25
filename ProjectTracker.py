@@ -36,13 +36,13 @@ def get_pp_dates(file_path, pp_number):
         
         df.columns = df.columns.str.strip()
         
-        if 'PP_Num' not in df.columns:
+        if 'PP #' not in df.columns:
             return pd.DataFrame()
             
-        df['PP_Num_str'] = df['PP_Num'].astype(str)
+        df['PP #_str'] = df['PP #'].astype(str)
         search_term = str(pp_number).strip()
         
-        filtered_df = df[df['PP_Num_str'].str.contains(search_term, na=False)].copy()
+        filtered_df = df[df['PP #_str'].str.contains(search_term, na=False)].copy()
         
         # Check for flexible column naming
         date_log_col = 'Date_Log' if 'Date_Log' in df.columns else 'Date Log'
@@ -50,8 +50,8 @@ def get_pp_dates(file_path, pp_number):
         desc_col = 'Description' if 'Description' in df.columns else ('Desc' if 'Desc' in df.columns else None)
         
         # Build the list of columns to extract dynamically
-        columns_to_extract = ['PP_Num']
-        rename_mapping = {'PP_Num': 'PP Number'}
+        columns_to_extract = ['PP #']
+        rename_mapping = {'PP #': 'PP Number'}
         
         if desc_col:
             columns_to_extract.append(desc_col)
@@ -714,8 +714,8 @@ if 'df_clean' in locals() and not df_clean.empty and "Days_To_Complete" in df_cl
     
     # 2. Build the display columns list, putting PP # and Description at the front
     preview_cols = []
-    if 'PP_Num' in df_clean.columns:
-        preview_cols.append('PP_Num')
+    if 'PP #' in df_clean.columns:
+        preview_cols.append('PP #')
     if desc_col:
         preview_cols.append(desc_col)
         
