@@ -70,7 +70,7 @@ def get_pp_dates(file_path, pp_number):
 
     except Exception:
         return pd.DataFrame()
-        
+
 
 # --- LOAD DATA AND CALCULATE METRICS ---
 
@@ -708,9 +708,28 @@ st.divider()
 # --- VALIDATION VIEW PANEL ---
 st.markdown("### Trial Turnaround Performance")
 if 'df_clean' in locals() and not df_clean.empty and "Days_To_Complete" in df_clean.columns:
-    # Display a mini preview of the calculated rows so you can see the math working live
-    preview_cols = [c for c in [log_col, comp_col, "Days_To_Complete"] if c in df_clean.columns]
-    st.dataframe(df_clean[preview_cols].dropna(subset=["Days_To_Complete"]).head(10), use_container_width=True, hide_index=True)
+    
+    # 1. Dynamically find the Description column name if it exists
+    desc_col = next((c for c in df_clean.columns if c.lower() in ['description', 'desc']), None)
+    
+    # 2. Build the display columns list, putting PP# and Description at the front
+    preview_cols = []
+    if 'PP_Num' in df_clean.columns:
+        preview_cols.append('PP_Num')
+    if desc_col:
+        preview_cols.append(desc_col)
+        
+    # Append the original date logging and metric columns
+    for c in [log_col, comp_col, "Days_To_Complete"]:
+        if c in df_clean.columns and c not in preview_cols:
+            preview_cols.append(c)
+            
+    # 3. Render the updated dataframe preview
+    st.dataframe(
+        df_clean[preview_cols].dropna(subset=["Days_To_Complete"]).head(10), 
+        use_container_width=True, 
+        hide_index=True
+    )
 else:
     st.info("💡 Data layout processed successfully. Enter a 'Complete' timestamp in your project tracking records to compile active cycle speeds.")
 
