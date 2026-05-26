@@ -74,7 +74,7 @@ def get_pp_dates(file_path, pp_number):
 
 # --- LOAD DATA AND CALCULATE METRICS ---
 
-tracker_file = "Merged_Weekly_Trackers_Layout_Preserved.csv"
+tracker_file = TRIALS_FILE_CURRENT
 avg_days_display = "N/A"
 total_completed = 0
 active_backlog = 0
