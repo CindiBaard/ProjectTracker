@@ -10,6 +10,17 @@ import streamlit as st
 from google.oauth2.service_account import Credentials
 
 
+# --- 2. FILE PATHS & CONFIG ---
+BASE_DIR = os.getcwd()
+FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
+TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
+DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
+COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
+TRIALS_FILE_CURRENT = "https://raw.githubusercontent.com/CindiBaard/ProjectTracker/refs/heads/main/Merged_Weekly_Trackers_Layout_Preserved.csv"
+SUBMISSIONS_FILE = "Submissions_History.parquet"
+TRACKER_FILE_ID = "1LA9F5mD67vR9yYKqQ39CS-tAZ9QgCgn5KBWaY_RfFKM"
+MOULD_ASSETS = "1NoA6JvnxkqCpeBF8OZNcrdWhD2SF7umM7lPBVyWDoT8"
+tracker_file = "Merged_Weekly_Trackers_Layout_Preserved.csv"
 # =====================================================================
 # DATA EXTRACTION HELPERS (Place this near the top of the file)
 # =====================================================================
@@ -152,21 +163,10 @@ if os.path.exists(tracker_file):
     except Exception as e:
         st.warning(f"Metrics loading fallback enabled: {e}")
 
-
 # --- 1. INITIAL SETUP & DEPENDENCIES ---
 st.set_page_config(page_title="Project Tracker Dashboard", layout="wide")
 pd.set_option("styler.render.max_elements", 1000000)
 
-# --- 2. FILE PATHS & CONFIG ---
-BASE_DIR = os.getcwd()
-FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
-TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
-DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
-COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
-TRIALS_FILE_CURRENT = "https://raw.githubusercontent.com/CindiBaard/ProjectTracker/refs/heads/main/Merged_Weekly_Trackers_Layout_Preserved.csv"
-SUBMISSIONS_FILE = "Submissions_History.parquet"
-TRACKER_FILE_ID = "1LA9F5mD67vR9yYKqQ39CS-tAZ9QgCgn5KBWaY_RfFKM"
-MOULD_ASSETS = "1NoA6JvnxkqCpeBF8OZNcrdWhD2SF7umM7lPBVyWDoT8"
 
 # --- 2. FIXED DESIRED ORDER ---
 DESIRED_ORDER = [
