@@ -907,6 +907,12 @@ if tab_nav == "🔍 Search & Edit":
     
     mould_opts = [""] + st.session_state.mould_descriptions
     
+    # =====================================================================
+    # ADD THIS LINE HERE TO DEFINE THE COLUMNS FOR THE MOULD DROPDOWNS
+    # =====================================================================
+    m_cols = st.columns([1, 1]) 
+    
+    # Line 894 (The line currently crashing):
     with m_cols[0]:
         selected_mould_desc = st.selectbox(
             "Mould Description",
