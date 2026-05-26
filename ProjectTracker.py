@@ -893,13 +893,14 @@ if tab_nav == "🔍 Search & Edit":
     # =====================================================================
     m_cols = st.columns(3)
     
-    # Line 892 (The line currently causing the application crash):
     with m_cols[0]:
         selected_mould_desc = st.selectbox(
             "Mould Description",
             mould_opts,
-            key="mould_desc_selector"
+            index=0,
+            key="mould_desc_select_new"
         )
+        new_entry["Mould Description"] = selected_mould_desc
 
         # 1. Initialize the dictionary FIRST
         new_entry = {}
@@ -933,6 +934,8 @@ if tab_nav == "🔍 Search & Edit":
             key="mould_desc_select_new"
         )
         new_entry["Mould Description"] = selected_mould_desc
+
+
     # --- SESSION STATE OVERRIDE LOGIC FOR NEW ENTRIES ---
     if "mould_num_input_new" not in st.session_state:
         st.session_state["mould_num_input_new"] = ""
