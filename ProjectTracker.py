@@ -888,13 +888,19 @@ if tab_nav == "🔍 Search & Edit":
     
     mould_opts = [""] + st.session_state.mould_descriptions
     
+    # =====================================================================
+    # FIX: Define the local layout columns for the Injection Molding form
+    # =====================================================================
+    m_cols = st.columns(2)
+    
+    # Line 892 (The line currently causing the application crash):
     with m_cols[0]:
         selected_mould_desc = st.selectbox(
             "Mould Description",
             mould_opts,
-            index=0,
-            key="mould_desc_select_new"
+            key="mould_desc_selector"
         )
+        
         new_entry["Mould Description"] = selected_mould_desc
 
     # --- SESSION STATE OVERRIDE LOGIC FOR NEW ENTRIES ---
