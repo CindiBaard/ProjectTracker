@@ -33,7 +33,7 @@ tracker_file = "Merged_Weekly_Trackers_Layout_Preserved.csv"
 def get_pp_dates(file_path, pp_number):
     """
     Searches for a specific PP # in the dataset and extracts 
-    the corresponding PP Number, Description, 'Date Log', and 'Complete' dates.
+    the corresponding PP Number, 'Date Log', and 'Complete' dates.
     """
     try:
         import pandas as pd
@@ -63,15 +63,12 @@ def get_pp_dates(file_path, pp_number):
         # Check for flexible column naming
         date_log_col = 'Date_Log' if 'Date_Log' in df.columns else 'Date Log'
         complete_col = 'Promise_Complete' if 'Promise_Complete' in df.columns else 'Promise Complete'
-        desc_col = 'Description' if 'Description' in df.columns else ('Desc' if 'Desc' in df.columns else None)
+        
         
         # Build the list of columns to extract dynamically
         columns_to_extract = ['PP #']
         rename_mapping = {'PP #': 'PP Number'}
         
-        if desc_col:
-            columns_to_extract.append(desc_col)
-            rename_mapping[desc_col] = 'Description'
             
         columns_to_extract.extend([date_log_col, complete_col])
         rename_mapping.update({
