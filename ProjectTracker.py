@@ -79,6 +79,11 @@ avg_days_display = "N/A"
 total_completed = 0
 active_backlog = 0
 
+# Initialize layout baseline structures to prevent NameErrors down the line
+df_clean = pd.DataFrame(columns=["Date_Logged_dt", "Complete_dt", "Days_To_Complete"])
+log_col = "Date_Log"
+comp_col = "Promise_Complete"
+
 if os.path.exists(tracker_file):
     try:
         raw_lines = []
@@ -118,10 +123,10 @@ if os.path.exists(tracker_file):
             df_tracker.columns = df_tracker.columns.astype(str).str.strip()
             
             # 3. Match columns with fuzzy logic variations
-            log_col = next((c for c in df_tracker.columns if any(h in c.lower() for h in ["date_log", "date logged", "date log"])), None)
-            comp_col = next((c for c in df_tracker.columns if any(h in c.lower() for h in ["complete", "promise_complete", "promise complete"])), None)
+            log_col = next((c for c in df_tracker.columns if any(h in c.lower() for h in ["date_log", "date logged", "date log"])), "Date_Log")
+            comp_col = next((c for c in df_tracker.columns if any(h in c.lower() for h in ["complete", "promise_complete", "promise complete"])), "Promise_Complete")
             
-            if log_col and comp_col:
+            if log_col in df_tracker.columns and comp_col in df_tracker.columns:
                 # 4. Clean out empty cells or template strings (like column names repeated in the data body)
                 df_clean = df_tracker[
                     (df_tracker[log_col] != "") & 
@@ -142,20 +147,10 @@ if os.path.exists(tracker_file):
                     total_completed = int(valid_days.count())
                 
                 # 7. Calculate real-time backlog 
-                # (Row has a log date, but the completion date field is still empty)
                 active_backlog = int((df_clean["Date_Logged_dt"].notna() & df_clean["Complete_dt"].isna()).sum())
-            else:
-                # Safe structure placeholder initialization
-                df_clean = pd.DataFrame(columns=["Date_Logged_dt", "Complete_dt"])
                 
-        else:
-            df_clean = pd.DataFrame(columns=["Date_Logged_dt", "Complete_dt"])
-            
     except Exception as e:
         st.warning(f"Metrics loading fallback enabled: {e}")
-        df_clean = pd.DataFrame(columns=["Date_Logged_dt", "Complete_dt"])
-else:
-    df_clean = pd.DataFrame(columns=["Date_Logged_dt", "Complete_dt"])
 
 
 # --- 1. INITIAL SETUP & DEPENDENCIES ---
@@ -168,7 +163,7 @@ FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
 TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
 DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
 COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
-TRIALS_FILE_CURRENT = "ProjectTracker/Merged_Weekly_Trackers_Layout_Preserved.csv"
+TRIALS_FILE_CURRENT = "https://raw.githubusercontent.com/CindiBaard/ProjectTracker/refs/heads/main/Merged_Weekly_Trackers_Layout_Preserved.csv"
 SUBMISSIONS_FILE = "Submissions_History.parquet"
 TRACKER_FILE_ID = "1LA9F5mD67vR9yYKqQ39CS-tAZ9QgCgn5KBWaY_RfFKM"
 MOULD_ASSETS = "1NoA6JvnxkqCpeBF8OZNcrdWhD2SF7umM7lPBVyWDoT8"
@@ -634,15 +629,13 @@ def display_combination_table(key_prefix):
             except Exception as e:
                 st.error(f"Combo Error: {e}")
 
-# 
+
 # --- 5. APP EXECUTION START ---
 try:
     df = load_db_v2(TRACKER_ADJ_FILE, DIGITALPREPROD_FILE, FILENAME_PARQUET)
-    # Any other loading code...
 except Exception as e:
     st.error(f"Error loading database: {e}")
 
-    # Or just 'pass' if you want to skip it, but an except block MUST be here
 if df.empty:
     df = pd.DataFrame(columns=DESIRED_ORDER)
 
@@ -753,15 +746,11 @@ with st.sidebar:
     search_pp = st.text_input("Enter PP Number to view logs:", key="sidebar_pp_search")
 
     if search_pp:
-        # Safely calls the cleaned helper function
         results = get_pp_dates("Combined_Weekly_Trials_3_51_2025.csv", search_pp)
         if not results.empty:
             st.dataframe(results, hide_index=True)
         else:
             st.warning(f"No records found for PP # {search_pp}")
-
-
-        pass  # <--- This 'pass' prevents the empty block error!
 
 # --- TAB 1: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
@@ -896,158 +885,7 @@ if tab_nav == "🔍 Search & Edit":
         if hasattr(row, "get"):
             raw_desc = row.get("Mould Description", "")
         elif hasattr(row, "Mould_Description"):
-            raw_desc = getattr(row, "Mould_Description", "")
-        else:
-            try:
-                raw_desc = row["Mould Description"]
-            except Exception:
-                raw_desc = ""
-
-        existing_desc = str(raw_desc).replace("nan", "").strip()
-        mould_opts = [""] + st.session_state.mould_descriptions
-        default_mould_idx = (
-            mould_opts.index(existing_desc) if existing_desc in mould_opts else 0
-        )
-
-        with mould_cols[0]:
-            if st.session_state.mould_descriptions:
-                selected_mould_desc = st.selectbox(
-                    "Mould Description",
-                    mould_opts,
-                    index=default_mould_idx,
-                    key="mould_desc_select_edit"
-                )
-                updated_vals["Mould Description"] = selected_mould_desc
-            else:
-                selected_mould_desc = st.text_input(
-                    "Mould Description",
-                    value=existing_desc,
-                    key="mould_desc_text_edit",
-                )
-                updated_vals["Mould Description"] = selected_mould_desc    
-
-        # --- SESSION STATE OVERRIDE LOGIC ---
-        if "mould_num_input_edit" not in st.session_state:
-            st.session_state["mould_num_input_edit"] = str(row.get("MouldNumber", "")).replace("nan", "")
-        if "drawing_input_edit" not in st.session_state:
-            st.session_state["drawing_input_edit"] = str(row.get("Drawing No.", "")).replace("nan", "")
-
-        if selected_mould_desc and st.session_state.mould_df is not None:
-            lookup_key = selected_mould_desc.replace(" ", "").lower()
-            df_lookup = st.session_state.mould_df
-            match_rows = df_lookup[df_lookup["_match_key"] == lookup_key]
-            
-            if not match_rows.empty:
-                m_num = str(match_rows.iloc[0].get("MouldNumber", ""))
-                m_drw = str(match_rows.iloc[0].get("Drawing No.", ""))
-                st.session_state["mould_num_input_edit"] = "" if m_num == "nan" else m_num
-                st.session_state["drawing_input_edit"] = "" if m_drw == "nan" else m_drw
-
-        with mould_cols[1]:
-            updated_vals["MouldNumber"] = st.text_input(
-                "Mould Number", key="mould_num_input_edit"
-            )
-        with mould_cols[2]:
-            updated_vals["Drawing No."] = st.text_input(
-                "Drawing No.", key="drawing_input_edit"
-            )
-
-        st.divider()
-        st.markdown("### 📊 Project Status & Completion")
-        stat_cols = st.columns(3)
-        for i, col in enumerate(status_fields):
-            cur_val = str(row.get(col, "")).replace("nan", "")
-            with stat_cols[i % 3]:
-                updated_vals[col] = st.text_input(
-                    col, value=cur_val, key=f"stat_grp_{col}"
-                )
-
-        st.divider()
-        st.markdown("### 📝 Proof Information")
-        proof_cols = st.columns(3)
-        for i, col in enumerate(proof_fields):
-            cur_val = str(row.get(col, "")).replace("nan", "")
-            with proof_cols[i % 3]:
-                updated_vals[col] = st.text_input(
-                    col, value=cur_val, key=f"proof_grp_{col}"
-                )
-
-        st.divider()
-        st.markdown("### 🧪 Trial Information")
-        t_cols = st.columns(3)
-        remaining_progress = trial_fields + plate_fields
-        for i, col in enumerate(remaining_progress):
-            cur_val = str(row.get(col, "")).replace("nan", "")
-            with t_cols[i % 3]:
-                updated_vals[col] = st.text_input(
-                    col, value=cur_val, key=f"flow_{col}"
-                )
-
-        if st.button("💾 Save Changes", use_container_width=True, type="primary"):
-            for k, v in updated_vals.items():
-                df.at[idx, k] = v
-            save_db(df)
-            
-            if updated_vals.get("Injection trial requested") and " - " not in str(updated_vals["Injection trial requested"]):
-                trial_suffix = updated_vals["Injection trial requested"].split("_")[-1] if "_" in updated_vals["Injection trial requested"] else updated_vals["Injection trial requested"]
-                date_str = datetime.now().strftime("%d/%m/%Y")
-                updated_vals["Injection trial requested"] = f"{trial_suffix} - {date_str}"
-                df.at[idx, "Injection trial requested"] = updated_vals["Injection trial requested"]
-                save_db(df)
-
-            success, message = update_tracker_status(search_no, updated_vals)
-            if success:
-                st.success(message)
-            else:
-                st.warning(f"Saved locally, but Google Sheets didn't sync: {message}")
-                
-            st.session_state.selected_combo = {}
-            st.cache_data.clear()
-            st.rerun()
-
-    # Inline verification table if looking up a specific PP from the sidebar inside this tab context
-    if 'search_pp' in locals() and search_pp:
-        results = get_pp_dates("Combined_Weekly_Trials_3_51_2025.csv", search_pp)
-        if not results.empty:
-            st.dataframe(results, use_container_width=True, hide_index=True)
-
-# =====================================================================
-# 2. TAB 2 NAVIGATION (Ensure this aligns horizontally with 'if tab_nav ==')
-# =====================================================================
-elif tab_nav == "➕ Add New Job":
-    display_combination_table("new")
-    sel = st.session_state.get("selected_combo", {})
-    default_id = st.session_state.form_data.get("Pre-Prod No.", get_auto_next_no(df))
-    
-    st.subheader("New Project Entry")
-    new_id = st.text_input("Pre-Prod No.", value=default_id).strip()
-    new_cols = st.columns(3)
-    new_entry = {"Pre-Prod No.": new_id}
-    
-    mould_fields = ["Mould Description", "MouldNumber", "Drawing No."]
-    
-    field_counter = 0
-    for col in DESIRED_ORDER:
-        if col in ["Age Category", "Pre-Prod No."] + mould_fields:
-            continue
-        val = sel.get(col, st.session_state.form_data.get(col, ""))
-        with new_cols[field_counter % 3]:
-            if col == "Date":
-                date_val = st.date_input(col, value=datetime.now())
-                new_entry[col] = date_val.strftime("%d/%m/%Y")
-            elif col in DROPDOWN_DATA:
-                opts = sorted(list(set([""] + DROPDOWN_DATA[col] + ([val] if val else []))))
-                new_entry[col] = st.selectbox(
-                    col, opts, index=opts.index(val) if val in opts else 0, key=f"new_job_sel_{col}"
-                )
-            else:
-                new_entry[col] = st.text_input(col, value=val, key=f"new_job_txt_{col}")
-        field_counter += 1
-  
-    # --- SEARCHABLE MOULD ASSETS ROW (ADD NEW JOB) ---
-    st.divider()
-    st.markdown("### 🏗️ Mould Information")
-    m_cols = st.columns(3)
+            raw_desc = getattr(row, "Mould_Description")
     
     mould_opts = [""] + st.session_state.mould_descriptions
     
