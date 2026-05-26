@@ -1020,7 +1020,7 @@ elif tab_nav == "🧪 Trial Trends":
         # =====================================================================
         # DEFINE COLUMNS HERE FOR THE TAB 4 LAYOUT
         # =====================================================================
-        m_cols = st.columns([1, 2]) # Splitting layout: left for metric, right for distribution chart
+        m_cols = st.columns([1, 1]) # Splitting layout: left for metric, right for distribution chart
         
         with m_cols[0]:
             # 5. Displaying Metrics cleanly in the first column
