@@ -998,14 +998,25 @@ elif tab_nav == "🧪 Trial Trends":
         else:
             avg_days_str = "N/A"
             
-        # 5. Displaying Metrics & Visualizations cleanly
-        st.metric(label="Average Turnaround Time", value=avg_days_str)
+        # =====================================================================
+        # DEFINE COLUMNS HERE FOR THE TAB 4 LAYOUT
+        # =====================================================================
+        m_cols = st.columns([1, 2]) # Splitting layout: left for metric, right for distribution chart
         
-        # Simple rendering fallback for your charts
-        if 'Days_Taken' in trial_df.columns:
-            st.markdown("### Turnaround Distribution")
-            st.bar_chart(trial_df['Days_Taken'].value_counts())
-            st.dataframe(trial_df, use_container_width=True)
+        with m_cols[0]:
+            # 5. Displaying Metrics cleanly in the first column
+            st.metric(label="Average Turnaround Time", value=avg_days_str)
+        
+        with m_cols[1]:
+            # Simple rendering fallback for your charts in the second column
+            if 'Days_Taken' in trial_df.columns:
+                st.markdown("### Turnaround Distribution")
+                st.bar_chart(trial_df['Days_Taken'].value_counts())
+        
+        # This full dataframe print can sit outside the columns across the full width
+        st.markdown("---")
+        st.dataframe(trial_df, use_container_width=True)
+        
     else:
         st.info("No trial data available. Check if Merged_Weekly_Trackers_Layout_Preserved.csv exists.")
 
