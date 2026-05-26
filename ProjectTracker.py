@@ -913,19 +913,18 @@ if tab_nav == "🔍 Search & Edit":
             # Save logic here (e.g., convert to DataFrame, save to parquet/csv)
             st.success("Data saved successfully!")
 
-    # --- SESSION STATE OVERRIDE LOGIC FOR NEW ENTRIES ---
+   # --- SESSION STATE OVERRIDE LOGIC FOR NEW ENTRIES ---
     st.divider()
     st.markdown("### 🏗️ Mould Information")
-    m_cols = st.columns(3)
     
     mould_opts = [""] + st.session_state.mould_descriptions
     
     # =====================================================================
-    # ADD THIS LINE HERE TO DEFINE THE COLUMNS FOR THE MOULD DROPDOWNS
+    # FIX: Change from st.columns([1, 1]) to st.columns(3)
     # =====================================================================
-    m_cols = st.columns([1, 1]) 
+    m_cols = st.columns(3) 
     
-    # Line 894 (The line currently crashing):
+    # Line 894:
     with m_cols[0]:
         selected_mould_desc = st.selectbox(
             "Mould Description",
@@ -934,7 +933,6 @@ if tab_nav == "🔍 Search & Edit":
             key="mould_desc_select_new"
         )
         new_entry["Mould Description"] = selected_mould_desc
-
     # --- SESSION STATE OVERRIDE LOGIC FOR NEW ENTRIES ---
     if "mould_num_input_new" not in st.session_state:
         st.session_state["mould_num_input_new"] = ""
