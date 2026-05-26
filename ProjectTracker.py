@@ -9,8 +9,9 @@ import pandas as pd
 import streamlit as st
 from google.oauth2.service_account import Credentials
 
-
-# --- 2. FILE PATHS & CONFIG ---
+# =====================================================================
+# 1. FILE CONFIGURATIONS & GLOBAL PATHS (Moved to top to prevent NameErrors)
+# =====================================================================
 BASE_DIR = os.getcwd()
 FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
 TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
@@ -20,9 +21,13 @@ TRIALS_FILE_CURRENT = "https://raw.githubusercontent.com/CindiBaard/ProjectTrack
 SUBMISSIONS_FILE = "Submissions_History.parquet"
 TRACKER_FILE_ID = "1LA9F5mD67vR9yYKqQ39CS-tAZ9QgCgn5KBWaY_RfFKM"
 MOULD_ASSETS = "1NoA6JvnxkqCpeBF8OZNcrdWhD2SF7umM7lPBVyWDoT8"
-tracker_file = "Merged_Weekly_Trackers_Layout_Preserved.csv"
+
+# Point this directly to your variable or local filename fallback
+tracker_file = "Merged_Weekly_Trackers_Layout_Preserved.csv" 
+
+
 # =====================================================================
-# DATA EXTRACTION HELPERS (Place this near the top of the file)
+# 2. DATA EXTRACTION HELPERS
 # =====================================================================
 
 def get_pp_dates(file_path, pp_number):
@@ -83,9 +88,8 @@ def get_pp_dates(file_path, pp_number):
         return pd.DataFrame()
 
 
-# --- LOAD DATA AND CALCULATE METRICS ---
+# --- 3. LOAD DATA AND CALCULATE METRICS ---
 
-tracker_file = TRIALS_FILE_CURRENT
 avg_days_display = "N/A"
 total_completed = 0
 active_backlog = 0
@@ -95,77 +99,75 @@ df_clean = pd.DataFrame(columns=["Date_Logged_dt", "Complete_dt", "Days_To_Compl
 log_col = "Date_Log"
 comp_col = "Promise_Complete"
 
-if os.path.exists(tracker_file):
+# If pulling down from GitHub URL instead of checking local path presence:
+if tracker_file.startswith("http") or os.path.exists(tracker_file):
     try:
         raw_lines = []
-        # 1. Read the file completely as lines to completely isolate messy structure shifts
-        with open(tracker_file, "r", encoding="utf-8", errors="ignore") as f:
-            for line in f:
-                cols = [c.strip() for c in line.split(",")]
-                # Keep lines that have content and represent a real data width
-                if len(cols) >= 5 and any(cols):
-                    raw_lines.append(cols)
+        # Support reading directly via URL or local file path
+        if tracker_file.startswith("http"):
+            import urllib.request
+            with urllib.request.urlopen(tracker_file) as response:
+                lines = response.read().decode('utf-8', errors='ignore').splitlines()
+                for line in lines:
+                    cols = [c.strip() for c in line.split(",")]
+                    if len(cols) >= 5 and any(cols):
+                        raw_lines.append(cols)
+        else:
+            with open(tracker_file, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    cols = [c.strip() for c in line.split(",")]
+                    if len(cols) >= 5 and any(cols):
+                        raw_lines.append(cols)
         
         if raw_lines:
-            # Pad all rows cleanly to the max columns found so pandas doesn't fail
             max_cols = max(len(row) for row in raw_lines)
             padded_rows = [r + [""] * (max_cols - len(r)) for r in raw_lines]
             temp_df = pd.DataFrame(padded_rows)
             
-            # 2. Find the row index that contains our actual data headers
             header_row_idx = None
             for idx, row in temp_df.iterrows():
                 row_list = [str(x).lower() for x in row]
-                # Look for the sweet spot: rows that mention Date Log or Promise Complete
                 if any("date_log" in x or "date log" in x for x in row_list):
                     header_row_idx = idx
                     break
             
             if header_row_idx is not None:
-                # Set real headers and discard any structural garbage or notes above it
                 temp_df.columns = temp_df.iloc[header_row_idx].str.strip()
                 df_tracker = temp_df.iloc[header_row_idx + 1:].copy()
             else:
-                # Fallback: use first row if no header key keyword matches
                 temp_df.columns = temp_df.iloc[0].str.strip()
                 df_tracker = temp_df.iloc[1:].copy()
                 
-            # Clean column strings to guarantee matching security
             df_tracker.columns = df_tracker.columns.astype(str).str.strip()
             
-            # 3. Match columns with fuzzy logic variations
             log_col = next((c for c in df_tracker.columns if any(h in c.lower() for h in ["date_log", "date logged", "date log"])), "Date_Log")
             comp_col = next((c for c in df_tracker.columns if any(h in c.lower() for h in ["complete", "promise_complete", "promise complete"])), "Promise_Complete")
             
             if log_col in df_tracker.columns and comp_col in df_tracker.columns:
-                # 4. Clean out empty cells or template strings (like column names repeated in the data body)
                 df_clean = df_tracker[
                     (df_tracker[log_col] != "") & 
                     (~df_tracker[log_col].str.lower().str.contains("date", na=False))
                 ].copy()
                 
-                # 5. Convert to datetime formats dynamically
                 df_clean["Date_Logged_dt"] = pd.to_datetime(df_clean[log_col], errors="coerce", format="mixed")
                 df_clean["Complete_dt"] = pd.to_datetime(df_clean[comp_col], errors="coerce", format="mixed")
-                
-                # 6. Run Turnaround Math
                 df_clean["Days_To_Complete"] = (df_clean["Complete_dt"] - df_clean["Date_Logged_dt"]).dt.days
                 
                 valid_days = df_clean[df_clean["Days_To_Complete"] >= 0]["Days_To_Complete"]
-                
                 if not valid_days.empty:
                     avg_days_display = f"{int(valid_days.mean())} Days"
                     total_completed = int(valid_days.count())
                 
-                # 7. Calculate real-time backlog 
                 active_backlog = int((df_clean["Date_Logged_dt"].notna() & df_clean["Complete_dt"].isna()).sum())
                 
     except Exception as e:
         st.warning(f"Metrics loading fallback enabled: {e}")
 
-# --- 1. INITIAL SETUP & DEPENDENCIES ---
+# --- 4. INITIAL SETUP & DEPENDENCIES ---
 st.set_page_config(page_title="Project Tracker Dashboard", layout="wide")
 pd.set_option("styler.render.max_elements", 1000000)
+
+# (Leave the rest of your DESIRED_ORDER array and Tab definitions exactly as they are)
 
 
 # --- 2. FIXED DESIRED ORDER ---
