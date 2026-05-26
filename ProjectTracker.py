@@ -900,8 +900,18 @@ if tab_nav == "🔍 Search & Edit":
             mould_opts,
             key="mould_desc_selector"
         )
-        
+
+        # 1. Initialize the dictionary FIRST
+        new_entry = {}
+
+        # 2. Assign the form values to it
         new_entry["Mould Description"] = selected_mould_desc
+        # ... other fields like new_entry["Machine Process Settings"], etc.
+
+        # 3. Then append or save it when the button is clicked
+        if st.button("Save Trial Data"):
+            # Save logic here (e.g., convert to DataFrame, save to parquet/csv)
+            st.success("Data saved successfully!")
 
     # --- SESSION STATE OVERRIDE LOGIC FOR NEW ENTRIES ---
     st.divider()
