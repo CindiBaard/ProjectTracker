@@ -891,7 +891,7 @@ if tab_nav == "🔍 Search & Edit":
     # =====================================================================
     # FIX: Define the local layout columns for the Injection Molding form
     # =====================================================================
-    m_cols = st.columns(2)
+    m_cols = st.columns(3)
     
     # Line 892 (The line currently causing the application crash):
     with m_cols[0]:
