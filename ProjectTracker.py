@@ -881,8 +881,8 @@ if tab_nav == "🔍 Search & Edit":
                 selected_mould_desc = st.selectbox(
                     "Mould Description",
                     mould_opts,
-                    index=default_mould_idx,
-                    key="mould_desc_select_edit"
+                    index=0,
+                    key=f"mould_desc_select_new_{idx}"
                 )
                 updated_vals["Mould Description"] = selected_mould_desc
             else:
