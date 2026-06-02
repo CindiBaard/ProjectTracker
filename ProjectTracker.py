@@ -892,97 +892,112 @@ if tab_nav == "🔍 Search & Edit":
                     value=existing_desc,
                     key="mould_desc_text_edit",
                 )
-                updated_vals["Mould Description"] = selected_mould_desc    
+                updated_vals["Mould Description"] = selected_mould_desc
 
-        # --- SESSION STATE OVERRIDE LOGIC ---
-        if "mould_num_input_edit" not in st.session_state:
-            st.session_state["mould_num_input_edit"] = str(row.get("MouldNumber", "")).replace("nan", "")
-        if "drawing_input_edit" not in st.session_state:
-            st.session_state["drawing_input_edit"] = str(row.get("Drawing No.", "")).replace("nan", "")
-
+        # Auto-fill Number and Drawing details if a valid Mould Asset is chosen
+        calc_mould_no = ""
+        calc_draw_no = ""
         if selected_mould_desc and st.session_state.mould_df is not None:
-            lookup_key = selected_mould_desc.replace(" ", "").lower()
-            df_lookup = st.session_state.mould_df
-            match_rows = df_lookup[df_lookup["_match_key"] == lookup_key]
-            
-            if not match_rows.empty:
-                m_num = str(match_rows.iloc[0].get("MouldNumber", ""))
-                m_drw = str(match_rows.iloc[0].get("Drawing No.", ""))
-                st.session_state["mould_num_input_edit"] = "" if m_num == "nan" else m_num
-                st.session_state["drawing_input_edit"] = "" if m_drw == "nan" else m_drw
+            m_df = st.session_state.mould_df
+            match_key = selected_mould_desc.replace(" ", "").lower()
+            mould_match = m_df[m_df["_match_key"] == match_key]
+            if not mould_match.empty:
+                calc_mould_no = mould_match.iloc[0]["MouldNumber"]
+                calc_draw_no = mould_match.iloc[0]["Drawing No."]
 
         with mould_cols[1]:
             updated_vals["MouldNumber"] = st.text_input(
-                "Mould Number", key="mould_num_input_edit"
+                "Mould Number", 
+                value=calc_mould_no if selected_mould_desc else str(row.get("MouldNumber", "")).replace("nan", ""), 
+                key="mould_num_edit", 
+                disabled=bool(selected_mould_desc)
             )
         with mould_cols[2]:
             updated_vals["Drawing No."] = st.text_input(
-                "Drawing No.", key="drawing_input_edit"
+                "Drawing No.", 
+                value=calc_draw_no if selected_mould_desc else str(row.get("Drawing No.", "")).replace("nan", ""), 
+                key="mould_draw_edit", 
+                disabled=bool(selected_mould_desc)
             )
 
+        # --- REPOSITIONED SUB-SECTIONS (Expander Groups) ---
         st.divider()
-        st.markdown("### 📊 Project Status & Completion")
-        stat_cols = st.columns(3)
-        for i, col in enumerate(status_fields):
-            cur_val = str(row.get(col, "")).replace("nan", "")
-            with stat_cols[i % 3]:
-                updated_vals[col] = st.text_input(
-                    col, value=cur_val, key=f"stat_grp_{col}"
-                )
+        
+        with st.expander("📊 Project Status Tracking", expanded=True):
+            status_cols = st.columns(3)
+            for i, col in enumerate(status_fields):
+                cur_val = str(row.get(col, "")).replace("nan", "")
+                with status_cols[i % 3]:
+                    if "date" in col.lower():
+                        try:
+                            d_parsed = pd.to_datetime(cur_val, dayfirst=True, errors="coerce")
+                            d_val = d_parsed.date() if pd.notnull(d_parsed) else None
+                        except:
+                            d_val = None
+                        d_input = st.date_input(col, value=d_val, key=f"ed_status_{col}", placeholder="YYYY/MM/DD")
+                        updated_vals[col] = d_input.strftime("%d/%m/%Y") if d_input else ""
+                    else:
+                        updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_status_{col}")
 
+        with st.expander("🖼️ Proofing & Plates Management", expanded=False):
+            proof_cols = st.columns(3)
+            combined_proof_fields = proof_fields + plate_fields
+            for i, col in enumerate(combined_proof_fields):
+                cur_val = str(row.get(col, "")).replace("nan", "")
+                with proof_cols[i % 3]:
+                    if "date" in col.lower() or "sent" in col.lower() or "arrived" in col.lower() or "approved" in col.lower():
+                        # Try parsing as a pure date input, fallback to text input if it contains messy comments
+                        try:
+                            if cur_val and not any(x in cur_val.lower() for x in ["wait", "no", "hold", "req"]):
+                                d_parsed = pd.to_datetime(cur_val, dayfirst=True, errors="coerce")
+                                d_val = d_parsed.date() if pd.notnull(d_parsed) else None
+                                d_input = st.date_input(col, value=d_val, key=f"ed_proof_{col}")
+                                updated_vals[col] = d_input.strftime("%d/%m/%Y") if d_input else ""
+                            else:
+                                updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_proof_fallback_{col}", help="Handwritten text logs detected. Clear to use calendar.")
+                        except:
+                            updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_proof_{col}")
+                    else:
+                        updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_proof_{col}")
+
+        with st.expander("🧪 Industrial Trial Tracking Operations", expanded=False):
+            trial_cols = st.columns(3)
+            for i, col in enumerate(trial_fields):
+                cur_val = str(row.get(col, "")).replace("nan", "")
+                with trial_cols[i % 3]:
+                    updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_trial_{col}")
+
+        # --- SAVE & BROADCAST UPDATE ACTION TRRIGERS ---
         st.divider()
-        st.markdown("### 📝 Proof Information")
-        proof_cols = st.columns(3)
-        for i, col in enumerate(proof_fields):
-            cur_val = str(row.get(col, "")).replace("nan", "")
-            with proof_cols[i % 3]:
-                updated_vals[col] = st.text_input(
-                    col, value=cur_val, key=f"proof_grp_{col}"
-                )
-
-        st.divider()
-        st.markdown("### 🧪 Trial Information")
-        t_cols = st.columns(3)
-        remaining_progress = trial_fields + plate_fields
-        for i, col in enumerate(remaining_progress):
-            cur_val = str(row.get(col, "")).replace("nan", "")
-            with t_cols[i % 3]:
-                updated_vals[col] = st.text_input(
-                    col, value=cur_val, key=f"flow_{col}"
-                )
-
-        if st.button("💾 Save Changes", use_container_width=True, type="primary"):
-            for k, v in updated_vals.items():
-                df.at[idx, k] = v
-            save_db(df)
+        if st.button("💾 Commit & Sync Changes", type="primary", use_container_width=True):
+            # 1. Update values inside the local primary dataframe memory
+            for col, val in updated_vals.items():
+                df.at[idx, col] = val
             
-            if updated_vals.get("Injection trial requested") and " - " not in str(updated_vals["Injection trial requested"]):
-                trial_suffix = updated_vals["Injection trial requested"].split("_")[-1] if "_" in updated_vals["Injection trial requested"] else updated_vals["Injection trial requested"]
-                date_str = datetime.now().strftime("%d/%m/%Y")
-                updated_vals["Injection trial requested"] = f"{trial_suffix} - {date_str}"
-                df.at[idx, "Injection trial requested"] = updated_vals["Injection trial requested"]
-                save_db(df)
+            # Recalculate key metrics fields automatically before writing
+            cat, days = calculate_age_category(df.loc[idx])
+            if "Age Category" in df.columns:
+                df.at[idx, "Age Category"] = cat
 
-            success, message = update_tracker_status(search_no, updated_vals)
-            if success:
-                st.success(message)
-            else:
-                st.warning(f"Saved locally, but Google Sheets didn't sync: {message}")
-                
-            st.session_state.selected_combo = {}
+            # 2. Persist directly to local Parquet storage structure
+            save_db(df)
             st.cache_data.clear()
+
+            # 3. Synchronize modifications to Google Sheets cloud master via cell batch lookups
+            with st.spinner("Broadcasting updates directly to Google Sheets database server..."):
+                sync_success, message = update_tracker_status(search_no, updated_vals)
+                if sync_success:
+                    st.success(f"🎉 Local cache storage compiled! {message}")
+                else:
+                    st.warning(f"⚠️ Local changes saved, but cloud sync failed: {message}")
+            
             st.rerun()
+    elif search_no:
+        st.error(f"Could not locate active pre-production identifier matching: '{search_no}'")
 
-    # Inline verification table if looking up a specific PP from the sidebar inside this tab context
-    if 'search_pp' in locals() and search_pp:
-        results = get_pp_dates("Combined_Weekly_Trials_3_51_2025.csv", search_pp)
-        if not results.empty:
-            st.dataframe(results, use_container_width=True, hide_index=True)
-
-# =====================================================================
-# 2. TAB 2 NAVIGATION (Ensure this aligns horizontally with 'if tab_nav ==')
-# =====================================================================
+# --- TAB 2: ADD NEW JOB ---
 elif tab_nav == "➕ Add New Job":
+    st.subheader("Register New Manufacturing Project Entry")
     display_combination_table("new")
     sel = st.session_state.get("selected_combo", {})
     default_id = st.session_state.form_data.get("Pre-Prod No.", get_auto_next_no(df))
