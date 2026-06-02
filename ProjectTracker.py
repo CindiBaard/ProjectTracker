@@ -1202,7 +1202,40 @@ elif tab_nav == "🧪 Trial Trends":
         if 'Days_Taken' in trial_df.columns:
             st.markdown("### Turnaround Distribution")
             st.bar_chart(trial_df['Days_Taken'].value_counts())
-            st.dataframe(trial_df, use_container_width=True)
+            
+            # --- FIXED: LOCATING AND SHOWING PP# IN THE TRACKER BREAKDOWN ---
+            st.markdown("### 📋 Detailed Turnaround Logs")
+            
+            # Dynamically identify the PP column from your csv layout variants
+            pp_col = None
+            for col in trial_df.columns:
+                if any(x in col.lower() for x in ["pp #", "pp#", "pp_num", "ppnum", "pre-prod"]):
+                    pp_col = col
+                    break
+            
+            # Pull other useful descriptive columns if they exist in your file format
+            desc_cols = []
+            for candidate in ["HK Trials For Week 3", "Customer", "Description", "Request Date", "Trial Date"]:
+                matching = [c for c in trial_df.columns if candidate.lower() in c.lower()]
+                if matching:
+                    desc_cols.append(matching[0])
+            
+            # Fallback to general columns if no structural description matches are found
+            if not pp_col:
+                # If no clear PP number matching key exists, use first column as proxy identifier
+                pp_col = trial_df.columns[0]
+            
+            # Construct a targeted dataframe layout that groups PP # alongside the Turnaround calculations
+            display_columns = [pp_col] + desc_cols + ['Days_Taken']
+            # De-duplicate any column listings in case names overlap
+            display_columns = list(dict.fromkeys([c for c in display_columns if c in trial_df.columns]))
+            
+            # Display optimized subset containing the PP Number fields clearly at the front
+            st.dataframe(
+                trial_df[display_columns].sort_values(by='Days_Taken', ascending=False),
+                use_container_width=True,
+                hide_index=True
+            )
     else:
         st.info("No trial data available. Check if Merged_Weekly_Trackers_Layout_Preserved.csv exists.")
 
