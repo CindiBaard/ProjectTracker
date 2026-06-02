@@ -16,7 +16,7 @@ from google.oauth2.service_account import Credentials
 def get_pp_dates(file_path, pp_number):
     """
     Searches for a specific PP# in the dataset, extracts 
-    the corresponding 'Date Log' and 'Complete' dates, and
+    the corresponding 'Date Log' and 'Promise /    Complete' dates, and
     calculates the turnaround time in days.
     """
     try:
@@ -35,32 +35,52 @@ def get_pp_dates(file_path, pp_number):
         else:
             return pd.DataFrame()
         
+        # Clean up columns by stripping trailing/leading whitespaces
         df.columns = df.columns.str.strip()
         
-        if 'PP_Num' not in df.columns:
+        # Identify the PP column dynamically regardless of spaces
+        pp_col = None
+        for col in df.columns:
+            if col.replace(" ", "").lower() in ["pp#", "pp_num", "ppnum"]:
+                pp_col = col
+                break
+                
+        if not pp_col:
             return pd.DataFrame()
             
-        df['PP_Num_str'] = df['PP_Num'].astype(str)
+        df['PP_Num_str'] = df[pp_col].astype(str).str.strip()
         search_term = str(pp_number).strip()
         
-        filtered_df = df[df['PP_Num_str'].str.contains(search_term, na=False)].copy()
+        filtered_df = df[df['PP_Num_str'] == search_term].copy()
         
         if filtered_df.empty:
             return pd.DataFrame()
 
-        date_log_col = 'Date_Log' if 'Date_Log' in df.columns else 'Date Log'
-        complete_col = 'Promise_Complete' if 'Promise_Complete' in df.columns else 'Promise Complete'
+        # Dynamic mapping for 'Date Log' and the actual spreadsheet header 'Promise /    Complete'
+        date_log_col = None
+        complete_col = None
         
-        # Parse strings into true date objects dynamically
+        for col in df.columns:
+            normalized = col.replace(" ", "").lower()
+            if normalized in ["datelog", "date_log"]:
+                date_log_col = col
+            elif "promise/" in normalized or "complete" in normalized:
+                complete_col = col
+
+        # Fallback to column defaults if matching failed to find them
+        if not date_log_col: date_log_col = 'Date Log'
+        if not complete_col: complete_col = 'Promise /    Complete'
+        
+        # Safely parse strings into true date objects dynamically
         filtered_df['Log_dt'] = pd.to_datetime(filtered_df[date_log_col], errors='coerce', format='mixed')
         filtered_df['Comp_dt'] = pd.to_datetime(filtered_df[complete_col], errors='coerce', format='mixed')
         
-        # Calculate days between dates. If not complete yet, show pending state
+        # Turnaround calculation engine logic
         def determine_days(row):
             if pd.isna(row['Log_dt']):
                 return "Missing Log Date"
             if pd.isna(row['Comp_dt']):
-                # Optional: calculate days open from logged date to today
+                # If incomplete, figure out running days open up to today
                 days_open = (pd.Timestamp(datetime.now().date()) - row['Log_dt']).days
                 return f"In Progress ({max(0, days_open)} Days Open)"
             
@@ -69,9 +89,9 @@ def get_pp_dates(file_path, pp_number):
 
         filtered_df['Turnaround Time'] = filtered_df.apply(determine_days, axis=1)
         
-        # Build clean output dataframe structure
-        result = filtered_df[['PP_Num', date_log_col, complete_col, 'Turnaround Time']].rename(columns={
-            'PP_Num': 'PP Number',
+        # Project clean visual layout back to the dataframe view
+        result = filtered_df[[pp_col, date_log_col, complete_col, 'Turnaround Time']].rename(columns={
+            pp_col: 'PP Number',
             date_log_col: 'Date Log',
             complete_col: 'Complete Date'
         })
