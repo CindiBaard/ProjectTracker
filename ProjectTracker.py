@@ -13,15 +13,16 @@ from google.oauth2.service_account import Credentials
 # =====================================================================
 # DATA EXTRACTION HELPERS (Place this near the top of the file)
 # =====================================================================
-
 def get_pp_dates(file_path, pp_number):
     """
-    Searches for a specific PP# in the dataset and extracts 
-    the corresponding 'Date Log' and 'Complete' (Promise_Complete) dates.
+    Searches for a specific PP# in the dataset, extracts 
+    the corresponding 'Date Log' and 'Complete' dates, and
+    calculates the turnaround time in days.
     """
     try:
         import pandas as pd
         import os
+        from datetime import datetime
 
         # Safety check: make sure the file exists before reading it
         if not os.path.exists(file_path):
@@ -44,10 +45,32 @@ def get_pp_dates(file_path, pp_number):
         
         filtered_df = df[df['PP_Num_str'].str.contains(search_term, na=False)].copy()
         
+        if filtered_df.empty:
+            return pd.DataFrame()
+
         date_log_col = 'Date_Log' if 'Date_Log' in df.columns else 'Date Log'
         complete_col = 'Promise_Complete' if 'Promise_Complete' in df.columns else 'Promise Complete'
         
-        result = filtered_df[['PP_Num', date_log_col, complete_col]].rename(columns={
+        # Parse strings into true date objects dynamically
+        filtered_df['Log_dt'] = pd.to_datetime(filtered_df[date_log_col], errors='coerce', format='mixed')
+        filtered_df['Comp_dt'] = pd.to_datetime(filtered_df[complete_col], errors='coerce', format='mixed')
+        
+        # Calculate days between dates. If not complete yet, show pending state
+        def determine_days(row):
+            if pd.isna(row['Log_dt']):
+                return "Missing Log Date"
+            if pd.isna(row['Comp_dt']):
+                # Optional: calculate days open from logged date to today
+                days_open = (pd.Timestamp(datetime.now().date()) - row['Log_dt']).days
+                return f"In Progress ({max(0, days_open)} Days Open)"
+            
+            diff = (row['Comp_dt'] - row['Log_dt']).days
+            return f"{diff} Days" if diff >= 0 else f"Error ({diff} Days)"
+
+        filtered_df['Turnaround Time'] = filtered_df.apply(determine_days, axis=1)
+        
+        # Build clean output dataframe structure
+        result = filtered_df[['PP_Num', date_log_col, complete_col, 'Turnaround Time']].rename(columns={
             'PP_Num': 'PP Number',
             date_log_col: 'Date Log',
             complete_col: 'Complete Date'
@@ -57,6 +80,7 @@ def get_pp_dates(file_path, pp_number):
 
     except Exception:
         return pd.DataFrame()
+
 
 # --- LOAD DATA AND CALCULATE METRICS ---
 
@@ -715,19 +739,18 @@ with st.sidebar:
             os.remove(FILENAME_PARQUET)
         st.rerun()
 
-    # --- QUICK PP# DATE LOOKUP (SIDEBAR DISPATCH) ---
+# --- QUICK PP# DATE LOOKUP (SIDEBAR DISPATCH) ---
     st.markdown("---")
     st.subheader("Quick PP# Date Lookup")
     search_pp = st.text_input("Enter PP Number to view logs:", key="sidebar_pp_search")
 
     if search_pp:
-        # Safely calls the cleaned helper function
-        results = get_pp_dates("Combined_Weekly_Trials_3_51_2025.csv", search_pp)
+        # Pass the tracker file destination into our updated calculation engine
+        results = get_pp_dates("Merged_Weekly_Trackers_Layout_Preserved.csv", search_pp)
         if not results.empty:
-            st.dataframe(results, hide_index=True)
+            st.dataframe(results, use_container_width=True, hide_index=True)
         else:
-            st.warning(f"No records found for PP# {search_pp}")
-
+            st.warning(f"No records found for PP# {search_pp}")    
 
         pass  # <--- This 'pass' prevents the empty block error!
 
