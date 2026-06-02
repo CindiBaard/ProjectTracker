@@ -1169,118 +1169,84 @@ elif tab_nav == "📊 Detailed Age Analysis":
 elif tab_nav == "🧪 Trial Trends":
     st.subheader("Trial Turnaround Performance")
     
-    trial_df = load_trial_data()
+    raw_df = load_trial_data()
     
-    if not trial_df.empty:
-        # --- FIX: DETECT REAL HEADER ROW IF FILE HAS METADATA/COMMENTS AT THE TOP ---
-        # If 'Date Log' or 'PP #' is buried in the rows, elevate that row to be the header
-        target_indicators = ["date log", "pp #", "pp#", "hk trials"]
-        header_row_idx = None
+    if not raw_df.empty:
+        # 1. Define the explicit uppercase layout matching your exact spreadsheet scheme
+        clean_headers = [
+            "Date Log", "Customer / Trial", "# of colours", "Order", 
+            "Tubes", "Plates/Posi", "PP #", "DIA", "Size Details", "Promise / Complete", "Comments"
+        ]
         
-        for idx, row in trial_df.iterrows():
-            row_values_str = [str(val).lower().strip() for val in row.values]
-            if any(indicator in row_values_str for indicator in target_indicators):
-                header_row_idx = idx
-                break
+        extracted_rows = []
         
-        if header_row_idx is not None:
-            # Re-assign the columns using the discovered header row values
-            new_columns = [str(val).strip() for val in trial_df.iloc[header_row_idx].values]
-            trial_df.columns = new_columns
-            # Drop the metadata rows above and including the header row
-            trial_df = trial_df.iloc[header_row_idx + 1:].reset_index(drop=True)
-        else:
-            # Fallback cleaning if no embedded header row row was found
-            trial_df.columns = [str(c).strip() for c in trial_df.columns]
-
-        # --- STEP 2: ALIGN EXACT COLUMN HEADERS EXPLICITLY ---
-        pp_col = None
-        for col in trial_df.columns:
-            if col in ["PP #", "PP#", "PP_Num", "PP NUMBER"]:
-                pp_col = col
-                break
+        # 2. Iterate through every line to extract data rows and bypass metadata noise/blank rows
+        for _, row in raw_df.iterrows():
+            row_vals = [str(val).strip() for val in row.values]
+            
+            # Skip divider rows, week headers, and empty padding lines
+            if not row_vals or any(x in "".join(row_vals).lower() for x in ["week", "data start", "---", "datelog"]):
+                continue
+                
+            # If the row has data but doesn't match standard length, pad or slice it cleanly
+            if len(row_vals) >= len(clean_headers):
+                extracted_rows.append(row_vals[:len(clean_headers)])
+            else:
+                padded = row_vals + [""] * (len(clean_headers) - len(row_vals))
+                extracted_rows.append(padded)
         
-        # Absolute fallback search if exact match missed
-        if not pp_col:
-            for col in trial_df.columns:
-                if "pp" in col.lower():
-                    pp_col = col
-                    break
-        if not pp_col: 
-            pp_col = "PP #"
+        # 3. Create a clean, standardized dataframe with forced uppercase columns
+        trial_df = pd.DataFrame(extracted_rows, columns=clean_headers)
+        
+        # Replace string 'nan' variations with true blanks
+        trial_df = trial_df.replace(r'^\s*nan\s*$', '', regex=True)
 
-        date_log_col = None
-        complete_col = None
-        for col in trial_df.columns:
-            if col in ["Date Log", "Date_Log", "DATELOG"]:
-                date_log_col = col
-            elif "promise" in col.lower() or "complete" in col.lower():
-                complete_col = col
+        # 4. Turnaround Calculation Engine using precise column keys
+        # Convert date columns to datetime objects safely
+        t_date = pd.to_datetime(trial_df["Promise / Complete"], errors='coerce', format='mixed')
+        r_date = pd.to_datetime(trial_df["Date Log"], errors='coerce', format='mixed')
+        
+        # Calculate turnaround duration
+        trial_df['Days_Taken'] = (t_date - r_date).dt.days
+        trial_df['Days_Taken'] = pd.to_numeric(trial_df['Days_Taken'], errors='coerce')
 
-        if not date_log_col: date_log_col = 'Date Log'
-        if not complete_col: complete_col = 'Promise /    Complete'
-
-        # --- STEP 3: TURNAROUND CALCULATION ENGINE ---
-        if date_log_col in trial_df.columns and complete_col in trial_df.columns:
-            try:
-                # Safely parse dates handling mixed text logs or empty rows cleanly
-                t_date = pd.to_datetime(trial_df[complete_col], errors='coerce', format='mixed')
-                r_date = pd.to_datetime(trial_df[date_log_col], errors='coerce', format='mixed')
-                trial_df['Days_Taken'] = (t_date - r_date).dt.days
-            except Exception as e:
-                st.error(f"Could not calculate turnaround days: {e}")
-        else:
-            st.error(f"Required tracking columns ('{date_log_col}' or '{complete_col}') were not detected in file columns: {list(trial_df.columns)}")
-
-        # 4. Force conversion to numeric to ensure .mean() doesn't fail on mixed objects
-        if 'Days_Taken' in trial_df.columns:
-            trial_df['Days_Taken'] = pd.to_numeric(trial_df['Days_Taken'], errors='coerce')
-
-        # 5. Safe calculation of the average turnaround metric
-        if 'Days_Taken' in trial_df.columns and not trial_df['Days_Taken'].dropna().empty:
-            avg_days = trial_df['Days_Taken'].mean()
-            avg_days_str = f"{avg_days:.1f} Days" if not pd.isna(avg_days) else "N/A"
+        # 5. Render performance cycle average metric card
+        valid_days = trial_df['Days_Taken'].dropna()
+        if not valid_days.empty:
+            avg_days = valid_days.mean()
+            avg_days_str = f"{avg_days:.1f} Days"
         else:
             avg_days_str = "N/A"
             
-        # 6. Render Metrics Card
         st.metric(label="Average Turnaround Time (Log to Completion)", value=avg_days_str)
         
-        # 7. Distribution Charts & Interactive Detail Table
-        if 'Days_Taken' in trial_df.columns:
-            clean_trends_df = trial_df.dropna(subset=['Days_Taken']).copy()
+        # 6. Distribution Breakdown Chart
+        if not valid_days.empty:
+            st.markdown("### Turnaround Distribution")
+            st.bar_chart(valid_days.value_counts())
             
-            if not clean_trends_df.empty:
-                st.markdown("### Turnaround Distribution")
-                st.bar_chart(clean_trends_df['Days_Taken'].value_counts())
-            
-            # --- DETAILED BREAKDOWN VIEW WITH PP# ---
-            st.markdown("### 📋 Detailed Turnaround Logs")
-            
-            # Dynamically look up other descriptive layout headers to show context
-            desc_cols = []
-            for candidate in ["customer", "description", "tubes", "dia", "comments"]:
-                matching = [c for c in trial_df.columns if candidate in str(c).lower()]
-                if matching:
-                    desc_cols.append(matching[0])
-            
-            # Construct a clear, prioritized column list putting the exact uppercase PP column at the front
-            display_columns = [pp_col] + desc_cols + [date_log_col, complete_col, 'Days_Taken']
-            # Filter out columns that don't exist in the adjusted dataframe
-            display_columns = [c for c in display_columns if c in trial_df.columns]
-            
-            if pp_col in trial_df.columns:
-                # Clean up trailing float representations (.0) and eliminate row divider text remnants
-                trial_df[pp_col] = trial_df[pp_col].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
-                # Filter out raw markdown or spacer rows from showing up in the clean view
-                trial_df = trial_df[~trial_df[pp_col].str.contains(r'#|nan|^$', case=False, na=False)]
-            
-            # Output optimized dashboard matrix view sorted by longest delay cycle times
-            st.dataframe(
-                trial_df[display_columns].sort_values(by='Days_Taken', ascending=False),
-                use_container_width=True,
-                hide_index=True
-            )
+        # 7. --- INTERACTIVE BREAKDOWN VIEW WITH PP # ---
+        st.markdown("### 📋 Detailed Turnaround Logs")
+        
+        # Fix layout trailing float conversions on PP numbers (e.g., '20794.0' back to '20794')
+        trial_df["PP #"] = trial_df["PP #"].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
+        
+        # Drop rows that don't have an active PP # or have header artifact text remnants
+        filtered_display_df = trial_df[
+            (trial_df["PP #"] != "") & 
+            (trial_df["PP #"] != "nan") & 
+            (~trial_df["PP #"].str.lower().contains("pp", na=False))
+        ].copy()
+        
+        # Order the table columns for immediate readability, prioritizing PP # at the front
+        display_columns = ["PP #", "Customer / Trial", "Date Log", "Promise / Complete", "Days_Taken", "Comments"]
+        
+        # Display optimized interactive table data view
+        st.dataframe(
+            filtered_display_df[display_columns].sort_values(by='Days_Taken', ascending=False),
+            use_container_width=True,
+            hide_index=True
+        )
     else:
         st.info("No trial data available. Check if Merged_Weekly_Trackers_Layout_Preserved.csv exists.")
 # --- TAB 5: CLOUD SYNC ---
