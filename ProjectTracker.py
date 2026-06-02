@@ -1172,52 +1172,78 @@ elif tab_nav == "🧪 Trial Trends":
     raw_df = load_trial_data()
     
     if not raw_df.empty:
-        # 1. Define the explicit uppercase layout matching your exact spreadsheet scheme
+        extracted_rows = []
+        
+        # Exact expected uppercase layout matching your log tracking sheet
         clean_headers = [
             "Date Log", "Customer / Trial", "# of colours", "Order", 
             "Tubes", "Plates/Posi", "PP #", "DIA", "Size Details", "Promise / Complete", "Comments"
         ]
         
-        extracted_rows = []
+        # 1. Scan rows to establish exactly where 'PP #' lands numerically
+        pp_index = 6  # File default fallback index
+        date_log_index = 0
+        promise_complete_index = 9
         
-        # 2. Iterate through every line to extract data rows and bypass metadata noise/blank rows
+        for _, row in raw_df.iterrows():
+            row_vals = [str(val).strip() for val in row.values]
+            if "PP #" in row_vals:
+                pp_index = row_vals.index("PP #")
+                if "Date Log" in row_vals:
+                    date_log_index = row_vals.index("Date Log")
+                # Look for the promise column variant with arbitrary spacing
+                promise_match = [i for i, x in enumerate(row_vals) if "promise" in x.lower() and "complete" in x.lower()]
+                if promise_match:
+                    promise_complete_index = promise_match[0]
+                break
+
+        # 2. Extract and filter transaction records
         for _, row in raw_df.iterrows():
             row_vals = [str(val).strip() for val in row.values]
             
-            # Skip divider rows, week headers, and empty padding lines
+            # Skip divider comments and label blocks
             if not row_vals or any(x in "".join(row_vals).lower() for x in ["week", "data start", "---", "datelog"]):
                 continue
+            if "PP #" in row_vals or "Date Log" in row_vals:
+                continue
                 
-            # If the row has data but doesn't match standard length, pad or slice it cleanly
-            if len(row_vals) >= len(clean_headers):
-                extracted_rows.append(row_vals[:len(clean_headers)])
-            else:
-                padded = row_vals + [""] * (len(clean_headers) - len(row_vals))
-                extracted_rows.append(padded)
-        
-        # 3. Create a clean, standardized dataframe with forced uppercase columns
-        trial_df = pd.DataFrame(extracted_rows, columns=clean_headers)
-        
-        # Replace string 'nan' variations with true blanks
-        trial_df = trial_df.replace(r'^\s*nan\s*$', '', regex=True)
+            # Safely rebuild the row by pulling data directly out of discovered indexes
+            try:
+                date_log = row_vals[date_log_index] if date_log_index < len(row_vals) else ""
+                customer = row_vals[date_log_index + 1] if (date_log_index + 1) < len(row_vals) else ""
+                colours = row_vals[date_log_index + 2] if (date_log_index + 2) < len(row_vals) else ""
+                order = row_vals[date_log_index + 3] if (date_log_index + 3) < len(row_vals) else ""
+                tubes = row_vals[date_log_index + 4] if (date_log_index + 4) < len(row_vals) else ""
+                plates = row_vals[date_log_index + 5] if (date_log_index + 5) < len(row_vals) else ""
+                
+                pp_val = row_vals[pp_index] if pp_index < len(row_vals) else ""
+                dia_val = row_vals[pp_index + 1] if (pp_index + 1) < len(row_vals) else ""
+                size_val = row_vals[pp_index + 2] if (pp_index + 2) < len(row_vals) else ""
+                
+                promise_val = row_vals[promise_complete_index] if promise_complete_index < len(row_vals) else ""
+                comments_val = row_vals[promise_complete_index + 1] if (promise_complete_index + 1) < len(row_vals) else ""
+                
+                extracted_rows.append([
+                    date_log, customer, colours, order, tubes, plates, 
+                    pp_val, dia_val, size_val, promise_val, comments_val
+                ])
+            except IndexError:
+                continue
 
-        # 4. Turnaround Calculation Engine using precise column keys
-        # Convert date columns to datetime objects safely
+        # 3. Create cleanly aligned tracking DataFrame
+        trial_df = pd.DataFrame(extracted_rows, columns=clean_headers)
+        trial_df = trial_df.replace(r'^\s*nan\s*$', '', regex=True)
+        trial_df = trial_df.replace(r'^\s*None\s*$', '', regex=True)
+
+        # 4. Turnaround Calculation Engine
         t_date = pd.to_datetime(trial_df["Promise / Complete"], errors='coerce', format='mixed')
         r_date = pd.to_datetime(trial_df["Date Log"], errors='coerce', format='mixed')
-        
-        # Calculate turnaround duration
         trial_df['Days_Taken'] = (t_date - r_date).dt.days
         trial_df['Days_Taken'] = pd.to_numeric(trial_df['Days_Taken'], errors='coerce')
 
-        # 5. Render performance cycle average metric card
+        # 5. Render Average Cycle Time Metric Card
         valid_days = trial_df['Days_Taken'].dropna()
-        if not valid_days.empty:
-            avg_days = valid_days.mean()
-            avg_days_str = f"{avg_days:.1f} Days"
-        else:
-            avg_days_str = "N/A"
-            
+        avg_days_str = f"{valid_days.mean():.1f} Days" if not valid_days.empty else "N/A"
         st.metric(label="Average Turnaround Time (Log to Completion)", value=avg_days_str)
         
         # 6. Distribution Breakdown Chart
@@ -1225,23 +1251,22 @@ elif tab_nav == "🧪 Trial Trends":
             st.markdown("### Turnaround Distribution")
             st.bar_chart(valid_days.value_counts())
             
-        # 7. --- INTERACTIVE BREAKDOWN VIEW WITH PP # ---
+        # 7. --- DATA VIEW MATRIX ---
         st.markdown("### 📋 Detailed Turnaround Logs")
         
-        # Fix layout trailing float conversions on PP numbers (e.g., '20794.0' back to '20794')
+        # Standardize strings, clean up floating points (.0) from trial records
         trial_df["PP #"] = trial_df["PP #"].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
         
-        # Drop rows that don't have an active PP # or have header artifact text remnants
+        # Filter down rows to only display active, populated jobs
         filtered_display_df = trial_df[
             (trial_df["PP #"] != "") & 
             (trial_df["PP #"] != "nan") & 
-            (~trial_df["PP #"].str.lower().contains("pp", na=False))
+            (~trial_df["PP #"].str.lower().str.contains("pp", na=False))
         ].copy()
         
-        # Order the table columns for immediate readability, prioritizing PP # at the front
+        # Enforce column order prioritizing 'PP #' at column index 0
         display_columns = ["PP #", "Customer / Trial", "Date Log", "Promise / Complete", "Days_Taken", "Comments"]
         
-        # Display optimized interactive table data view
         st.dataframe(
             filtered_display_df[display_columns].sort_values(by='Days_Taken', ascending=False),
             use_container_width=True,
@@ -1249,6 +1274,7 @@ elif tab_nav == "🧪 Trial Trends":
         )
     else:
         st.info("No trial data available. Check if Merged_Weekly_Trackers_Layout_Preserved.csv exists.")
+        
 # --- TAB 5: CLOUD SYNC ---
 elif tab_nav == "🌐 Cloud Sync":
     st.subheader("Google Sheets Sync")
