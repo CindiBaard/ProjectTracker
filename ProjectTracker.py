@@ -1172,41 +1172,67 @@ elif tab_nav == "🧪 Trial Trends":
     trial_df = load_trial_data()
     
     if not trial_df.empty:
-        # 1. Clean up column names to avoid trailing/leading whitespace errors
-        trial_df.columns = [str(c).strip() for c in trial_df.columns]
+        # --- FIX: DETECT REAL HEADER ROW IF FILE HAS METADATA/COMMENTS AT THE TOP ---
+        # If 'Date Log' or 'PP #' is buried in the rows, elevate that row to be the header
+        target_indicators = ["date log", "pp #", "pp#", "hk trials"]
+        header_row_idx = None
         
-        # 2. Dynamic Identification for your specific CSV schema headers
+        for idx, row in trial_df.iterrows():
+            row_values_str = [str(val).lower().strip() for val in row.values]
+            if any(indicator in row_values_str for indicator in target_indicators):
+                header_row_idx = idx
+                break
+        
+        if header_row_idx is not None:
+            # Re-assign the columns using the discovered header row values
+            new_columns = [str(val).strip() for val in trial_df.iloc[header_row_idx].values]
+            trial_df.columns = new_columns
+            # Drop the metadata rows above and including the header row
+            trial_df = trial_df.iloc[header_row_idx + 1:].reset_index(drop=True)
+        else:
+            # Fallback cleaning if no embedded header row row was found
+            trial_df.columns = [str(c).strip() for c in trial_df.columns]
+
+        # --- STEP 2: ALIGN EXACT COLUMN HEADERS EXPLICITLY ---
+        pp_col = None
+        for col in trial_df.columns:
+            if col in ["PP #", "PP#", "PP_Num", "PP NUMBER"]:
+                pp_col = col
+                break
+        
+        # Absolute fallback search if exact match missed
+        if not pp_col:
+            for col in trial_df.columns:
+                if "pp" in col.lower():
+                    pp_col = col
+                    break
+        if not pp_col: 
+            pp_col = "PP #"
+
         date_log_col = None
         complete_col = None
-        pp_col = None
-        
         for col in trial_df.columns:
-            normalized = col.replace(" ", "").lower()
-            if normalized in ["datelog", "date_log"]:
+            if col in ["Date Log", "Date_Log", "DATELOG"]:
                 date_log_col = col
-            elif "promise/" in normalized or "complete" in normalized:
+            elif "promise" in col.lower() or "complete" in col.lower():
                 complete_col = col
-            elif any(x in col.lower() for x in ["pp #", "pp#", "pp_num", "ppnum", "pre-prod"]):
-                pp_col = col
 
-        # Fallbacks to structure defaults if structural lookup fails
         if not date_log_col: date_log_col = 'Date Log'
         if not complete_col: complete_col = 'Promise /    Complete'
-        if not pp_col: pp_col = 'PP #'
 
-        # 3. Turnaround Calculation Engine using exact spreadsheet columns
+        # --- STEP 3: TURNAROUND CALCULATION ENGINE ---
         if date_log_col in trial_df.columns and complete_col in trial_df.columns:
             try:
-                # Safely parse dates handling messy or blank rows cleanly
+                # Safely parse dates handling mixed text logs or empty rows cleanly
                 t_date = pd.to_datetime(trial_df[complete_col], errors='coerce', format='mixed')
                 r_date = pd.to_datetime(trial_df[date_log_col], errors='coerce', format='mixed')
                 trial_df['Days_Taken'] = (t_date - r_date).dt.days
             except Exception as e:
                 st.error(f"Could not calculate turnaround days: {e}")
         else:
-            st.error(f"Required tracking columns ('{date_log_col}' or '{complete_col}') were not detected.")
+            st.error(f"Required tracking columns ('{date_log_col}' or '{complete_col}') were not detected in file columns: {list(trial_df.columns)}")
 
-        # 4. Force conversion to numeric to ensure .mean() doesn't choke on text/mixed objects
+        # 4. Force conversion to numeric to ensure .mean() doesn't fail on mixed objects
         if 'Days_Taken' in trial_df.columns:
             trial_df['Days_Taken'] = pd.to_numeric(trial_df['Days_Taken'], errors='coerce')
 
@@ -1220,9 +1246,8 @@ elif tab_nav == "🧪 Trial Trends":
         # 6. Render Metrics Card
         st.metric(label="Average Turnaround Time (Log to Completion)", value=avg_days_str)
         
-        # 7. Distribution Breakdown Charts & Interactive Detail Table
+        # 7. Distribution Charts & Interactive Detail Table
         if 'Days_Taken' in trial_df.columns:
-            # Drop entries where date differences could not be evaluated (like open rows) for clean analytics
             clean_trends_df = trial_df.dropna(subset=['Days_Taken']).copy()
             
             if not clean_trends_df.empty:
@@ -1232,21 +1257,23 @@ elif tab_nav == "🧪 Trial Trends":
             # --- DETAILED BREAKDOWN VIEW WITH PP# ---
             st.markdown("### 📋 Detailed Turnaround Logs")
             
-            # Dynamically look up other descriptive headers to keep the summary readable
+            # Dynamically look up other descriptive layout headers to show context
             desc_cols = []
-            for candidate in ["week", "customer", "description", "tubes", "dia", "comments"]:
-                matching = [c for c in trial_df.columns if candidate in c.lower()]
+            for candidate in ["customer", "description", "tubes", "dia", "comments"]:
+                matching = [c for c in trial_df.columns if candidate in str(c).lower()]
                 if matching:
                     desc_cols.append(matching[0])
             
-            # Construct a clear, prioritized column list putting PP # right at the front
+            # Construct a clear, prioritized column list putting the exact uppercase PP column at the front
             display_columns = [pp_col] + desc_cols + [date_log_col, complete_col, 'Days_Taken']
-            # Remove any overlapping entries or columns missing from data framework
-            display_columns = list(dict.fromkeys([c for c in display_columns if c in trial_df.columns]))
+            # Filter out columns that don't exist in the adjusted dataframe
+            display_columns = [c for c in display_columns if c in trial_df.columns]
             
-            # Clean up trailing float representations on the PP number strings (e.g. 20794.0 -> 20794)
             if pp_col in trial_df.columns:
+                # Clean up trailing float representations (.0) and eliminate row divider text remnants
                 trial_df[pp_col] = trial_df[pp_col].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
+                # Filter out raw markdown or spacer rows from showing up in the clean view
+                trial_df = trial_df[~trial_df[pp_col].str.contains(r'#|nan|^$', case=False, na=False)]
             
             # Output optimized dashboard matrix view sorted by longest delay cycle times
             st.dataframe(
@@ -1256,7 +1283,6 @@ elif tab_nav == "🧪 Trial Trends":
             )
     else:
         st.info("No trial data available. Check if Merged_Weekly_Trackers_Layout_Preserved.csv exists.")
-
 # --- TAB 5: CLOUD SYNC ---
 elif tab_nav == "🌐 Cloud Sync":
     st.subheader("Google Sheets Sync")
