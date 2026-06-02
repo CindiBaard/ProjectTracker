@@ -36,27 +36,29 @@ def get_pp_dates(file_path, pp_number):
             return pd.DataFrame()
         
         # Clean up columns by stripping trailing/leading whitespaces
-        df.columns = df.columns.str.strip()
+        df.columns = df.columns.astype(str).str.strip()
         
-        # Identify the PP column dynamically regardless of spaces
+        # Identify the PP column dynamically regardless of exact naming variations (PP #, PP_Num, etc.)
         pp_col = None
         for col in df.columns:
-            if col.replace(" ", "").lower() in ["pp#", "pp_num", "ppnum"]:
+            if any(x in col.lower() for x in ["pp #", "pp#", "pp_num", "ppnum", "pre-prod"]):
                 pp_col = col
                 break
                 
         if not pp_col:
             return pd.DataFrame()
             
-        df['PP_Num_str'] = df[pp_col].astype(str).str.strip()
-        search_term = str(pp_number).strip()
+        # Clean the PP column text to safely drop any floating point zeroes (.0) or spaces
+        df['PP_Num_str'] = df[pp_col].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
+        search_term = str(pp_number).strip().split('.')[0] # Remove any decimals from search input
         
-        filtered_df = df[df['PP_Num_str'] == search_term].copy()
+        # Use fuzzy containment matching so it catches matching strings perfectly
+        filtered_df = df[df['PP_Num_str'].str.contains(search_term, na=False)].copy()
         
         if filtered_df.empty:
             return pd.DataFrame()
 
-        # Dynamic mapping for 'Date Log' and the actual spreadsheet header 'Promise /    Complete'
+        # Dynamic mapping for 'Date Log' and the exact messy spreadsheet header 'Promise /    Complete'
         date_log_col = None
         complete_col = None
         
@@ -67,10 +69,14 @@ def get_pp_dates(file_path, pp_number):
             elif "promise/" in normalized or "complete" in normalized:
                 complete_col = col
 
-        # Fallback to column defaults if matching failed to find them
+        # Fallbacks to column structural defaults if mapping misses them
         if not date_log_col: date_log_col = 'Date Log'
         if not complete_col: complete_col = 'Promise /    Complete'
         
+        # Ensure targeted date columns exist in filtered dataframe before parsing
+        if date_log_col not in filtered_df.columns or complete_col not in filtered_df.columns:
+            return pd.DataFrame()
+
         # Safely parse strings into true date objects dynamically
         filtered_df['Log_dt'] = pd.to_datetime(filtered_df[date_log_col], errors='coerce', format='mixed')
         filtered_df['Comp_dt'] = pd.to_datetime(filtered_df[complete_col], errors='coerce', format='mixed')
@@ -765,14 +771,12 @@ with st.sidebar:
     search_pp = st.text_input("Enter PP Number to view logs:", key="sidebar_pp_search")
 
     if search_pp:
-        # Pass the tracker file destination into our updated calculation engine
+        # Pass the layout-preserved tracker file name into our updated matching engine
         results = get_pp_dates("Merged_Weekly_Trackers_Layout_Preserved.csv", search_pp)
         if not results.empty:
             st.dataframe(results, use_container_width=True, hide_index=True)
         else:
-            st.warning(f"No records found for PP# {search_pp}")    
-
-        pass  # <--- This 'pass' prevents the empty block error!
+            st.warning(f"No records found for PP# {search_pp}")
 
 # --- TAB 1: SEARCH & EDIT ---
 if tab_nav == "🔍 Search & Edit":
