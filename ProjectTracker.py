@@ -894,7 +894,7 @@ if tab_nav == "🔍 Search & Edit":
                 )
                 updated_vals["Mould Description"] = selected_mould_desc
 
-        # Auto-fill Number and Drawing details if a valid Mould Asset is chosen
+# --- AUTOMATED MOULD LOOKUP DETAILS ---
         calc_mould_no = ""
         calc_draw_no = ""
         if selected_mould_desc and st.session_state.mould_df is not None:
@@ -920,7 +920,7 @@ if tab_nav == "🔍 Search & Edit":
                 disabled=bool(selected_mould_desc)
             )
 
-        # --- REPOSITIONED SUB-SECTIONS (Expander Groups) ---
+        # --- ORGANISED EXPANDER SUB-SECTIONS ---
         st.divider()
         
         with st.expander("📊 Project Status Tracking", expanded=True):
@@ -945,16 +945,16 @@ if tab_nav == "🔍 Search & Edit":
             for i, col in enumerate(combined_proof_fields):
                 cur_val = str(row.get(col, "")).replace("nan", "")
                 with proof_cols[i % 3]:
-                    if "date" in col.lower() or "sent" in col.lower() or "arrived" in col.lower() or "approved" in col.lower():
-                        # Try parsing as a pure date input, fallback to text input if it contains messy comments
+                    if any(x in col.lower() for x in ["date", "sent", "arrived", "approved"]):
                         try:
+                            # If row contains structural text notes ("wait", "hold"), use text fallback
                             if cur_val and not any(x in cur_val.lower() for x in ["wait", "no", "hold", "req"]):
                                 d_parsed = pd.to_datetime(cur_val, dayfirst=True, errors="coerce")
                                 d_val = d_parsed.date() if pd.notnull(d_parsed) else None
                                 d_input = st.date_input(col, value=d_val, key=f"ed_proof_{col}")
                                 updated_vals[col] = d_input.strftime("%d/%m/%Y") if d_input else ""
                             else:
-                                updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_proof_fallback_{col}", help="Handwritten text logs detected. Clear to use calendar.")
+                                updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_proof_fallback_{col}", help="Text logs detected. Clear to use calendar selection.")
                         except:
                             updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_proof_{col}")
                     else:
@@ -967,27 +967,34 @@ if tab_nav == "🔍 Search & Edit":
                 with trial_cols[i % 3]:
                     updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_trial_{col}")
 
-        # --- SAVE & BROADCAST UPDATE ACTION TRRIGERS ---
+        # --- COMMIT & BROADCAST ACTIONS ---
         st.divider()
         if st.button("💾 Commit & Sync Changes", type="primary", use_container_width=True):
-            # 1. Update values inside the local primary dataframe memory
+            # 1. Inject runtime timestamp formatting variations onto trial requests automatically
+            if updated_vals.get("Injection trial requested") and " - " not in str(updated_vals["Injection trial requested"]):
+                trial_suffix = updated_vals["Injection trial requested"].split("_")[-1] if "_" in updated_vals["Injection trial requested"] else updated_vals["Injection trial requested"]
+                date_str = datetime.now().strftime("%d/%m/%Y")
+                updated_vals["Injection trial requested"] = f"{trial_suffix} - {date_str}"
+
+            # 2. Update values inside the primary dataframe local cache layer
             for col, val in updated_vals.items():
                 df.at[idx, col] = val
             
-            # Recalculate key metrics fields automatically before writing
+            # Recalculate runtime age categories
             cat, days = calculate_age_category(df.loc[idx])
             if "Age Category" in df.columns:
                 df.at[idx, "Age Category"] = cat
 
-            # 2. Persist directly to local Parquet storage structure
+            # 3. Save to local storage structures
             save_db(df)
+            st.session_state.selected_combo = {}
             st.cache_data.clear()
 
-            # 3. Synchronize modifications to Google Sheets cloud master via cell batch lookups
+            # 4. Stream modifications live down to Google Sheets database server
             with st.spinner("Broadcasting updates directly to Google Sheets database server..."):
                 sync_success, message = update_tracker_status(search_no, updated_vals)
                 if sync_success:
-                    st.success(f"🎉 Local cache storage compiled! {message}")
+                    st.success(f"🎉 Local cache compiled! {message}")
                 else:
                     st.warning(f"⚠️ Local changes saved, but cloud sync failed: {message}")
             
