@@ -1174,16 +1174,16 @@ elif tab_nav == "🧪 Trial Trends":
     if not raw_df.empty:
         extracted_rows = []
         
-        # Exact expected uppercase layout matching your log tracking sheet
+        # Explicit uppercase display schema
         clean_headers = [
             "Date Log", "Customer / Trial", "# of colours", "Order", 
-            "Tubes", "Plates/Posi", "PP #", "DIA", "Size Details", "Promise / Complete", "Comments"
+            "Tubes", "Plates/Posi", "PP #", "DIA", "Promise / Complete", "Comments"
         ]
         
-        # 1. Scan rows to establish exactly where 'PP #' lands numerically
-        pp_index = 6  # File default fallback index
-        date_log_index = 0
-        promise_complete_index = 9
+        # 1. Dynamically scan the file to find where headers physically sit in the array
+        pp_index = None
+        date_log_index = None
+        promise_complete_index = None
         
         for _, row in raw_df.iterrows():
             row_vals = [str(val).strip() for val in row.values]
@@ -1191,24 +1191,29 @@ elif tab_nav == "🧪 Trial Trends":
                 pp_index = row_vals.index("PP #")
                 if "Date Log" in row_vals:
                     date_log_index = row_vals.index("Date Log")
-                # Look for the promise column variant with arbitrary spacing
+                # Locate promise date variant capturing arbitrary spacing gaps safely
                 promise_match = [i for i, x in enumerate(row_vals) if "promise" in x.lower() and "complete" in x.lower()]
                 if promise_match:
                     promise_complete_index = promise_match[0]
                 break
 
-        # 2. Extract and filter transaction records
+        # Fallback values if dynamic discovery did not trigger on a header line
+        if pp_index is None: pp_index = 6
+        if date_log_index is None: date_log_index = 0
+        if promise_complete_index is None: promise_complete_index = 9
+
+        # 2. Re-extract transaction records based on absolute positional layout coordinates
         for _, row in raw_df.iterrows():
             row_vals = [str(val).strip() for val in row.values]
             
-            # Skip divider comments and label blocks
+            # Skip operational system lines, blank lines, and label rows
             if not row_vals or any(x in "".join(row_vals).lower() for x in ["week", "data start", "---", "datelog"]):
                 continue
             if "PP #" in row_vals or "Date Log" in row_vals:
                 continue
                 
-            # Safely rebuild the row by pulling data directly out of discovered indexes
             try:
+                # Extract columns precisely relative to discovered anchors
                 date_log = row_vals[date_log_index] if date_log_index < len(row_vals) else ""
                 customer = row_vals[date_log_index + 1] if (date_log_index + 1) < len(row_vals) else ""
                 colours = row_vals[date_log_index + 2] if (date_log_index + 2) < len(row_vals) else ""
@@ -1218,53 +1223,54 @@ elif tab_nav == "🧪 Trial Trends":
                 
                 pp_val = row_vals[pp_index] if pp_index < len(row_vals) else ""
                 dia_val = row_vals[pp_index + 1] if (pp_index + 1) < len(row_vals) else ""
-                size_val = row_vals[pp_index + 2] if (pp_index + 2) < len(row_vals) else ""
                 
                 promise_val = row_vals[promise_complete_index] if promise_complete_index < len(row_vals) else ""
                 comments_val = row_vals[promise_complete_index + 1] if (promise_complete_index + 1) < len(row_vals) else ""
                 
-                extracted_rows.append([
-                    date_log, customer, colours, order, tubes, plates, 
-                    pp_val, dia_val, size_val, promise_val, comments_val
-                ])
+                # Verify that this row contains actual data before keeping it
+                if any([date_log, customer, pp_val]):
+                    extracted_rows.append([
+                        date_log, customer, colours, order, tubes, plates, 
+                        pp_val, dia_val, promise_val, comments_val
+                    ])
             except IndexError:
                 continue
 
-        # 3. Create cleanly aligned tracking DataFrame
+        # 3. Form cleanly aligned analytical dataframe
         trial_df = pd.DataFrame(extracted_rows, columns=clean_headers)
         trial_df = trial_df.replace(r'^\s*nan\s*$', '', regex=True)
         trial_df = trial_df.replace(r'^\s*None\s*$', '', regex=True)
 
-        # 4. Turnaround Calculation Engine
+        # 4. Cycle-Time Calculation Engine
         t_date = pd.to_datetime(trial_df["Promise / Complete"], errors='coerce', format='mixed')
         r_date = pd.to_datetime(trial_df["Date Log"], errors='coerce', format='mixed')
         trial_df['Days_Taken'] = (t_date - r_date).dt.days
         trial_df['Days_Taken'] = pd.to_numeric(trial_df['Days_Taken'], errors='coerce')
 
-        # 5. Render Average Cycle Time Metric Card
+        # 5. Render Metric Cards
         valid_days = trial_df['Days_Taken'].dropna()
         avg_days_str = f"{valid_days.mean():.1f} Days" if not valid_days.empty else "N/A"
         st.metric(label="Average Turnaround Time (Log to Completion)", value=avg_days_str)
         
-        # 6. Distribution Breakdown Chart
+        # 6. Distribution Charts
         if not valid_days.empty:
             st.markdown("### Turnaround Distribution")
             st.bar_chart(valid_days.value_counts())
             
-        # 7. --- DATA VIEW MATRIX ---
+        # 7. --- LOGS MATRIX DISPLAY PANEL ---
         st.markdown("### 📋 Detailed Turnaround Logs")
         
-        # Standardize strings, clean up floating points (.0) from trial records
+        # Clean float formatting string anomalies (.0) from trial tracking keys
         trial_df["PP #"] = trial_df["PP #"].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
         
-        # Filter down rows to only display active, populated jobs
+        # Filter down dataset rows to display meaningful operational entries
         filtered_display_df = trial_df[
             (trial_df["PP #"] != "") & 
             (trial_df["PP #"] != "nan") & 
             (~trial_df["PP #"].str.lower().str.contains("pp", na=False))
         ].copy()
         
-        # Enforce column order prioritizing 'PP #' at column index 0
+        # Force column display priorities putting PP # right up front at index 0
         display_columns = ["PP #", "Customer / Trial", "Date Log", "Promise / Complete", "Days_Taken", "Comments"]
         
         st.dataframe(
@@ -1274,7 +1280,7 @@ elif tab_nav == "🧪 Trial Trends":
         )
     else:
         st.info("No trial data available. Check if Merged_Weekly_Trackers_Layout_Preserved.csv exists.")
-        
+
 # --- TAB 5: CLOUD SYNC ---
 elif tab_nav == "🌐 Cloud Sync":
     st.subheader("Google Sheets Sync")
