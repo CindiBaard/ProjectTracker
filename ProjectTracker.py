@@ -1172,65 +1172,83 @@ elif tab_nav == "🧪 Trial Trends":
     trial_df = load_trial_data()
     
     if not trial_df.empty:
-        # 1. Clean up column names to avoid hidden whitespace issues
+        # 1. Clean up column names to avoid trailing/leading whitespace errors
         trial_df.columns = [str(c).strip() for c in trial_df.columns]
         
-        # 2. Dynamic Calculation Fallback: If 'Days_Taken' isn't in your CSV, calculate it from dates
-        if 'Days_Taken' not in trial_df.columns and 'Trial Date' in trial_df.columns and 'Request Date' in trial_df.columns:
+        # 2. Dynamic Identification for your specific CSV schema headers
+        date_log_col = None
+        complete_col = None
+        pp_col = None
+        
+        for col in trial_df.columns:
+            normalized = col.replace(" ", "").lower()
+            if normalized in ["datelog", "date_log"]:
+                date_log_col = col
+            elif "promise/" in normalized or "complete" in normalized:
+                complete_col = col
+            elif any(x in col.lower() for x in ["pp #", "pp#", "pp_num", "ppnum", "pre-prod"]):
+                pp_col = col
+
+        # Fallbacks to structure defaults if structural lookup fails
+        if not date_log_col: date_log_col = 'Date Log'
+        if not complete_col: complete_col = 'Promise /    Complete'
+        if not pp_col: pp_col = 'PP #'
+
+        # 3. Turnaround Calculation Engine using exact spreadsheet columns
+        if date_log_col in trial_df.columns and complete_col in trial_df.columns:
             try:
-                t_date = pd.to_datetime(trial_df['Trial Date'], dayfirst=True, errors='coerce')
-                r_date = pd.to_datetime(trial_df['Request Date'], dayfirst=True, errors='coerce')
+                # Safely parse dates handling messy or blank rows cleanly
+                t_date = pd.to_datetime(trial_df[complete_col], errors='coerce', format='mixed')
+                r_date = pd.to_datetime(trial_df[date_log_col], errors='coerce', format='mixed')
                 trial_df['Days_Taken'] = (t_date - r_date).dt.days
             except Exception as e:
                 st.error(f"Could not calculate turnaround days: {e}")
+        else:
+            st.error(f"Required tracking columns ('{date_log_col}' or '{complete_col}') were not detected.")
 
-        # 3. Force conversion to numeric to ensure .mean() doesn't fail on mixed data types
+        # 4. Force conversion to numeric to ensure .mean() doesn't choke on text/mixed objects
         if 'Days_Taken' in trial_df.columns:
             trial_df['Days_Taken'] = pd.to_numeric(trial_df['Days_Taken'], errors='coerce')
 
-        # 4. Safe calculation of the average metrics
+        # 5. Safe calculation of the average turnaround metric
         if 'Days_Taken' in trial_df.columns and not trial_df['Days_Taken'].dropna().empty:
             avg_days = trial_df['Days_Taken'].mean()
             avg_days_str = f"{avg_days:.1f} Days" if not pd.isna(avg_days) else "N/A"
         else:
             avg_days_str = "N/A"
             
-        # 5. Displaying Metrics & Visualizations cleanly
-        st.metric(label="Average Turnaround Time", value=avg_days_str)
+        # 6. Render Metrics Card
+        st.metric(label="Average Turnaround Time (Log to Completion)", value=avg_days_str)
         
-        # Simple rendering fallback for your charts
+        # 7. Distribution Breakdown Charts & Interactive Detail Table
         if 'Days_Taken' in trial_df.columns:
-            st.markdown("### Turnaround Distribution")
-            st.bar_chart(trial_df['Days_Taken'].value_counts())
+            # Drop entries where date differences could not be evaluated (like open rows) for clean analytics
+            clean_trends_df = trial_df.dropna(subset=['Days_Taken']).copy()
             
-            # --- FIXED: LOCATING AND SHOWING PP# IN THE TRACKER BREAKDOWN ---
+            if not clean_trends_df.empty:
+                st.markdown("### Turnaround Distribution")
+                st.bar_chart(clean_trends_df['Days_Taken'].value_counts())
+            
+            # --- DETAILED BREAKDOWN VIEW WITH PP# ---
             st.markdown("### 📋 Detailed Turnaround Logs")
             
-            # Dynamically identify the PP column from your csv layout variants
-            pp_col = None
-            for col in trial_df.columns:
-                if any(x in col.lower() for x in ["pp #", "pp#", "pp_num", "ppnum", "pre-prod"]):
-                    pp_col = col
-                    break
-            
-            # Pull other useful descriptive columns if they exist in your file format
+            # Dynamically look up other descriptive headers to keep the summary readable
             desc_cols = []
-            for candidate in ["HK Trials For Week 3", "Customer", "Description", "Request Date", "Trial Date"]:
-                matching = [c for c in trial_df.columns if candidate.lower() in c.lower()]
+            for candidate in ["week", "customer", "description", "tubes", "dia", "comments"]:
+                matching = [c for c in trial_df.columns if candidate in c.lower()]
                 if matching:
                     desc_cols.append(matching[0])
             
-            # Fallback to general columns if no structural description matches are found
-            if not pp_col:
-                # If no clear PP number matching key exists, use first column as proxy identifier
-                pp_col = trial_df.columns[0]
-            
-            # Construct a targeted dataframe layout that groups PP # alongside the Turnaround calculations
-            display_columns = [pp_col] + desc_cols + ['Days_Taken']
-            # De-duplicate any column listings in case names overlap
+            # Construct a clear, prioritized column list putting PP # right at the front
+            display_columns = [pp_col] + desc_cols + [date_log_col, complete_col, 'Days_Taken']
+            # Remove any overlapping entries or columns missing from data framework
             display_columns = list(dict.fromkeys([c for c in display_columns if c in trial_df.columns]))
             
-            # Display optimized subset containing the PP Number fields clearly at the front
+            # Clean up trailing float representations on the PP number strings (e.g. 20794.0 -> 20794)
+            if pp_col in trial_df.columns:
+                trial_df[pp_col] = trial_df[pp_col].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
+            
+            # Output optimized dashboard matrix view sorted by longest delay cycle times
             st.dataframe(
                 trial_df[display_columns].sort_values(by='Days_Taken', ascending=False),
                 use_container_width=True,
