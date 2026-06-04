@@ -28,17 +28,47 @@ def get_pp_dates(file_path, pp_number):
         if not os.path.exists(file_path):
             return pd.DataFrame()
 
-        if file_path.endswith('.xlsx'):
-            df = pd.read_excel(file_path)
-        elif file_path.endswith('.csv'):
-            df = pd.read_csv(file_path)
+        # Clean line extraction to handle the messy spreadsheet layouts
+        raw_lines = []
+        if file_path.endswith('.csv'):
+            with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    cols = [c.strip() for c in line.split(",")]
+                    if len(cols) >= 5 and any(cols):
+                        raw_lines.append(cols)
+        elif file_path.endswith('.xlsx'):
+            df_excel = pd.read_excel(file_path)
+            raw_lines = [df_excel.columns.tolist()] + df_excel.values.tolist()
         else:
             return pd.DataFrame()
         
+        if not raw_lines:
+            return pd.DataFrame()
+
+        # Pad all rows cleanly to the max columns found so pandas doesn't fail
+        max_cols = max(len(row) for row in raw_lines)
+        padded_rows = [r + [""] * (max_cols - len(r)) for r in raw_lines]
+        df = pd.DataFrame(padded_rows)
+        
+        # Find the row index that contains our actual data headers
+        header_row_idx = None
+        for idx, row in df.iterrows():
+            row_list = [str(x).lower() for x in row]
+            if any("date_log" in x or "date log" in x for x in row_list):
+                header_row_idx = idx
+                break
+        
+        if header_row_idx is not None:
+            df.columns = df.iloc[header_row_idx].str.strip()
+            df = df.iloc[header_row_idx + 1:].copy()
+        else:
+            df.columns = df.iloc[0].str.strip()
+            df = df.iloc[1:].copy()
+            
         # Clean up columns by stripping trailing/leading whitespaces
         df.columns = df.columns.astype(str).str.strip()
         
-        # Identify the PP column dynamically regardless of exact naming variations (PP #, PP_Num, etc.)
+        # Identify the PP column dynamically regardless of exact naming variations
         pp_col = None
         for col in df.columns:
             if any(x in col.lower() for x in ["pp #", "pp#", "pp_num", "ppnum", "pre-prod"]):
@@ -83,10 +113,9 @@ def get_pp_dates(file_path, pp_number):
         
         # Turnaround calculation engine logic
         def determine_days(row):
-            if pd.isna(row['Log_dt']):
+            if pd.isna(row['Log_dt']) or str(row[date_log_col]).strip() == "":
                 return "Missing Log Date"
-            if pd.isna(row['Comp_dt']):
-                # If incomplete, figure out running days open up to today
+            if pd.isna(row['Comp_dt']) or str(row[complete_col]).strip() == "":
                 days_open = (pd.Timestamp(datetime.now().date()) - row['Log_dt']).days
                 return f"In Progress ({max(0, days_open)} Days Open)"
             
@@ -106,7 +135,6 @@ def get_pp_dates(file_path, pp_number):
 
     except Exception:
         return pd.DataFrame()
-
 
 # --- LOAD DATA AND CALCULATE METRICS ---
 
@@ -204,11 +232,11 @@ FILENAME_PARQUET = os.path.join(BASE_DIR, "ProjectTracker_Combined.parquet")
 TRACKER_ADJ_FILE = os.path.join(BASE_DIR, "ProjectTrackerPP_Cleaned_NA.csv")
 DIGITALPREPROD_FILE = os.path.join(BASE_DIR, "DigitalPreProd.csv")
 COMBINATIONS_FILE = os.path.join(BASE_DIR, "TubeAndCapCombinations.csv")
-TRIALS_FILE_CURRENT = "ProjectTracker/Merged_Weekly_Trackers_Layout_Preserved.csv"
-SUBMISSIONS_FILE = "Submissions_History.parquet"
-TRACKER_FILE_ID = "1LA9F5mD67vR9yYKqQ39CS-tAZ9QgCgn5KBWaY_RfFKM"
-MOULD_ASSETS = "1NoA6JvnxkqCpeBF8OZNcrdWhD2SF7umM7lPBVyWDoT8"
-Merged_Weekly_Trackers_Layout_Preserved = "1700O_uU_be2tIAK7FijnLfv7jgGVR__xMVonuXgRZIE"
+
+#  FIX: Changed from "ProjectTracker/..." to an explicit BASE_DIR join at root
+TRIALS_FILE_CURRENT = os.path.join(BASE_DIR, "Merged_Weekly_Trackers_Layout_Preserved.csv")
+
+SUBMISSIONS_FILE = os.path.join(BASE_DIR, "Submissions_History.parquet")
 
 # --- 2. FIXED DESIRED ORDER ---
 DESIRED_ORDER = [
@@ -981,7 +1009,7 @@ if tab_nav == "🔍 Search & Edit":
                             d_val = d_parsed.date() if pd.notnull(d_parsed) else None
                         except:
                             d_val = None
-                        d_input = st.date_input(col, value=d_val, key=f"ed_status_{col}", placeholder="YYYY/MM/DD")
+                        d_input = st.date_input(col, value=d_val, key=f"date_{col}")
                         updated_vals[col] = d_input.strftime("%d/%m/%Y") if d_input else ""
                     else:
                         updated_vals[col] = st.text_input(col, value=cur_val, key=f"txt_status_{col}")
@@ -1206,10 +1234,13 @@ elif tab_nav == "🧪 Trial Trends":
         for _, row in raw_df.iterrows():
             row_vals = [str(val).strip() for val in row.values]
             
-            # Skip operational system lines, blank lines, and label rows
-            if not row_vals or any(x in "".join(row_vals).lower() for x in ["week", "data start", "---", "datelog"]):
+            if not row_vals or len(row_vals) <= max(pp_index, promise_complete_index):
                 continue
-            if "PP #" in row_vals or "Date Log" in row_vals:
+                
+            pp_val = row_vals[pp_index].split('.')[0]  # Strip float decimals like '.0' safely
+            
+            # Skip rows where the PP column is empty, a header indicator, or text notes
+            if not pp_val or pp_val.lower() in ['nan', '', 'none', 'pp #', 'pp#'] or not pp_val.isdigit():
                 continue
                 
             try:
@@ -1221,18 +1252,18 @@ elif tab_nav == "🧪 Trial Trends":
                 tubes = row_vals[date_log_index + 4] if (date_log_index + 4) < len(row_vals) else ""
                 plates = row_vals[date_log_index + 5] if (date_log_index + 5) < len(row_vals) else ""
                 
-                pp_val = row_vals[pp_index] if pp_index < len(row_vals) else ""
                 dia_val = row_vals[pp_index + 1] if (pp_index + 1) < len(row_vals) else ""
-                
                 promise_val = row_vals[promise_complete_index] if promise_complete_index < len(row_vals) else ""
                 comments_val = row_vals[promise_complete_index + 1] if (promise_complete_index + 1) < len(row_vals) else ""
                 
-                # Verify that this row contains actual data before keeping it
-                if any([date_log, customer, pp_val]):
-                    extracted_rows.append([
-                        date_log, customer, colours, order, tubes, plates, 
-                        pp_val, dia_val, promise_val, comments_val
-                    ])
+                # Strip out trailing timestamp formatting elements from string display
+                date_log = date_log.replace(' 0:00:00', '')
+                promise_val = promise_val.replace(' 0:00:00', '')
+                
+                extracted_rows.append([
+                    date_log, customer, colours, order, tubes, plates, 
+                    pp_val, dia_val, promise_val, comments_val
+                ])
             except IndexError:
                 continue
 
@@ -1257,17 +1288,33 @@ elif tab_nav == "🧪 Trial Trends":
             st.markdown("### Turnaround Distribution")
             st.bar_chart(valid_days.value_counts())
             
-        # 7. --- LOGS MATRIX DISPLAY PANEL ---
-        st.markdown("### 📋 Detailed Turnaround Logs")
+        # 7. --- SIDEBAR INTEGRATION LOOKUP ENGINE ---
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Quick PP# Date Lookup")
+        search_pp = st.sidebar.text_input("Enter PP Number to view logs:", key="trend_search_input").strip()
         
-        # Clean float formatting string anomalies (.0) from trial tracking keys
-        trial_df["PP #"] = trial_df["PP #"].astype(str).str.strip().str.replace(r'\.0$', '', regex=True)
+        if search_pp:
+            # Look up against our extracted, fully scrubbed PP column entries
+            lookup_df = trial_df[trial_df["PP #"] == search_pp].copy()
+            if not lookup_df.empty:
+                st.sidebar.success(f"Record found for PP# {search_pp}!")
+                # Show key parameters directly inside the sidebar utility space
+                for _, match_row in lookup_df.iterrows():
+                    st.sidebar.info(
+                        f"**Trial:** {match_row['Customer / Trial']}\n\n"
+                        f"**Logged:** {match_row['Date Log']}\n\n"
+                        f"**Completed:** {match_row['Promise / Complete'] if match_row['Promise / Complete'] else 'Pending'}"
+                    )
+            else:
+                st.sidebar.error(f"No records found for PP# {search_pp}")
+
+        # 8. --- LOGS MATRIX DISPLAY PANEL ---
+        st.markdown("### 📋 Detailed Turnaround Logs")
         
         # Filter down dataset rows to display meaningful operational entries
         filtered_display_df = trial_df[
             (trial_df["PP #"] != "") & 
-            (trial_df["PP #"] != "nan") & 
-            (~trial_df["PP #"].str.lower().str.contains("pp", na=False))
+            (trial_df["PP #"] != "nan")
         ].copy()
         
         # Force column display priorities putting PP # right up front at index 0
