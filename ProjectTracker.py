@@ -991,9 +991,14 @@ if tab_nav == "🔍 Search & Edit":
                     raw_draw_val = str(mould_match.iloc[0]["Drawing No."]).strip()
                     calc_draw_no = raw_draw_val if raw_draw_val.lower() != 'nan' else ""
 
-        # Determine the definitive values to push to the UI text components
+        # Determine the definitive values to push to the UI
         display_mould = calc_mould_no if calc_mould_no else fallback_mould
         display_drawing = calc_draw_no if calc_draw_no else fallback_draw
+
+        # 🚀 FORCE WIDGET UPDATE: Explicitly update Streamlit's session state keys 
+        # so the inputs are forced to refresh on screen immediately.
+        st.session_state["mould_num_edit"] = display_mould
+        st.session_state["mould_draw_edit"] = display_drawing
 
         with mould_cols[1]:
             updated_vals["MouldNumber"] = st.text_input(
@@ -1010,6 +1015,7 @@ if tab_nav == "🔍 Search & Edit":
                 key="mould_draw_edit", 
                 disabled=bool(selected_mould_desc and calc_draw_no)
             )
+            
         # --- ORGANISED EXPANDER SUB-SECTIONS ---
         st.divider()
         
