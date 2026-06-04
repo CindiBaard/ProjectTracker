@@ -972,29 +972,44 @@ if tab_nav == "🔍 Search & Edit":
 # --- AUTOMATED MOULD LOOKUP DETAILS ---
         calc_mould_no = ""
         calc_draw_no = ""
+        
+        # Determine fallback base metrics from the loaded historical database row
+        fallback_mould = str(row.get("MouldNumber", "")).replace("nan", "").strip() if hasattr(row, "get") else ""
+        fallback_draw = str(row.get("Drawing No.", "")).replace("nan", "").strip() if hasattr(row, "get") else ""
+
         if selected_mould_desc and st.session_state.mould_df is not None:
             m_df = st.session_state.mould_df
-            match_key = selected_mould_desc.replace(" ", "").lower()
-            mould_match = m_df[m_df["_match_key"] == match_key]
-            if not mould_match.empty:
-                calc_mould_no = mould_match.iloc[0]["MouldNumber"]
-                calc_draw_no = mould_match.iloc[0]["Drawing No."]
+            match_key = selected_mould_desc.replace(" ", "").lower().strip()
+            
+            if "_match_key" in m_df.columns:
+                mould_match = m_df[m_df["_match_key"] == match_key]
+                if not mould_match.empty:
+                    # Clean float formatting string anomalies (.0) from database records
+                    raw_mould_val = str(mould_match.iloc[0]["MouldNumber"]).strip()
+                    calc_mould_no = raw_mould_val.split('.')[0] if raw_mould_val.lower() != 'nan' else ""
+                    
+                    raw_draw_val = str(mould_match.iloc[0]["Drawing No."]).strip()
+                    calc_draw_no = raw_draw_val if raw_draw_val.lower() != 'nan' else ""
+
+        # Determine the definitive values to push to the UI text components
+        display_mould = calc_mould_no if calc_mould_no else fallback_mould
+        display_drawing = calc_draw_no if calc_draw_no else fallback_draw
 
         with mould_cols[1]:
             updated_vals["MouldNumber"] = st.text_input(
                 "Mould Number", 
-                value=calc_mould_no if selected_mould_desc else str(row.get("MouldNumber", "")).replace("nan", ""), 
+                value=display_mould, 
                 key="mould_num_edit", 
-                disabled=bool(selected_mould_desc)
+                disabled=bool(selected_mould_desc and calc_mould_no)
             )
+            
         with mould_cols[2]:
             updated_vals["Drawing No."] = st.text_input(
                 "Drawing No.", 
-                value=calc_draw_no if selected_mould_desc else str(row.get("Drawing No.", "")).replace("nan", ""), 
+                value=display_drawing, 
                 key="mould_draw_edit", 
-                disabled=bool(selected_mould_desc)
+                disabled=bool(selected_mould_desc and calc_draw_no)
             )
-
         # --- ORGANISED EXPANDER SUB-SECTIONS ---
         st.divider()
         
